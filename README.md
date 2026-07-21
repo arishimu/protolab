@@ -1,291 +1,920 @@
 # ProVerif 学习仓库
 
-这个仓库用于系统学习安全协议形式化验证工具 **ProVerif**，同时补齐密码学与安全协议分析的基础知识。当前仓库已经收集了一批官方手册、教程论文和示例模型，后续可以在此基础上持续添加笔记、实验记录和自建案例。
+这个仓库用于系统学习：
 
-## 学习目标
+- 基础密码学概念，
+- 安全协议分析方法，
+- ProVerif 的建模语法、查询写法与验证流程。
 
-本仓库当前阶段的学习目标如下：
+当前阶段，这个仓库主要是一个学习与实验工作区，而不是生产项目。这里的重点是：
 
-1. 入门密码学和安全协议基础知识。
-2. 理解形式化验证在安全协议分析中的作用、边界与常见问题。
-3. 学会 ProVerif 的基本使用方法，包括：
-   - 编写和阅读 `.pv` 模型；
-   - 运行 ProVerif 验证查询；
-   - 分析 secrecy、authentication、equivalence 等常见性质；
-   - 阅读工具输出并定位攻击轨迹或建模问题。
+- 解释要正确，
+- 模型要清晰，
+- 学习进度要可追踪，
+- 尽量减少不必要的复杂度。
 
-## 仓库结构
+## 仓库当前定位
 
-```text
-protolab/
-├─ README.md
-└─ proverif-docs/
-   ├─ manual.pdf
-   ├─ BlanchetFOSAD14-ProVerif-tutorial.pdf
-   ├─ BlanchetFnTPS16-ProVerif-survey.pdf
-   ├─ hello.pv
-   ├─ ex_handshake.pv
-   ├─ NeedhamSchroederPK-*.pv
-   └─ ...
+目前仓库的核心内容集中在 `proverif-docs/`：
+
+- 官方手册与教程 PDF，
+- 多个官方或教学导向的 `.pv` 示例，
+- 适合逐步练习 secrecy、authentication、equivalence、induction 等主题的模型。
+
+如果后续继续扩展，这个仓库更适合增加：
+
+- 学习笔记，
+- 带注释的协议模型，
+- 对同一协议的脆弱版与修正版对照，
+- 每个查询结果的阅读记录。
+
+## 当前学习进度
+
+截至 2026 年 7 月 21 日，已经完成并学习过以下模型：
+
+1. `proverif-docs/hello.pv`
+2. `proverif-docs/hello_ext.pv`
+3. `proverif-docs/hello_var.pv`
+4. `proverif-docs/ex_handshake_annotated.pv`
+5. `proverif-docs/ex_handshake_annotated_fixed.pv`
+6. `proverif-docs/ex_query_attacker.pv`
+7. `proverif-docs/ex_weaksecret.pv`
+8. `proverif-docs/ex_weaksecret_obs.pv`
+9. `proverif-docs/ex_query_new.pv`
+10. `proverif-docs/ex_equivalence.pv`
+11. `proverif-docs/ex_noninterf1.pv`
+12. `proverif-docs/ex_noninterf2.pv`
+
+这意味着当前已经走过了从最小 ProVerif 示例到带认证语义的握手协议示例这一段入门路径。
+
+### 当前已验证结果摘要
+
+本次已在带有 `opam` 环境的 WSL 会话中重新运行这些模型，摘要如下：
+
+- `hello.pv`
+  - `not attacker(RSA)` 为假；
+  - `not attacker(Cocks)` 为真。
+- `hello_ext.pv`
+  - `event(evCocks) ==> event(evRSA)` 为真。
+- `hello_var.pv`
+  - `not attacker(Cocks)` 为真。
+- `ex_handshake_annotated.pv`
+  - `not attacker(s)` 为假；
+  - `event(termClient(...)) ==> event(acceptsServer(...))` 为假；
+  - `inj-event(termServer(...)) ==> inj-event(acceptsClient(...))` 为真。
+- `ex_handshake_annotated_fixed.pv`
+  - `not attacker(s)` 为真；
+  - `event(termClient(...)) ==> event(acceptsServer(...))` 为真；
+  - `inj-event(termServer(...)) ==> inj-event(acceptsClient(...))` 为真。
+- `ex_query_attacker.pv`
+  - `not attacker(h((n,new n)))` 为假。
+- `ex_weaksecret.pv`
+  - `Weak secret v` 为假。
+- `ex_weaksecret_obs.pv`
+  - `Observational equivalence cannot be proved`。
+- `ex_query_new.pv`
+  - `not event(e(a[!1 = i], B[!1 = i]))` 为假。
+- `ex_equivalence.pv`
+  - `Observational equivalence is true`。
+- `ex_noninterf1.pv`
+  - `Non-interference secret_msg is true`。
+- `ex_noninterf2.pv`
+  - `Non-interference x among (n[], h(n[])) is true`。
+
+这组结果正好体现了当前学习路径的关键教学点：
+
+- 前三个 `hello*` 文件用于建立 secrecy、事件和角色建模直觉；
+- `ex_handshake_annotated.pv` 展示一个存在真实问题的握手模型；
+- `ex_handshake_annotated_fixed.pv` 则展示通过绑定身份信息来修复漏洞后的结果变化；
+- `ex_query_attacker.pv` 则进一步说明：只要查询中的项可以由攻击者已知成分通过公开函数构造出来，`attacker(...)` 就会成立；
+- `ex_weaksecret.pv` 则说明：一个值即使不能被直接恢复，也可能因为攻击者能离线猜测并比较而不满足 weak secrecy；
+- `ex_weaksecret_obs.pv` 则把这个思路改写成可观察等价问题，说明攻击者确实能够区分“输出的是 `u` 还是 `v`”；
+- `ex_query_new.pv` 则说明：查询里的 `new ...[!1 = i]` 用来引用复制进程某次会话实际生成的名字，而不是在查询时再凭空生成一个新值；
+- `ex_equivalence.pv` 则说明：即使两个过程的复制结构不同，只要攻击者观察不到任何可利用的差异，它们仍然可能 observationally equivalent；
+- `ex_noninterf1.pv` 则说明：当秘密始终处在攻击者无法测试其内容的加密壳里时，用 `noninterf` 表达的不可区分性可以成立；
+- `ex_noninterf2.pv` 则说明：即使把秘密候选集限制为 `(n, h(n))`，只要攻击者既看不到 `n` 又无法对 `h` 做逆向或判别，候选之间仍然可能不可区分。
+
+## 已完成内容整理
+
+### 1. `hello.pv`
+
+这个文件是最小的 ProVerif 入门例子，重点在于建立三个最基础的概念：
+
+- `free` 名字可以表示公开信道、常量、秘密等；
+- `query attacker(...)` 用来问“攻击者是否能得到这个值”；
+- `out(c, ...)` 表示把消息发送到公开信道上。
+
+从这个例子里，已经建立了一个最重要的直觉：
+如果一个值被直接发到公开信道，那么 `attacker(...)` 一般就会成立；如果一个值没有泄露，ProVerif 才可能证明它保密。
+
+### 2. `hello_ext.pv`
+
+这个文件在最小模型上加入了：
+
+- 输入 `in(c, x)`，
+- 条件判断 `if x = ... then ... else ...`，
+- 事件 `event ...`，
+- 基本 correspondence 查询。
+
+这里的重点不是复杂协议，而是开始理解：
+
+- 事件可以作为“协议执行痕迹”来记录；
+- 查询 `event(A) ==> event(B)` 表示“如果发生了 A，那么之前一定发生过 B”；
+- 认证类性质通常不是直接看密文，而是借助事件之间的关系来表达。
+
+### 3. `hello_var.pv`
+
+这个文件引入了：
+
+- `let` 定义进程，
+- 参数化角色，
+- 并发组合 `P | Q`。
+
+这一阶段已经开始接触“角色建模”的思路：
+
+- 一个协议通常不是写成一条直线流程，
+- 而是拆成若干参与方角色，
+- 再在顶层用并发把它们组合起来。
+
+这是后续阅读更完整协议模型的重要过渡。
+
+### 4. `ex_handshake_annotated.pv`
+
+这是第一个真正带有协议分析味道的学习节点。这个模型同时涉及：
+
+- 对称加密，
+- 非对称加密，
+- 数字签名，
+- 会话密钥，
+- secrecy 查询，
+- 基于事件的认证查询。
+
+在这个例子里，已经接触到几个关键概念：
+
+- 用 `fun` 和 `reduc` 描述密码原语及其等式规则；
+- 用 `new` 生成新鲜值，例如会话密钥；
+- 用事件区分“接受”和“终止”等协议阶段；
+- 用 correspondence 查询表达“谁在和谁完成了一次协议运行”。
+
+这个文件的教学价值在于：它把“加密能不能解开”和“协议是否真的完成认证”区分开了。保密性和认证性是不同的性质，必须分别建模和查询。
+
+### 5. `ex_handshake_annotated_fixed.pv`
+
+这个文件是前一个握手模型的修正版，用来说明：
+
+- 协议消息中“绑定了什么身份信息”非常关键；
+- 只加密并不自动等于完成认证；
+- 把参与方身份、密钥归属和消息内容正确绑定，才能修补认证缺陷。
+
+和前一个版本对照学习后，当前应该已经掌握了一个非常重要的分析习惯：
+
+- 查询失败时，不要先假设是工具错了；
+- 要先问这是：
+  - 一个真实攻击，
+  - 一个刻意保留的教学漏洞，
+  - 还是模型本身遗漏了必要约束。
+
+这也是后面阅读 Needham-Schroeder 和更多认证协议时最核心的思维方式。
+
+### 6. `ex_query_attacker.pv`
+
+这个文件很短，但它非常适合拿来校准对 `query attacker(...)` 的理解。
+
+模型内容大致是：
+
+- 定义公开信道 `c`；
+- 定义一个函数 `h(bitstring): bitstring`；
+- 定义一个全局自由名字 `n`；
+- 查询攻击者是否能得到 `h((n,new n))`；
+- 进程中再生成一个新的局部名字 `n`，并把它输出到公开信道。
+
+这个例子里最值得注意的是两点：
+
+- 文件里同时出现了一个全局的 `free n` 和一个进程里的 `new n`；
+- ProVerif 给出 `identifier n rebound` 警告，是因为局部 `new n` 重新绑定了同名标识符。
+
+虽然这个写法对初学者有一点绕，但它正好用来说明：
+
+- 查询中的表达式不是只能问“某个原子秘密会不会泄露”；
+- 也可以问“攻击者能不能构造出某个复合项”。
+
+在这个模型中，攻击者一开始就知道全局自由名字 `n`，同时又能从公开信道拿到新生成的局部 `n`。而 `h` 只是一个普通函数，没有任何隐藏性或不可构造性规则，所以攻击者可以：
+
+- 先得到全局的 `n`，
+- 再得到输出到信道上的新鲜 `n`，
+- 把它们组成二元组，
+- 再对这个二元组应用函数 `h`。
+
+因此查询失败，即：
+
+- `not attacker(h((n,new n)))` 为假，
+- 等价地说，`attacker(h((n,new n)))` 为真。
+
+这个例子的关键教学点是：
+
+- `new` 生成的新鲜值如果被直接输出，依然会泄露；
+- 公开函数 `h` 不会自动提供保密性；
+- `attacker(M)` 关注的是“攻击者能否推导或构造出项 `M`”，而不只是“有没有看到完全一样的一条原始消息”。
+
+### 7. `ex_weaksecret.pv`
+
+这个例子开始把学习重点从“攻击者能否得到一个值”推进到“攻击者能否区分这个值”。
+
+模型里：
+
+- `v` 被声明为 `free v: bitstring [private]`，
+- 并不是普通的 `query attacker(v)`，
+- 而是使用 `weaksecret v`。
+
+协议行为很简单：
+
+- 先生成一对公私钥；
+- 把公钥 `pkA` 发到公开信道；
+- 一个角色 `V` 不断输出 `aenc(v, pkA)`；
+- 另一个角色 `A` 持有私钥并能接收、解密密文。
+
+这里最关键的点是：
+
+- 攻击者并不能直接得到私钥 `skA`，
+- 所以也不能直接解密得到 `v`，
+- 但攻击者知道公钥 `pkA`，
+- 因此可以自己猜一个候选值 `g`，
+- 然后计算 `aenc(g, pkA)`，
+- 再和公开信道上看到的 `aenc(v, pkA)` 做比较。
+
+如果两者相等，攻击者就知道 `g = v`；如果不等，就知道猜错了。
+
+所以这个例子说明：
+
+- `query attacker(v)` 可能仍然不会成立，
+- 但 `weaksecret v` 依然会失败。
+
+这正是 weak secrecy 和普通 secrecy 的区别之一：
+
+- 普通 secrecy 更关注“攻击者能不能推出这个值本身”；
+- weak secrecy 还关注“攻击者能不能通过可观察行为测试出这个值到底是什么”。
+
+这个例子尤其适合建立一个直觉：
+
+- 确定性加密即使没有泄露明文，也可能泄露“可比较性”；
+- 一旦攻击者能把自己的猜测加密后与真实密文比较，就能做离线字典猜测或等值测试；
+- 因而“不能直接解密”并不自动等于“满足 weak secrecy”。
+
+### 8. `ex_weaksecret_obs.pv`
+
+这个例子和 `ex_weaksecret.pv` 讨论的是同一个核心风险，但表达方式更接近“等价性”而不是“直接写 weak secret 查询”。
+
+模型里有两个私有值：
+
+- `u`
+- `v`
+
+前半部分协议和上一题类似：
+
+- 生成一对公私钥；
+- 公开公钥；
+- 不断输出 `aenc(pkA, v)`；
+- 同时保留一个能用私钥解密输入消息的角色。
+
+真正关键的是额外这一行：
+
+```proverif
+out(c, choice[u,v])
 ```
 
-## 资料说明
+这里的 `choice[u,v]` 是双进程写法，可以理解为：
 
-`proverif-docs/` 中已经包含了当前学习的核心资料：
+- 在左边世界输出 `u`，
+- 在右边世界输出 `v`。
 
-- `proverif-docs/manual.pdf`：ProVerif 官方手册，偏完整参考。
-- `proverif-docs/BlanchetFOSAD14-ProVerif-tutorial.pdf`：入门教程，适合先建立整体概念。
-- `proverif-docs/BlanchetFnTPS16-ProVerif-survey.pdf`：综述性质材料，适合理解工具能力边界与研究背景。
-- `proverif-docs/hello.pv`、`proverif-docs/hello_ext.pv`、`proverif-docs/hello_var.pv`：最小示例，适合安装后做第一轮验证。
-- `proverif-docs/ex_*.pv`：覆盖 query、equivalence、induction、handshake 等主题。
-- `proverif-docs/NeedhamSchroederPK-*.pv`：经典协议案例，适合进入认证与攻击分析阶段。
+于是 ProVerif 问的问题就不再是“攻击者能否得到某个秘密”，而是：
 
-## 推荐学习顺序
+- 左右两个世界对攻击者来说是否不可区分？
 
-建议按下面的顺序推进，这样会比较平滑：
+这次工具给出的结论是：
 
-1. **先补密码学与协议分析基础**
-   - 先掌握：对称加密、公开密钥加密、签名、散列、随机数、nonce、session key、前向保密、认证与重放攻击。
-   - 同时理解安全协议分析里常见的 Dolev-Yao 攻击者模型。
-2. **再建立 ProVerif 心智模型**
-   - 阅读 `proverif-docs/BlanchetFOSAD14-ProVerif-tutorial.pdf`
-   - 明确 ProVerif 把协议建模为进程演算，并在符号模型下验证性质。
-3. **先跑最小例子**
-   - 从 `proverif-docs/hello.pv` 开始；
-   - 再看 `hello_ext.pv` 和 `hello_var.pv`。
-4. **进入常见查询与性质**
-   - 学 secrecy：`ex_query_attacker.pv`、`ex_weaksecret.pv`
-   - 学认证：`ex_handshake.pv`、`ex_sync.pv`
-   - 学等价性：`ex_equivalence.pv`
-5. **最后做经典协议案例**
-   - 学习 `NeedhamSchroederPK-*.pv` 系列；
-   - 对照论文和输出结果，理解认证缺陷、修复方案和查询写法。
+- `Observational equivalence cannot be proved`。
 
-## 环境配置说明
+原因非常直接：
 
-下面的配置说明结合了仓库内资料和截至 **2026 年 7 月 17 日** 可公开访问的官方网络资料整理而成。  
-如果只想尽快开始学习，**推荐优先使用 WSL2 + Ubuntu + opam 安装 ProVerif**。这是我基于官方发布方式和日常工具兼容性做出的推荐，稳定性通常比纯原生 Windows 路线更好。
+- 攻击者先从 `choice[u,v]` 得到“左边是 `u`，右边是 `v`”这一对候选值；
+- 再从协议公开输出中拿到 `pkA`；
+- 然后攻击者自己计算 `aenc(pkA, choice[u,v])`；
+- 于是左边得到 `aenc(pkA, u)`，右边得到 `aenc(pkA, v)`；
+- 而协议本身公开输出的是 `aenc(pkA, v)`；
+- 攻击者比较两边是否相等，就能区分左右世界。
 
-### 方案一：Windows 上推荐使用 WSL2 + Ubuntu
+这说明：
 
-这是最适合当前仓库场景的方案：命令与官方 Unix 文档更接近，后续运行示例、写脚本和安装 OCaml 生态工具也更省心。
+- 如果系统的一部分公开了“候选明文差异”，
+- 另一部分又公开了这些候选值的确定性加密结果，
+- 那么攻击者就能把两者对应起来，从而区分系统行为。
 
-#### 1. 安装 WSL2
+这个例子可以看成是对上一题的“等价性版本复述”：
 
-在管理员 PowerShell 中执行：
+- `ex_weaksecret.pv` 用 `weaksecret v` 表达“秘密不能被区分”；
+- `ex_weaksecret_obs.pv` 用 `choice[u,v]` 和 observational equivalence 表达“两个世界不能被区分”；
+- 两者失败的根本原因是一样的：攻击者可以做可观察的等值测试。
 
-```powershell
-wsl --install
+### 9. `ex_query_new.pv`
+
+这个文件继续围绕“查询到底在说什么”做练习，但这次重点不再是 `attacker(M)`，而是事件查询里如何引用复制进程 `!` 中每次会话新生成的名字。
+
+模型本身非常短：
+
+- 定义公开信道 `c`；
+- 定义事件 `e(bitstring, bitstring)`；
+- 写一个查询 `query i:sid; event(e(new a[!1 = i], new B[!1 = i]))`；
+- 左边进程从公开信道接收一对值 `(y, x)`，然后触发 `event e(x, y)`；
+- 右边进程是复制进程 `!`，每次运行都 `new a`、`new B`，再把 `(a, B)` 输出到公开信道。
+
+这类写法里最容易困惑的是查询中的：
+
+- `new a[!1 = i]`
+- `new B[!1 = i]`
+
+它们不是在“查询执行时再新建一个名字”，而是在引用：
+
+- 复制进程 `!` 的第 `i` 次实例中，
+- 那一次实际创建出来的 `a` 和 `B`。
+
+可以把它理解成：
+
+- “是否存在某个复制实例编号 `i`，使得事件 `e` 的参数正好是那一轮生成的 `a_i` 与 `B_i`？”
+
+ProVerif 这次给出的结果是：
+
+- `not event(e(a[!1 = i], B[!1 = i]))` 为假；
+- 也就是说，`event(e(a[!1 = i], B[!1 = i]))` 的确可能发生。
+
+原因并不复杂，但非常值得记住：
+
+- 复制进程某一轮会把 `(a_i, B_i)` 直接输出到公开信道；
+- 攻击者拿到这个二元组后，可以拆开再重组顺序；
+- 输入进程读入 `(y, x)` 后会触发 `event e(x, y)`；
+- 所以攻击者只要把收到的 `(a_i, B_i)` 改成 `(B_i, a_i)` 发回去，
+- 事件就会变成 `e(a_i, B_i)`，
+- 正好满足查询里的目标事件。
+
+这个例子的关键教学点有三个：
+
+- 查询中的 `new ...[!1 = i]` 是“引用某次会话里生成的名字”，不是“凭空再生成一个新名字”；
+- `i:sid` 用来量化复制进程的会话编号，所以查询可以精确谈论“第几次复制产生的值”；
+- 即使值本身来自 `new`，只要它们被公开输出，攻击者依然可以利用这些值来触发带精确参数的事件。
+
+它和前面的 `ex_query_attacker.pv` 很适合对照看：
+
+- `ex_query_attacker.pv` 练的是“攻击者能不能构造一个项”；
+- `ex_query_new.pv` 练的是“事件查询能不能精确指向某个会话里新生成的名字”。
+
+学完这个文件后，关于查询语义就又多了一层直觉：
+
+- ProVerif 查询里的名字不仅可以表示“某个值”，
+- 还可以通过复制标号去指向“某次具体会话生成的那个值”。
+
+### 10. `ex_equivalence.pv`
+
+这个文件是一个很纯粹的 observational equivalence 练习。它没有写 `query attacker(...)`，也没有使用 `choice[u,v]`，而是直接把两个过程并排写在 `equivalence` 下面，让 ProVerif 判断攻击者是否能区分这两个系统。
+
+模型内容很短：
+
+- 定义类型 `key` 和 `macs`；
+- 定义函数 `mac(bitstring, key): macs`；
+- 定义公开信道 `c`；
+- 左边过程是 `! new k; ! new a; out(c, mac(a,k))`；
+- 右边过程是 `! new k; new a; out(c, mac(a,k))`。
+
+这两个过程表面上看起来不一样：
+
+- 左边对 `k` 和 `a` 都用了复制；
+- 右边只对 `k` 用复制，而 `a` 是每次外层会话里只生成一次。
+
+所以第一眼很容易怀疑：
+
+- 左边是不是会对同一个 `k` 输出很多不同的 `mac(a,k)`；
+- 右边是不是每个 `k` 只对应一次输出；
+- 如果是这样，攻击者会不会通过“同一个密钥是否重复使用”来区分两个世界？
+
+ProVerif 这次给出的结果是：
+
+- `Observational equivalence is true`。
+
+也就是说，工具认为攻击者不能区分这两个过程。
+
+理解这个结果的关键在于：在这个模型里，攻击者看不到 `a`，也看不到 `k`，他只能看到抽象项 `mac(a,k)`。而 `mac` 在这里只是一个普通构造函数：
+
+- 没有验证规则，
+- 没有投影规则，
+- 没有“相同 key 会暴露关联性”的额外等式。
+
+于是对于攻击者来说，公开信道上看到的只是一些不可分解的、彼此独立的 `mac(...)` 项。虽然左边和右边的内部复制结构不同，但这些内部差异不会投射成外部可观察行为。
+
+可以把这题的直觉记成一句话：
+
+- “内部会话结构不同，不等于攻击者可观察到的行为不同。”
+
+这个例子特别适合和前面的 `ex_weaksecret_obs.pv` 对照：
+
+- 在 `ex_weaksecret_obs.pv` 里，攻击者能把两个世界里的差异和公开输出关联起来，所以等价性失败；
+- 在 `ex_equivalence.pv` 里，虽然两个过程的生成方式不同，但攻击者拿不到任何能把这种内部差异测试出来的操作，所以等价性成立。
+
+这个文件的关键教学点有三个：
+
+- equivalence 查询问的是“两个系统能不能被区分”，而不是“某个秘密能不能被推出”；
+- 两个过程的语法结构不同，并不自动意味着它们可区分；
+- 是否可区分，取决于攻击者对公开项拥有哪些构造、比较和消去能力。
+
+### 11. `ex_noninterf1.pv`
+
+这个文件把“秘密是否不可区分”写成了更直接的 `noninterf` 查询。和前面的 `ex_equivalence.pv` 相比，它不是手工把两个过程并列出来，而是让 ProVerif 自动理解成“把 `secret_msg` 换成不同值后，系统是否仍然不可区分”。
+
+模型内容也很紧凑：
+
+- 定义公开信道 `c`；
+- 定义对称加密 `senc` 和解密规则 `sdec(senc(x,y), y) = x`；
+- 定义一把私有共享密钥 `k`；
+- 定义私有秘密 `secret_msg`；
+- 查询写成 `noninterf secret_msg`；
+- 一个复制进程不断输出 `senc(secret_msg, k)`；
+- 另一个复制进程不断接收密文，并尝试用同一把密钥 `k` 解密。
+
+这题最值得注意的地方是：模型里虽然确实存在一个“知道密钥 `k` 并能解密”的角色，但这个角色并不会把解密结果再输出到任何公开位置。也就是说：
+
+- 系统内部可以处理秘密，
+- 但秘密内容不会因此自动泄露给攻击者。
+
+ProVerif 这次给出的结果是：
+
+- `Non-interference secret_msg is true`。
+
+可以把这个结果理解成：
+
+- 把 `secret_msg` 替换成另一个值以后，
+- 攻击者观察到的系统行为没有变化，
+- 所以攻击者不能区分“系统里加密的是哪个秘密”。
+
+为什么这里 noninterference 会成立？关键原因有三点：
+
+- 共享密钥 `k` 被声明为 `[private]`，攻击者拿不到它；
+- 攻击者看到的只是 `senc(secret_msg, k)`，自己无法应用解密规则；
+- 虽然系统中有接收并解密输入的进程，但它解密后直接停止，不会把结果暴露出来。
+
+这题和 `ex_weaksecret.pv`、`ex_weaksecret_obs.pv` 很适合对照：
+
+- 在 `ex_weaksecret.pv` 里，攻击者知道公钥，所以可以加密自己的猜测并和真实密文比较；
+- 在 `ex_weaksecret_obs.pv` 里，攻击者还能把“候选值差异”和公开加密结果对应起来；
+- 在 `ex_noninterf1.pv` 里，攻击者既拿不到共享密钥，也没有额外公开信息可用来测试猜测，所以区分失败。
+
+从语义上看，这题也可以帮你把 `noninterf` 和前面的等价性直觉对上：
+
+- `noninterf secret_msg` 可以理解成一种更简洁的“关于 `secret_msg` 的不可区分性查询”；
+- 它关心的不是“攻击者能不能直接得到 `secret_msg`”，
+- 而是“把 `secret_msg` 换掉之后，攻击者能不能察觉系统行为发生变化”。
+
+这个文件的关键教学点有三个：
+
+- `noninterf` 更接近“秘密替换后系统是否不可区分”，而不是普通的可达性保密查询；
+- 系统内部拥有秘密或能解密秘密，不等于攻击者也能区分这个秘密；
+- 是否满足 noninterference，取决于秘密相关的内部计算有没有转化成公开可观察差异。
+
+### 12. `ex_noninterf2.pv`
+
+这个文件继续练 `noninterf`，但比 `ex_noninterf1.pv` 更尖锐，因为它不是让秘密在一个很大的值空间里任意变化，而是把候选秘密显式限制在一个很小的集合里：
+
+- `n`
+- `h(n)`
+
+模型非常短：
+
+- 定义公开信道 `c`；
+- 定义一个公开函数 `h(bitstring): bitstring`；
+- 定义私有值 `x` 和 `n`；
+- 查询写成 `noninterf x among (n, h(n))`；
+- 进程直接把 `x` 输出到公开信道。
+
+这题最值得注意的是 `among (n, h(n))` 这个写法。它可以直观理解为：
+
+- 不再问“`x` 在所有可能值里变化时是否不可区分”，
+- 而是只问“如果 `x` 只能取 `n` 或 `h(n)`，攻击者能不能分辨当前到底是哪一个”。
+
+也就是说，这是一种“受限候选集下的不可区分性查询”。
+
+ProVerif 这次给出的结果是：
+
+- `Non-interference x among (n[], h(n[])) is true`。
+
+这个结果一开始会让人有点意外，因为进程明明直接输出了 `x`。如果把 `x` 换成一个普通公开常量，这当然会被攻击者立刻看到；但这里真正要问的是：
+
+- 当 `x` 只能在 `n` 和 `h(n)` 之间选择时，
+- 攻击者看到输出后，能不能判断它到底是前者还是后者？
+
+答案是不能。原因在于：
+
+- `n` 是私有值，攻击者事先不知道它；
+- `h` 虽然是公开函数，但这里只定义了构造规则，没有定义任何逆向规则或测试规则；
+- 所以攻击者即使看到了某个输出项，也不能判断它是“某个未知私有值 `n`”还是“那个未知私有值经过 `h` 计算后的结果”。
+
+这题特别适合帮你建立一个更细的直觉：
+
+- 秘密被直接输出，并不自动意味着“在所有意义下都可区分”；
+- 是否可区分，要结合攻击者已知的候选集、公开操作能力和可测试关系一起看。
+
+和前面的例子对照起来看：
+
+- `ex_noninterf1.pv` 里，秘密被加密壳保护，所以攻击者根本拿不到可测试内容；
+- `ex_noninterf2.pv` 里，秘密虽然被直接输出，但候选集是 `(n, h(n))`，而攻击者对这两个候选之间没有足够的判别能力；
+- `ex_weaksecret.pv` 里，攻击者则恰恰拥有足够的公开操作去测试猜测，所以秘密可区分。
+
+从“等价类”视角看，这题说明：
+
+- 候选秘密集合变小，并不必然导致可区分性失败；
+- 只有当攻击者有能力把这些候选分到不同的可观察行为等价类里时，秘密才会变得可区分。
+
+这个文件的关键教学点有三个：
+
+- `noninterf x among (...)` 会把不可区分性问题限制到一个指定的候选秘密集合上；
+- 可区分性不只取决于“有没有输出秘密”，还取决于攻击者有没有足够的判别操作；
+- 公开函数如果只有构造规则、没有逆向或比较能力，未必能帮助攻击者区分候选秘密。
+
+### 关于“可区分秘密”的统一理解
+
+学到 `weaksecret`、observational equivalence 和 `noninterf` 之后，一个很有用的统一视角是：
+
+- 不要只盯着“密文本身长什么样”，
+- 而要看“秘密取不同值时，整个系统对攻击者呈现出的外部行为是否不同”。
+
+这里的“外部行为”可以包括：
+
+- 输出了什么消息；
+- 输出了多少条消息；
+- 两条消息是否可比较为相等；
+- 攻击者发回某个输入后，系统是否继续响应；
+- 是否出现不同错误、不同分支、不同结构或不同可测试关系。
+
+所以，更准确的理解方式不是：
+
+- “给密文本身划等价类”，
+
+而是：
+
+- “给系统在不同秘密取值下产生的可观察行为划等价类”。
+
+可以把它表述成下面这句话：
+
+- 如果两个不同秘密值会导致系统落入两个不同的可观察行为等价类，那么这两个秘密对攻击者就是可区分的；
+- 如果不同秘密值总是落在同一个等价类里，那么它们对攻击者不可区分。
+
+这也解释了为什么“不能直接恢复秘密”还不够：
+
+- 攻击者未必要把秘密原样解出来，
+- 只要他能通过比较、试探或交互，判断“这是 `s0` 还是 `s1`”，
+- 就已经说明秘密泄露了可区分信息。
+
+前面的几个例子刚好可以串起来看：
+
+- `ex_weaksecret.pv` 中，攻击者可以加密自己的猜测并和真实输出比较，所以秘密可区分；
+- `ex_weaksecret_obs.pv` 中，攻击者能把候选值差异和公开加密结果对应起来，所以两个世界可区分；
+- `ex_equivalence.pv` 中，虽然内部复制结构不同，但这些差异不会变成攻击者可观察差异，所以两个过程不可区分；
+- `ex_noninterf1.pv` 中，秘密虽然被系统内部使用，但没有变成攻击者可测试的外部差异，所以秘密不可区分；
+- `ex_noninterf2.pv` 中，秘密候选被限制为 `n` 和 `h(n)`，但攻击者仍缺少把这两个候选区分开的测试能力，所以秘密依然不可区分。
+
+这一组例子背后的共同判断标准可以记成一句话：
+
+- “是否可区分，取决于秘密差异能否投射成攻击者可观察、可比较、可利用的行为差异。”
+
+### 当前已经掌握的查询视角
+
+结合目前已经学过的模型，可以把现在会问的问题先整理成下面几类。这样后续再遇到新模型时，就能先判断“这个查询到底在问哪一类问题”。
+
+#### 1. 可达性保密：攻击者能否学习某个值
+
+最直接的写法是：
+
+```proverif
+query attacker(M).
 ```
 
-安装完成后重启系统，首次启动 Ubuntu，设置 Linux 用户名和密码。
+它问的是：
 
-如果系统已经安装过 WSL，可以检查状态：
+- 攻击者能不能通过当前模型允许的观察、拦截、重放、组合和归约，最终得到 `M`。
 
-```powershell
-wsl --status
+这一类关注的是：
+
+- 某个值是否进入了攻击者的推导闭包。
+
+这里的“推导闭包”可以先直观理解为：
+
+- 从攻击者初始已知的信息出发，
+- 不断应用公开函数、消息拆分、协议输出和可用归约规则以后，
+- 攻击者最终能推出的所有项的集合。
+
+所以当我们问 `attacker(M)` 时，本质上是在问：
+
+- `M` 是否落入了攻击者的推导闭包。
+
+#### 2. 构造能力：攻击者能否拼出某个复合项
+
+这一类在语法上通常还是写成 `attacker(M)`，但理解重点和“某个秘密有没有泄露”不完全一样。
+
+例如在 `ex_query_attacker.pv` 里，更重要的问题不是“攻击者有没有原样见过这个项”，而是：
+
+- 攻击者能不能利用自己已知的成分，
+- 再配合公开构造函数，
+- 把目标项自己拼出来。
+
+这一层可以叫作：
+
+- 攻击者的构造闭包。
+
+直观上它强调的是：
+
+- 只要组成部分已经在攻击者能力范围内，
+- 而目标项又能由公开构造规则组合出来，
+- 那么即使这条消息从未被原样输出过，攻击者也可能依然能得到它。
+
+所以在当前学习阶段，可以把“推导闭包”和“构造闭包”先这样区分：
+
+- 推导闭包更强调“最终能得到哪些项”；
+- 构造闭包更强调“这些项是如何由已知成分和公开操作拼出来的”。
+
+在很多简单模型里，这两者会重合；但把这两个视角分开想，会更容易理解为什么 `attacker(...)` 不只是“有没有直接泄露”。
+
+#### 3. 事件蕴含：一个执行痕迹是否保证另一个痕迹存在
+
+典型写法是：
+
+```proverif
+query event(A) ==> event(B).
+query inj-event(A) ==> inj-event(B).
 ```
 
-#### 2. 在 Ubuntu 中安装基础依赖
+它问的是：
 
-打开 Ubuntu 终端，执行：
+- 如果执行中发生了 `A`，那么 `B` 是否一定也发生过；
+- 如果使用 `inj-event`，这种对应关系是否还能保证不被重放复用。
 
-```bash
-sudo apt update
-sudo apt install -y opam m4 build-essential pkg-config bubblewrap unzip graphviz
+这一类主要用于：
+
+- 认证，
+- 会话对应关系，
+- 区分“真的完成了一次协议交互”和“只是被攻击者伪造出某种表面现象”。
+
+#### 4. 事件可达性：某种带精确参数的事件能否真的发生
+
+例如：
+
+```proverif
+query i:sid; event(e(new a[!1 = i], new B[!1 = i])).
 ```
 
-说明：
+这一类问的是：
 
-- `opam`：OCaml 包管理器，也是安装 ProVerif 的主流方式。
-- `build-essential`、`m4`、`pkg-config`：编译依赖。
-- `bubblewrap`：部分 opam 沙箱功能会用到。
-- `graphviz`：后续如果需要查看某些图形化输出或配套工具会比较方便，建议一并安装。
+- 某个带会话标号、带新鲜名字参数的事件，
+- 是否真的可能在某次执行里被触发。
 
-#### 3. 初始化 opam
+它让我们开始能精确讨论：
 
-继续在 Ubuntu 中执行：
+- 某一次复制会话里生成的值，
+- 是否会以某种方式流入事件或协议行为。
 
-```bash
-opam init -a
-eval "$(opam env)"
-```
+#### 5. 可区分性：秘密或系统世界是否会落入不同等价类
 
-如果是第一次初始化，按提示确认即可。
+这一类包括：
 
-建议顺手确认 OCaml 编译器环境：
+- `weaksecret x`
+- `equivalence P Q`
+- `noninterf x`
+- `noninterf x among (...)`
 
-```bash
-ocaml -version
-opam --version
-```
+它们共同关注的不是：
 
-#### 4. 安装 ProVerif
+- 攻击者能不能直接恢复秘密原文，
 
-执行：
+而是：
 
-```bash
-opam install proverif
-eval "$(opam env)"
-```
+- 攻击者能不能通过外部可观察行为，把不同秘密值或不同系统世界区分开。
 
-安装完成后检查版本：
+从这个角度看，可以把这类问题理解成：
 
-```bash
-proverif -help
-proverif -version
-```
+- 不同秘密或不同过程，是否落入同一个可观察行为等价类。
 
-如果 `-version` 不可用，至少保证 `proverif -help` 能正常输出帮助信息。
+如果落入不同等价类，那么攻击者就有能力区分它们；如果始终落在同一个等价类，那么它们对攻击者不可区分。
 
-#### 5. 验证当前仓库示例
+所以到目前为止，一个很实用的总括是：
 
-在 WSL 中进入仓库目录。  
-如果你的仓库位于 Windows 文件系统中，请进入对应挂载路径，例如：
+- `attacker(...)` 主要在问推导闭包和构造闭包；
+- `event ==> event` / `inj-event ==> inj-event` 主要在问执行痕迹之间的蕴含关系；
+- `weaksecret`、`equivalence`、`noninterf` 主要在问可区分性，也就是外部行为等价类是否发生分裂。
+- `noninterf ... among (...)` 则进一步问：在一个受限候选秘密集合内，这种等价类分裂是否仍然发生。
 
-```bash
-cd /mnt/c/path/to/protolab
-```
+## 当前已经建立的知识点
 
-运行最小示例：
+结合以上几个文件，当前学习进度可以概括为下面这些能力。
 
-```bash
-proverif proverif-docs/hello.pv
-```
+### ProVerif 语法层面
 
-然后继续试：
+已经接触并初步理解：
 
-```bash
-proverif proverif-docs/hello_ext.pv
-proverif proverif-docs/ex_handshake.pv
-```
+- `free`、`new`、`let`、
+- `in`、`out`、
+- 并发 `|` 与复制 `!`，
+- `event`，
+- `query attacker(...)`，
+- `query i:sid; event(...)` 这类带会话标号的事件查询，
+- `equivalence P Q` 这类等价性查询，
+- `noninterf x` 这类不可区分性查询，
+- `noninterf x among (...)` 这类受限候选集下的不可区分性查询，
+- 基本 correspondence 查询。
 
-如果能看到 `RESULT` 开头的验证结论，就说明环境已经可用。
+### 建模层面
 
-### 方案二：Linux 原生安装
+已经建立的直觉包括：
 
-如果你本来就在 Linux 环境学习，可以直接沿用上面的 Ubuntu 思路，通常只需要把包管理命令替换成发行版对应命令。
+- 公开信道默认被攻击者完全控制；
+- 是否保密取决于消息是否通过模型规则可被攻击者推出；
+- `attacker(M)` 背后既可以用“推导闭包”理解，也可以用“构造闭包”理解；
+- 认证性质通常通过事件关系表达，而不是只看消息格式；
+- 复制进程中的 `new` 名字可以在查询里通过会话标号被精确引用；
+- 两个过程是否等价，取决于内部差异会不会变成攻击者可观察到的差异；
+- 内部持有秘密、甚至内部解密秘密，也不一定破坏 noninterference；
+- 对秘密做“是否可区分”的判断时，要按整个外部可观察行为而不是只按某条密文来理解；
+- 候选秘密集合即使很小，只要攻击者没有足够的判别能力，秘密仍可能不可区分；
+- 协议消息里需要显式绑定身份或上下文，否则可能被重放或混淆。
 
-以 Debian/Ubuntu 为例：
+### 分析层面
 
-```bash
-sudo apt update
-sudo apt install -y opam m4 build-essential pkg-config bubblewrap unzip graphviz
-opam init -a
-eval "$(opam env)"
-opam install proverif
-eval "$(opam env)"
-proverif proverif-docs/hello.pv
-```
+已经进入可以继续深入学习协议验证的阶段，因为现在已经不只是“会运行命令”，而是开始能够区分：
 
-### 方案三：macOS 安装
+- secrecy 在问什么，
+- authentication 在问什么，
+- `attacker(...)` 有时是在问“是否泄露”，有时是在问“是否可由攻击者推导或构造出来”，
+- 查询中带 `new` 和带会话标号的名字究竟引用的是哪一次执行，
+- 两个世界“内部不同”与“外部可区分”并不是一回事，
+- 秘密参与内部计算时，关键要看这种计算是否投射成公开差异，
+- 即使直接输出一个秘密值，也还要结合候选集和可测试操作来判断它是否真的可区分，
+- 攻击者不必恢复秘密原文，只要能区分候选秘密，就已经说明不可区分性被破坏，
+- 一个修复版模型究竟修复了什么。
 
-如果你在 macOS 上学习，建议使用 Homebrew + opam：
+## 推荐的下一阶段学习计划
 
-```bash
-brew update
-brew install opam graphviz
-opam init -a
-eval "$(opam env)"
-opam install proverif
-eval "$(opam env)"
-proverif proverif-docs/hello.pv
-```
+接下来建议不要立刻跳到特别大的模型，而是按“从一个性质到一个性质”推进。这样最容易把 ProVerif 的查询体系学扎实。
 
-如果系统提示缺少编译工具，请先安装 Xcode Command Line Tools：
+### 第一阶段：巩固 secrecy 与查询语义
 
-```bash
-xcode-select --install
-```
+建议下一步先学习：
 
-### 方案四：原生 Windows 安装
+1. `proverif-docs/ex_lemmas_equiv.pv`
+2. `proverif-docs/ex_noninterf1.pv`
 
-原生 Windows 也能走通，但对初学者来说，整体稳定性和资料一致性通常不如 WSL2 路线。  
-如果你只是想高效学习 ProVerif，本仓库仍然更推荐方案一。
+这一阶段的目标是搞清楚：
 
-原生 Windows 常见有两条路：
+- `attacker(M)` 的精确含义；
+- 查询里 `new ...[!1 = i]` 这类写法如何指向复制进程的某次会话；
+- “攻击者不知道某个值”与“弱秘密”之间的区别；
+- 为什么两个语法结构不同的过程仍然可能 observationally equivalent；
+- `noninterf x` 怎样表达“把秘密换掉后系统仍然不可区分”；
+- `noninterf x among (...)` 怎样把不可区分性限制到一个候选秘密集合上；
+- 为什么有些秘密即使没有直接输出，也仍然可能通过上下文被区分出来；
+- `weaksecret` 失败与 observational equivalence 失败之间的联系。
 
-1. **使用官方提供的 Windows 版本/安装包**
-   - 适合尽快上手；
-   - 但后续与 Unix 风格命令、脚本生态结合时不如 WSL 自然。
-2. **使用 Windows 版 opam**
-   - 更灵活；
-   - 但 OCaml 生态在不同 Windows 终端中的体验可能有差异。
+建议产出：
 
-如果选择 Windows 版 opam，可先准备：
+- 为每个文件写 3 到 5 句学习记录，
+- 说明查询在问什么，
+- 说明结果成立或失败的原因。
 
-```powershell
-winget install Git.Git
-winget install OCaml.opam
-```
+### 第二阶段：继续学习认证性质
 
-安装完成后重开 PowerShell，再执行：
+在握手模型基础上，下一步建议看：
 
-```powershell
-opam init -a
-opam install proverif
-proverif -help
-```
+1. `proverif-docs/ex_handshake.pv`
+2. `proverif-docs/ex_sync.pv`
+3. `proverif-docs/ex_sync2.pv`
 
-如果这里遇到编译链、Shell 集成或环境变量问题，不建议硬耗时间，直接切回 **WSL2 方案** 往往更高效。
+这一阶段重点是：
+
+- 区分非注入认证与注入认证；
+- 理解为什么 `inj-event` 比普通 `event ==> event` 更强；
+- 理解同步类性质与“双方都认为协议完成了”之间的关系。
+
+建议关注的问题：
+
+- 事件应该放在角色的哪一步才有意义；
+- 一个认证查询失败，究竟是身份没绑定，还是会话被重放；
+- 为什么同一个角色被复制执行后，会自然引入重放和多会话问题。
+
+### 第三阶段：进入等价性与不可区分性
+
+在 secrecy 和认证更稳以后，再进入：
+
+1. `proverif-docs/ex_equivalence.pv`
+2. `proverif-docs/ex_noninterf1.pv`
+3. `proverif-docs/ex_noninterf2.pv`
+4. `proverif-docs/ex_lemmas_equiv.pv`
+
+这一阶段的目标是建立新心智模型：
+
+- 不是问“攻击者能不能得到某个秘密”，
+- 而是问“攻击者能不能区分两个系统或两个执行世界”。
+
+如果这一块第一次读起来比较抽象，是正常的。建议先把“两个过程是否可区分”理解成“攻击者观察到的行为是否有差异”。
+
+### 第四阶段：经典协议案例
+
+完成前面几步后，再进入 `NeedhamSchroederPK-*.pv` 系列会更顺：
+
+- `NeedhamSchroederPK-corr-mutual-auth.pv`
+- `NeedhamSchroederPK-corr-all-messages.pv`
+- `NeedhamSchroederPK-var1.pv` 到 `var5.pv`
+
+这一阶段建议的学习目标是：
+
+- 读懂经典公钥协议中的认证漏洞；
+- 观察修正方案是如何通过消息绑定来消除攻击；
+- 学会把“协议叙述语言”翻译成 ProVerif 角色与查询。
+
+## 建议的实际学习节奏
+
+如果按每次只吃透 1 到 2 个模型的节奏，下面这个安排比较稳：
+
+### 本周
+
+- 复盘已经学过的 12 个模型；
+- 补做一页简短笔记，记录每个模型的核心语法点和查询含义；
+- 对照 `ex_query_new.pv`、`ex_query_attacker.pv`、`ex_equivalence.pv`、`ex_noninterf1.pv` 和 `ex_noninterf2.pv`，巩固查询语义与不可区分性直觉。
+
+### 下一周
+
+- 对比 secrecy、weak secrecy 与 equivalence；
+- 学 `ex_lemmas_equiv.pv`；
+- 自己尝试改一两个常量、事件或输出语句，观察查询是否变化。
+
+### 再下一周
+
+- 学 `ex_handshake.pv`、`ex_sync.pv`、`ex_sync2.pv`；
+- 把握手协议里的事件顺序、认证含义和注入性区别整理成自己的话。
+
+### 之后
+
+- 再进入等价性与 Needham-Schroeder 系列；
+- 每学完一个主题，就补一段仓库内的中文说明或注释版模型。
+
+## 建议的学习记录模板
+
+后续每学一个 `.pv` 文件，可以按这个模板记录：
+
+1. 这个模型想表达什么协议或性质？
+2. 它使用了哪些新的 ProVerif 语法或建模技巧？
+3. 查询具体在问什么？
+4. `RESULT` 成立还是失败？
+5. 如果失败，失败说明了真实攻击、教学漏洞，还是建模遗漏？
+6. 我从这个例子里学到的最重要一句话是什么？
+
+这样积累几轮之后，仓库就会从“资料收集”变成“真正可回顾的学习轨迹”。
 
 ## 常用命令
 
-### 运行模型
-
 ```bash
 proverif proverif-docs/hello.pv
+proverif proverif-docs/hello_ext.pv
+proverif proverif-docs/hello_var.pv
+proverif proverif-docs/ex_handshake.pv
+proverif proverif-docs/ex_handshake_annotated.pv
+proverif proverif-docs/ex_handshake_annotated_fixed.pv
 ```
 
-### 保存输出到文件
+如果你在 `bash` 或 `zsh` 中通过 `opam` 安装了 ProVerif，常见做法是先执行：
 
 ```bash
-proverif proverif-docs/ex_handshake.pv > handshake.out
+eval "$(opam env)"
 ```
 
-### 快速切换练习样例
+如果你使用 `fish`，则使用：
+
+```fish
+eval (opam env)
+```
+
+## 当前验证状态说明
+
+这次整理 README 时，初始终端会话的 `PATH` 没有包含 `~/.opam/default/bin`，所以直接执行 `proverif` 会显示命令不存在。补上 `opam` 环境后，已经可以正常运行并重新验证当前已学的模型。
+
+如果你后续在新终端里遇到同样问题，可以先确认：
 
 ```bash
-proverif proverif-docs/ex_query_attacker.pv
-proverif proverif-docs/ex_equivalence.pv
-proverif proverif-docs/NeedhamSchroederPK-corr-mutual-auth.pv
+which proverif
 ```
 
-## 第一次学习时建议关注什么
+如果 `which proverif` 没有输出，但你知道它是通过 `opam` 安装的，通常先执行下面的命令即可：
 
-第一次运行 ProVerif 时，不要一上来就追求看懂全部语法，先抓住这几件事：
+```bash
+eval "$(opam env)"
+```
 
-- **攻击者能力**：攻击者能监听、转发、构造哪些消息。
-- **名字与密钥**：`free`、`const`、`new` 分别在建模上意味着什么。
-- **密码原语**：构造函数和归约规则如何表达加密、解密、签名、验证。
-- **进程行为**：输入、输出、并发、复制、事件分别如何影响协议行为。
-- **查询语句**：`query attacker(...)`、认证查询、等价性查询分别表示什么。
+然后再运行：
 
-## 建议的阶段性练习
+```bash
+proverif -help
+```
 
-可以按下面的节奏推进：
-
-1. 运行 `hello.pv`，确认环境无误。
-2. 修改一个密钥或消息字段，再次运行，观察输出变化。
-3. 在 `ex_query_attacker.pv` 中理解 secrecy 查询。
-4. 在 `ex_handshake.pv` 中理解事件与认证查询。
-5. 对照 `NeedhamSchroederPK-*.pv` 系列，理解协议缺陷和修正版区别。
-6. 自己新建一个最小协议模型，比如“带 nonce 的挑战应答”。
-
-## 在线资料与官方入口
-
-下面这些入口适合后续继续查资料：
-
-- ProVerif 官方主页：[https://bblanche.gitlabpages.inria.fr/proverif/](https://bblanche.gitlabpages.inria.fr/proverif/)
-- ProVerif 官方手册入口：[https://bblanche.gitlabpages.inria.fr/proverif/manual.pdf](https://bblanche.gitlabpages.inria.fr/proverif/manual.pdf)
-- ProVerif 官方教程入口：[https://bblanche.gitlabpages.inria.fr/proverif/](https://bblanche.gitlabpages.inria.fr/proverif/)
-- opam 官方网站：[https://opam.ocaml.org/](https://opam.ocaml.org/)
-
-## 后续可以继续补充的内容
-
-后续这个仓库可以继续加上：
-
-- `notes/`：按主题记录密码学和协议分析笔记；
-- `labs/`：整理自己改写过的 `.pv` 实验；
-- `scripts/`：加入批量运行示例的脚本；
-- `examples/`：沉淀自己从论文复现出的协议模型。
+之后就可以继续把每个模型的 `RESULT` 一并记录下来。
