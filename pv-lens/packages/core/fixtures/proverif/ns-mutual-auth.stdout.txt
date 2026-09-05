@@ -1,0 +1,168 @@
+Process 0 (that is, the initial process):
+{1}new skA: skey;
+{2}let pkA: pkey = pk(skA) in
+{3}out(c, pkA);
+{4}insert keys(A,pkA);
+{5}new skB: skey;
+{6}let pkB: pkey = pk(skB) in
+{7}out(c, pkB);
+{8}insert keys(B,pkB);
+{9}new skS: sskey;
+{10}let pkS: spkey = spk(skS) in
+{11}out(c, pkS);
+(
+    {12}!
+    {13}let skA_1: skey = skA in
+    {14}let skB_1: skey = skB in
+    {15}in(c, (xA: host,hostX: host));
+    {16}if ((xA = A) || (xA = B)) then
+    {17}let skxA: skey = (if (xA = A) then skA_1 else skB_1) in
+    {18}let pkxA: pkey = pk(skxA) in
+    {19}out(c, (xA,hostX));
+    {20}in(c, ms: bitstring);
+    {21}let (pkX: pkey,=hostX) = checksign(ms,pkS) in
+    {22}new Na: nonce;
+    {23}let m3: bitstring = encrypt((Na,xA),pkX) in
+    {24}out(c, m3);
+    {25}in(c, m: bitstring);
+    {26}let (=Na,NX2: nonce,=hostX) = decrypt(m,skA_1) in
+    {27}let m7: bitstring = encrypt(NX2,pkX) in
+    {28}event termI(xA,hostX,(m3,m));
+    {29}event acceptsI(xA,hostX,(m3,m,m7));
+    {30}out(c, (m7,messtermI(xA,hostX)))
+) | (
+    {31}!
+    {32}let skA_2: skey = skA in
+    {33}let skB_2: skey = skB in
+    {34}in(c, xB: host);
+    {35}if ((xB = A) || (xB = B)) then
+    {36}let skxB: skey = (if (xB = A) then skA_2 else skB_2) in
+    {37}let pkxB: pkey = pk(skxB) in
+    {38}in(c, m_1: bitstring);
+    {39}let (NY: nonce,hostY: host) = decrypt(m_1,skxB) in
+    {40}out(c, (xB,hostY));
+    {41}in(c, ms_1: bitstring);
+    {42}let (pkY: pkey,=hostY) = checksign(ms_1,pkS) in
+    {43}new Nb: nonce;
+    {44}let m6: bitstring = encrypt((NY,Nb,xB),pkY) in
+    {45}event acceptsR(hostY,xB,(m_1,m6));
+    {46}out(c, m6);
+    {47}in(c, m3_1: bitstring);
+    {48}if (Nb = decrypt(m3_1,skB_2)) then
+    {49}event termR(hostY,xB,(m_1,m6,m3_1));
+    {50}out(c, messtermR(hostY,xB))
+) | (
+    {51}!
+    {52}let skS_1: sskey = skS in
+    {53}in(c, (a: host,b: host));
+    {55}get keys(=b,sb: pkey) in
+    {54}out(c, sign((sb,b),skS_1))
+) | (
+    {56}!
+    {57}in(c, (h: host,k: pkey));
+    {58}if ((h ≠ A) && (h ≠ B)) then
+    {59}insert keys(h,k)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}new skA: skey;
+{2}let pkA: pkey = pk(skA) in
+{3}out(c, pkA);
+{4}insert keys(A,pkA);
+{5}new skB: skey;
+{6}let pkB: pkey = pk(skB) in
+{7}out(c, pkB);
+{8}insert keys(B,pkB);
+{9}new skS: sskey;
+{10}let pkS: spkey = spk(skS) in
+{11}out(c, pkS);
+(
+    {12}!
+    {15}in(c, (xA: host,hostX: host));
+    {16}if ((xA = A) || (xA = B)) then
+    {19}out(c, (xA,hostX));
+    {20}in(c, ms: bitstring);
+    {21}let (pkX: pkey,=hostX) = checksign(ms,pkS) in
+    {22}new Na: nonce;
+    {23}let m3: bitstring = encrypt((Na,xA),pkX) in
+    {24}out(c, m3);
+    {25}in(c, m: bitstring);
+    {13}let skA_1: skey = skA in
+    {26}let (=Na,NX2: nonce,=hostX) = decrypt(m,skA_1) in
+    {28}event termI(xA,hostX,(m3,m));
+    {27}let m7: bitstring = encrypt(NX2,pkX) in
+    {29}event acceptsI(xA,hostX,(m3,m,m7));
+    {30}out(c, (m7,messtermI(xA,hostX)))
+) | (
+    {31}!
+    {34}in(c, xB: host);
+    {35}if ((xB = A) || (xB = B)) then
+    {38}in(c, m_1: bitstring);
+    {33}let skB_2: skey = skB in
+    {32}let skA_2: skey = skA in
+    {36}let skxB: skey = (if (xB = A) then skA_2 else skB_2) in
+    {39}let (NY: nonce,hostY: host) = decrypt(m_1,skxB) in
+    {40}out(c, (xB,hostY));
+    {41}in(c, ms_1: bitstring);
+    {42}let (pkY: pkey,=hostY) = checksign(ms_1,pkS) in
+    {43}new Nb: nonce;
+    {44}let m6: bitstring = encrypt((NY,Nb,xB),pkY) in
+    {45}event acceptsR(hostY,xB,(m_1,m6));
+    {46}out(c, m6);
+    {47}in(c, m3_1: bitstring);
+    {48}if (Nb = decrypt(m3_1,skB_2)) then
+    {49}event termR(hostY,xB,(m_1,m6,m3_1));
+    {50}out(c, messtermR(hostY,xB))
+) | (
+    {51}!
+    {53}in(c, (a: host,b: host));
+    {55}get keys(=b,sb: pkey) in
+    {52}let skS_1: sskey = skS in
+    {54}out(c, sign((sb,b),skS_1))
+) | (
+    {56}!
+    {57}in(c, (h: host,k: pkey));
+    {58}if ((h ≠ A) && (h ≠ B)) then
+    {59}insert keys(h,k)
+)
+
+-- Query inj-event(termI(x,B[],m_2)) ==> inj-event(acceptsR(x,B[],m_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+ok, secrecy assumption verified: fact unreachable attacker(skA[])
+ok, secrecy assumption verified: fact unreachable attacker(skB[])
+ok, secrecy assumption verified: fact unreachable attacker(skS[])
+Starting query inj-event(termI(x,B[],m_2)) ==> inj-event(acceptsR(x,B[],m_2))
+goal reachable: b-inj-event(acceptsR(A[],B[],(encrypt((Na_1,A[]),pk(skB[])),encrypt((Na_1,Nb_1,B[]),pk(skA[])))),@occ45_1) -> inj-event(termI(A[],B[],(encrypt((Na_1,A[]),pk(skB[])),encrypt((Na_1,Nb_1,B[]),pk(skA[])))),@occ28_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+Na_1 = Na[ms = sign((pk(skB[]),B[]),skS[]),hostX = B[],xA = A[],!1 = @sid]
+Nb_1 = Nb[ms_1 = sign((pk(skA[]),A[]),skS[]),m_1 = encrypt((Na_1,A[]),pk(skB[])),xB = B[],!1 = @sid_1]
+@occ28_1 = @occ28[m = encrypt((Na_1,Nb_1,B[]),pk(skA[])),ms = sign((pk(skB[]),B[]),skS[]),hostX = B[],xA = A[],!1 = @sid]
+@occ45_1 = @occ45[ms_1 = sign((pk(skA[]),A[]),skS[]),m_1 = encrypt((Na_1,A[]),pk(skB[])),xB = B[],!1 = @sid_1]
+RESULT inj-event(termI(x,B[],m_2)) ==> inj-event(acceptsR(x,B[],m_2)) is true.
+-- Query inj-event(termR(A[],x,m_2)) ==> inj-event(acceptsI(A[],x,m_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+ok, secrecy assumption verified: fact unreachable attacker(skA[])
+ok, secrecy assumption verified: fact unreachable attacker(skB[])
+ok, secrecy assumption verified: fact unreachable attacker(skS[])
+Starting query inj-event(termR(A[],x,m_2)) ==> inj-event(acceptsI(A[],x,m_2))
+goal reachable: b-inj-event(acceptsI(A[],B[],(encrypt((Na_1,A[]),pk(skB[])),encrypt((Na_1,Nb_1,B[]),pk(skA[])),encrypt(Nb_1,pk(skB[])))),@occ29_1) -> inj-event(termR(A[],B[],(encrypt((Na_1,A[]),pk(skB[])),encrypt((Na_1,Nb_1,B[]),pk(skA[])),encrypt(Nb_1,pk(skB[])))),@occ49_1)
+The hypothesis occurs strictly before the conclusion.
+Abbreviations:
+Na_1 = Na[ms = sign((pk(skB[]),B[]),skS[]),hostX = B[],xA = A[],!1 = @sid]
+Nb_1 = Nb[ms_1 = sign((pk(skA[]),A[]),skS[]),m_1 = encrypt((Na_1,A[]),pk(skB[])),xB = B[],!1 = @sid_1]
+@occ49_1 = @occ49[m3_1 = encrypt(Nb_1,pk(skB[])),ms_1 = sign((pk(skA[]),A[]),skS[]),m_1 = encrypt((Na_1,A[]),pk(skB[])),xB = B[],!1 = @sid_1]
+@occ29_1 = @occ29[m = encrypt((Na_1,Nb_1,B[]),pk(skA[])),ms = sign((pk(skB[]),B[]),skS[]),hostX = B[],xA = A[],!1 = @sid]
+RESULT inj-event(termR(A[],x,m_2)) ==> inj-event(acceptsI(A[],x,m_2)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query inj-event(termI(x,B[],m_2)) ==> inj-event(acceptsR(x,B[],m_2)) is true.
+
+Query inj-event(termR(A[],x,m_2)) ==> inj-event(acceptsI(A[],x,m_2)) is true.
+
+--------------------------------------------------------------
+

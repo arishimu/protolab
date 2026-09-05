@@ -1,0 +1,19 @@
+# ---- 依赖与构建产物 ----
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# ---- 环境 ----
+.env
+.env.*
+!.env.example
+
+# ---- 编辑器 / OS ----
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ---- 日志 ----
+*.log

@@ -1,0 +1,25 @@
+{
+  "name": "@pv-lens/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pv-lens 前端：React + Vite，自绘 SVG 的规范叙事视图与验证结果面板",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pv-lens/core": "workspace:*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.0"
+  }
+}
