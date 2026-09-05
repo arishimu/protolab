@@ -2,220 +2,104 @@
 
 ## Purpose
 
-This repository is a study workspace for:
+This repository is a workspace for security-protocol work. Two phases:
 
-- foundational cryptography concepts,
-- security protocol analysis,
-- ProVerif syntax, modeling style, and verification workflow.
+- ProVerif study is complete. The learning material is archived under `docs/proverif/` (manual transcriptions, per-chapter notes, example models, PDFs). It stays as reference for the protocol knowledge that the upcoming project builds on.
+- Next up is a web project for visual modeling of security protocols. Code for it will live in a new top-level directory. Details are being settled; until they are, treat the layout and conventions described below as the ground truth.
 
-The repository is not a production software project. Most work here should optimize for:
+The repository is not a production software project. Work here should optimize for:
 
-- correctness of explanations,
-- clarity of protocol models,
-- traceable learning progress,
+- correctness of explanations and models,
+- clarity of protocol modeling,
+- traceable progress,
 - minimal accidental complexity.
 
-## Primary Contents
+## Directory Layout
 
-- `README.md`
-  - project overview,
-  - current learning progress,
-  - verified example status,
-  - recommended learning order,
-  - environment setup notes.
-- `proverif-docs/`
-  - official manuals and tutorial PDFs,
-  - example `.pv` models,
-  - handshake, secrecy, equivalence, induction, and Needham-Schroeder examples.
-
-At the current stage, this repository is mainly document- and model-centric. Expect most edits to involve:
-
-- Markdown notes,
-- learning plans,
-- explanations of protocol behavior,
-- new or modified `.pv` examples.
+- `README.md` - project overview, index, and navigation.
+- `docs/` - study and research material.
+  - `docs/proverif/manual/` - `manual-01-*.md` to `manual-10-*.md`, chapter-by-chapter transcription of the official manual (body in English). The reference for ProVerif syntax and semantics.
+  - `docs/proverif/note/` - per-chapter study notes in Chinese. `00-framework.md` is the master outline; `01` to `06b` cover the chapters. Written chapter by chapter, each answering one capability question.
+  - `docs/proverif/pv/` - example `.pv` models.
+  - `docs/proverif/pdf/` - official PDFs (manual, tutorial, survey).
+- A future top-level directory will hold the new web project's code.
 
 ## Working Principles
 
-When contributing in this repository:
-
-1. Preserve the repository's educational focus.
+1. Preserve correctness of explanations and models.
 2. Prefer small, well-explained changes over broad restructuring.
-3. Keep examples readable for a learner who is building ProVerif intuition.
-4. When adding protocol models, include enough surrounding context that the model can be studied independently.
-5. Do not introduce unnecessary build systems, frameworks, or automation unless explicitly requested.
+3. Keep examples readable for someone building protocol intuition.
+4. Do not introduce unnecessary build systems, frameworks, or automation unless explicitly requested.
+5. Always run the `humanizer-zh` skill when writing or editing Chinese text. The skill removes AI writing traces (padded emphasis, formulaic structures, AI vocabulary, em-dash overuse, three-part lists, hollow conclusions). Apply it to every Chinese document in this repository: study notes, README updates, explanations, and chat-style material alike. This is a standing requirement, not a per-task reminder.
+6. The old `learning-docs/` and `proverif-docs/` trees are gone. Do not reintroduce those paths; current content lives under `docs/proverif/`.
 
-## Editing Guidelines
+## Editing the ProVerif archive
 
 ### For `.pv` files
 
 - Keep models small and purposeful.
 - Favor explicit names over clever abbreviations when readability benefits.
 - Add short comments only when they help explain a modeling decision or security property.
-- Preserve the distinction between:
-  - secrecy queries,
-  - authentication/correspondence queries,
-  - equivalence queries.
-- When creating a variant of an existing model, prefer adding a new file instead of heavily rewriting the original teaching example.
+- Preserve the distinction between secrecy queries, authentication/correspondence queries, and equivalence queries.
+- When creating a variant, prefer a new file over heavily rewriting the original teaching example.
 
-Recommended pattern for new learning-oriented models:
+### For Markdown notes and manual files
 
-1. short header comment,
-2. cryptographic primitives,
-3. free names and secrets,
-4. events and queries,
-5. role definitions,
-6. top-level process.
-
-### For Markdown files
-
-- Write for someone learning the topic step by step.
+- Write for someone learning or checking the topic step by step.
 - Prefer concrete explanations over dense theory dumps.
-- When referencing a `.pv` file, explain what property it demonstrates and why it matters.
-- Keep command examples copy-pastable.
-- Treat `README.md` as a living study index, not a static project blurb.
-- When the user finishes a meaningful learning milestone, updates verification results, or changes the recommended learning order, reflect that in `README.md`.
-- When updating `README.md`, prefer:
-  - recording what has already been studied,
-  - summarizing what each completed model taught,
-  - noting important `RESULT` outcomes when they were actually verified,
-  - adjusting the next-step study plan.
+- When referencing a `.pv` file, explain what property it demonstrates.
+- Reference the manual by `manual-*.md` and section number so it can be looked up.
+- Prefer repo-root-relative paths such as `docs/proverif/pv/...` in commands and references.
 
 ## Command Workflow
 
-Useful local commands:
+Run models from the repository root:
 
 ```bash
-eval "$(opam env)"
-proverif proverif-docs/hello.pv
-proverif proverif-docs/hello_ext.pv
-proverif proverif-docs/hello_var.pv
-proverif proverif-docs/ex_handshake.pv
-proverif proverif-docs/ex_handshake_annotated.pv
-proverif proverif-docs/ex_handshake_annotated_fixed.pv
+eval "$(opam env)"   # bash/zsh; fish uses: eval (opam env)
+proverif docs/proverif/pv/hello.pv
+proverif docs/proverif/pv/ex_handshake_annotated.pv
+proverif docs/proverif/pv/NeedhamSchroederPK-corr-mutual-auth.pv
+proverif docs/proverif/pv/hello.pv | grep "RESULT"
 ```
 
-Because ProVerif is commonly installed through `opam`, do not assume it is already on `PATH` in every shell session.
-Before concluding that `proverif` is unavailable, check whether it becomes available after loading the `opam` environment.
+Because ProVerif is commonly installed through `opam`, it may not be on `PATH` in a fresh shell. Before concluding it is unavailable, run `eval "$(opam env)"` (or the shell-appropriate equivalent) and `which proverif`.
 
-Recommended verification flow in `bash`/`zsh`:
-
-```bash
-eval "$(opam env)"
-which proverif
-proverif path/to/file.pv
-```
-
-Recommended verification flow in `fish`:
-
-```fish
-eval (opam env)
-which proverif
-proverif path/to/file.pv
-```
-
-When validating a new or edited model:
+When validating a `.pv` file:
 
 1. load the `opam` environment when needed,
-2. run `which proverif` if command availability is uncertain,
-3. run `proverif path/to/file.pv`,
+2. run `which proverif` if availability is uncertain,
+3. run `proverif <file>`,
 4. inspect `RESULT` lines,
-5. if a query fails, determine whether it is:
-   - a real attack,
-   - an intended teaching example,
-   - or a modeling mistake.
+5. if a query fails, decide whether it is a real attack, an intended teaching example, or a modeling mistake.
 
-If `proverif` is not found in the current shell but exists at a path such as `~/.opam/default/bin/proverif`, do not report verification as impossible until after trying `eval "$(opam env)"` or the shell-appropriate equivalent.
-
-When reporting verification results in this repository:
-
-1. distinguish clearly between:
-   - results re-run in the current session,
-   - results copied from earlier notes,
-   - and results not yet re-verified;
-2. preserve pedagogically important failing queries instead of implying they should all be fixed;
-3. update `README.md` when the verified-study status has materially changed.
+When reporting verification results, distinguish clearly between results re-run in the current session and results not yet re-verified, and preserve pedagogically important failing queries instead of implying they should all be fixed.
 
 ## README Maintenance
 
-`README.md` should evolve alongside the study progress.
-
-Agents should update `README.md` when any of the following happens:
-
-1. one or more official example models have been studied,
-2. a new annotated `.pv` file is added,
-3. the next recommended learning sequence changes,
-4. previously unverified examples are actually re-run and their `RESULT` summaries become worth recording.
-
-When updating `README.md`, prefer additive maintenance over broad rewriting unless the document structure has clearly become outdated.
-
-A good README update in this repository usually includes:
-
-1. what was learned,
-2. which files were involved,
-3. what property or query each file demonstrates,
-4. what the next step should be.
-
-Do not add claimed verification summaries to `README.md` unless they were actually checked or explicitly marked as unverified.
-
-## ProVerif Execution Notes
-
-The repository is often used in WSL or Linux environments where ProVerif is installed via `opam`.
-
-Practical rule for agents:
-
-1. first try the command in the current shell if reasonable,
-2. if `proverif` is missing, load the `opam` environment,
-3. only then conclude that verification could not be run.
-
-This avoids false negatives caused by a shell session whose `PATH` does not yet include `~/.opam/default/bin`.
-
-If shell examples differ by shell:
-
-- use `eval "$(opam env)"` for `bash`/`zsh`,
-- use `eval (opam env)` for `fish`.
-
-When documenting commands for users, prefer examples that are robust in a fresh shell session.
-
-## Environment Notes
-
-The repository is commonly used from Linux or WSL. The README currently recommends a Unix-like workflow with `opam` and ProVerif installed locally.
-
-If shell examples differ by shell:
-
-- use `eval "$(opam env)"` for `bash`/`zsh`,
-- use `eval (opam env)` for `fish`.
+Update `README.md` when the layout or the next-step plan materially changes, for example when the new web project directory is created or its scope is settled. Prefer additive maintenance over broad rewriting. Do not record verification summaries that were not actually checked unless they are explicitly marked as unverified.
 
 ## What To Avoid
 
-- Do not delete or overwrite existing example models without a clear reason.
+- Do not delete or overwrite existing models or notes without a clear reason.
 - Do not silently "fix" a protocol model if the flaw is pedagogically important.
-- Do not assume a failing query is a bug; it may be the point of the example.
-- Do not add heavy tooling or formatting churn to a study repository.
-- Do not claim `proverif` is unavailable without first checking whether the `opam` environment simply has not been loaded.
-- Do not leave `README.md` stale after a substantial learning milestone or verified progress update.
-
-## Preferred Contribution Style
-
-Good contributions usually look like one of these:
-
-- add a new annotated `.pv` example,
-- add a Markdown explanation of an existing example,
-- clarify setup instructions for a specific platform,
-- compare a vulnerable model with a fixed variant,
-- document what a query means and how to read its result.
+- Do not add heavy tooling or formatting churn.
+- Do not claim `proverif` is unavailable without first checking the `opam` environment.
+- Do not leave `README.md` stale after a substantial change.
+- Do not invent conventions for the new project before they are settled; when a question about the web project is genuinely open, surface it instead of guessing.
 
 ## If You Are an Agent
 
 Before making changes:
 
 1. read `README.md`,
-2. inspect the target `.pv` or Markdown file,
-3. preserve the repository's learning-oriented structure.
+2. inspect the target file,
+3. preserve the layout described above.
 
 When making changes:
 
-1. explain the security or modeling rationale, not just the syntax,
+1. explain the modeling or security rationale, not just the syntax,
 2. prefer additive edits over destructive rewrites,
 3. verify changed `.pv` files with ProVerif when feasible,
-4. report clearly if verification could not be run.
+4. run the `humanizer-zh` skill on every Chinese document produced or edited,
+5. report clearly if verification could not be run.
