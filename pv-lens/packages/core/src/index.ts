@@ -5,10 +5,11 @@
  * 从而同一份代码既能被浏览器端（web，React 自绘 SVG）加载，
  * 也能被 Node 端（server，spawn ProVerif）加载。
  *
- * fixture 资产（.pv 原文与 ProVerif stdout 录制）作为提交文件存放在
- * `packages/core/fixtures/`，本模块仅以「相对路径 + 期望判定」的纯数据清单
- * 暴露它们的契约；测试在各自 test/ 目录经 fs 读取真实文件核对（ticket 01）。
+ * 内置样例的 .pv 原文以数据形式嵌入（src/sample-texts.generated.ts，由
+ * scripts/sync-sample-texts.mjs 生成），故浏览器无需 fs 即可读取当前协议文本。
  */
+
+import { sampleTexts } from './sample-texts.generated.js';
 
 /** ProVerif 对一条查询给出的判定值。 */
 export type Verdict = 'true' | 'false' | 'cannot-be-proved';
@@ -29,6 +30,8 @@ export interface CoreSampleDef {
   id: string;
   /** 中文短名（UI 内置列表用）。 */
   title: string;
+  /** 中文简述（UI 首页样例列表的说明文字，ticket 02 用）。 */
+  description: string;
   kind: SampleKind;
   /** fixture 相对路径（相对本包 fixtures/），.pv 原文。 */
   pvFile: string;
@@ -46,6 +49,7 @@ export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'hello',
     title: 'hello（保密性最小冒烟）',
+    description: '最小冒烟样例：hello 世界，仅验证公开信道上发送的 RSA 明文是否泄露。',
     kind: 'secrecy-broken',
     pvFile: 'pv/hello.pv',
     stdoutFile: 'proverif/hello.stdout.txt',
@@ -57,6 +61,7 @@ export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'handshake-fixed',
     title: '握手修正版（全绿）',
+    description: '中规模握手协议修正版：对称/非对称加密与签名并用，附事件，三条查询全部成立。',
     kind: 'all-green',
     pvFile: 'pv/handshake-fixed.pv',
     stdoutFile: 'proverif/handshake-fixed.stdout.txt',
@@ -75,6 +80,7 @@ export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'ns-mutual-auth',
     title: 'NS 修正版（互认证成立）',
+    description: 'Needham-Schroeder 修正版（Lowe）：四角色，两条互认证查询全部成立。',
     kind: 'all-green',
     pvFile: 'pv/ns-mutual-auth.pv',
     stdoutFile: 'proverif/ns-mutual-auth.stdout.txt',
@@ -92,6 +98,7 @@ export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'ns-original',
     title: 'NS 原版（含 Lowe 攻击）',
+    description: 'Needham-Schroeder 原版：B 侧互认证被 Lowe 攻击证伪，演示反例与 trace。',
     kind: 'auth-broken',
     pvFile: 'pv/ns-original.pv',
     stdoutFile: 'proverif/ns-original.stdout.txt',
@@ -115,4 +122,24 @@ export const coreSamples: readonly CoreSampleDef[] = [
 /** 以 id 查内置样例。 */
 export function getCoreSample(id: string): CoreSampleDef | undefined {
   return coreSamples.find((s) => s.id === id);
+}
+
+/**
+ * 读取内置样例的 .pv 原文（浏览器与 Node 均可，无 fs 依赖）。
+ * 数据来自 src/sample-texts.generated.ts（fixtures 的嵌入副本，见 drift 守卫测试）。
+ */
+export function getSampleSource(id: string): string | undefined {
+  return sampleTexts[id];
+}
+
+/** 内置样例全集（含每个样例的 .pv 原文），供 UI 装载当前协议时一次取到元信息 + 文本。 */
+export interface LoadableSample {
+  def: CoreSampleDef;
+  /** 该样例的 .pv 原文。 */
+  source: string;
+}
+
+/** 列出全部内置样例及其 .pv 原文。 */
+export function listLoadableSamples(): readonly LoadableSample[] {
+  return coreSamples.map((def) => ({ def, source: sampleTexts[def.id] }));
 }

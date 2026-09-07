@@ -1,0 +1,238 @@
+:root {
+  --bg: #f7f7f9;
+  --panel: #ffffff;
+  --border: #d9d9de;
+  --text: #1f2329;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #eef4ff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  line-height: 1.6;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.app-header h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.app-header .subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ---- 首页样例列表 ---- */
+.home h2 {
+  font-size: 1.05rem;
+}
+
+.sample-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sample-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.sample-card:hover,
+.sample-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.18);
+  outline: none;
+}
+
+.sample-card .name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sample-card .desc {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.kind-tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.kind-tag--all-green {
+  color: #15803d;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.kind-tag--secrecy-broken {
+  color: #b45309;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.kind-tag--auth-broken {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+/* ---- 本地导入 ---- */
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.btn {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn:hover {
+  filter: brightness(0.98);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* ---- 装载后视图 ---- */
+.loaded-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.loaded-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.loaded-head .origin {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.import-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 0.75rem 0 0;
+}
+
+/* ---- 源码面板（只读、可折叠） ---- */
+.source-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.source-panel summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  user-select: none;
+  background: #fbfbfc;
+}
+
+.source-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-panel summary .chevron {
+  display: inline-block;
+  transition: transform 0.15s;
+  color: var(--muted);
+}
+
+.source-panel[open] summary .chevron {
+  transform: rotate(90deg);
+}
+
+.source-panel summary .meta {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.source-body {
+  border-top: 1px solid var(--border);
+  max-height: 60vh;
+  overflow: auto;
+  background: #fdfdfe;
+  margin: 0;
+  padding: 1rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.source-body code {
+  font-family: inherit;
+}

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { coreSamples, getCoreSample } from '@pv-lens/core';
+import { coreSamples, getCoreSample, getSampleSource, listLoadableSamples } from '@pv-lens/core';
 
 // 本测试文件位于 packages/core/test/，fixtures 位于 packages/core/fixtures/。
 const coreDir = fileURLToPath(new URL('..', import.meta.url));
@@ -51,12 +51,48 @@ describe('core 内置样例 manifest', () => {
     expect(getCoreSample('no-such-id')).toBeUndefined();
   });
 
+  it('每项都有中文简述 description（UI 首页列表用）', () => {
+    for (const s of coreSamples) {
+      expect(s.description.length, s.id).toBeGreaterThan(0);
+      // 简述应为中文说明句，而非仅重复 title。
+      expect(s.description, s.id).not.toBe(s.title);
+    }
+  });
+
   it('每项声明的 fixture 路径都是 .pv / .stdout.txt 且字段非空', () => {
     for (const s of coreSamples) {
       expect(s.title.length, s.id).toBeGreaterThan(0);
       expect(s.pvFile, s.id).toMatch(/\.pv$/);
       expect(s.stdoutFile, s.id).toMatch(/\.stdout\.txt$/);
       expect(s.expectedVerdicts.length, s.id).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('内置样例 .pv 原文嵌入副本（ticket 02：浏览器无需 fs 即取原文）', () => {
+  it('每个样例都能取到非空原文', () => {
+    for (const s of coreSamples) {
+      const src = getSampleSource(s.id);
+      expect(src, s.id).toBeTypeOf('string');
+      expect((src ?? '').length, s.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('未知 id 返回 undefined', () => {
+    expect(getSampleSource('no-such')).toBeUndefined();
+  });
+
+  it('嵌入副本与 fixture .pv 原文一致（drift 守卫：改原文须重跑 sync:sample-texts）', () => {
+    for (const s of coreSamples) {
+      expect(getSampleSource(s.id), s.id).toBe(readFixture(s.pvFile));
+    }
+  });
+
+  it('listLoadableSamples 覆盖全部样例且原文非空', () => {
+    const all = listLoadableSamples();
+    expect(all.map((x) => x.def.id)).toEqual(coreSamples.map((s) => s.id));
+    for (const x of all) {
+      expect(x.source.length, x.def.id).toBeGreaterThan(0);
     }
   });
 });

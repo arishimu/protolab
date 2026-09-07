@@ -1,20 +1,51 @@
-import { coreSamples } from '@pv-lens/core';
+import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
+import { Home } from './Home';
+import { SourcePanel } from './SourcePanel';
+import './styles.css';
 
-// ticket 01 脚手架占位页：仅证明 @pv-lens/core 能被浏览器端按包名解析并渲染。
-// 真正的「规范叙事视图 + 源码面板 + 结果面板」单页布局见 ticket 04 / 08。
+/** 已装载视图：标题 + 只读源码面板；渲染/验证区域由后续工单（04/08）在此扩展。 */
+function LoadedView() {
+  const { current, clear } = useCurrentProtocol();
+  if (!current) return null;
+
+  const originText =
+    current.origin.kind === 'builtin'
+      ? `内置样例 · ${current.origin.sampleId}`
+      : `本地导入 · ${current.origin.fileName}`;
+
+  return (
+    <div>
+      <div className="loaded-head">
+        <button type="button" className="btn" onClick={clear}>
+          ← 返回选择
+        </button>
+        <h2>{current.title}</h2>
+        <span className="origin">{originText}</span>
+      </div>
+      <p className="hint">{current.description}</p>
+      <SourcePanel protocol={current} />
+      <p className="hint" style={{ marginTop: '1rem' }}>
+        规范叙事视图（泳道图）与运行验证将在此协议文本之上展开——本阶段仅到文本与源码展示。
+      </p>
+    </div>
+  );
+}
+
 export function App() {
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1rem' }}>
-      <h1>pv-lens</h1>
-      <p>安全协议规范叙事视图 · 脚手架（ticket 01）就绪。</p>
-      <h2>内置样例（来自 @pv-lens/core）</h2>
-      <ul>
-        {coreSamples.map((s) => (
-          <li key={s.id}>
-            <code>{s.id}</code> — {s.title}
-          </li>
-        ))}
-      </ul>
-    </main>
+    <CurrentProtocolProvider>
+      <div className="app">
+        <header className="app-header">
+          <h1>pv-lens</h1>
+          <span className="subtitle">安全协议规范叙事视图 · 只读源码（本阶段）</span>
+        </header>
+        <ContentView />
+      </div>
+    </CurrentProtocolProvider>
   );
+}
+
+function ContentView() {
+  const { current } = useCurrentProtocol();
+  return current ? <LoadedView /> : <Home />;
 }
