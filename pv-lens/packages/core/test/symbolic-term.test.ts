@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parsePv } from '@pv-lens/core';
+import { NOTATION_LEGEND, parsePv, renderTerm } from '@pv-lens/core';
 import type { PvTerm } from '@pv-lens/core';
-import { NOTATION_LEGEND, renderTerm } from '../src/narrative/symbolic-term';
 
 // 词项符号化渲染是纯函数：直接手写 PvTerm 做单元黄金断言（独立真源），
 // 再用 fixture 的解析结果做一次端到端校验（构造子名来自真实 .pv）。

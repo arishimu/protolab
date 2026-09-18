@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   describeVerifyFailure,
+  describeVerifyFailureKind,
   requestVerification,
   VERIFY_ENDPOINT,
 } from '../src/verify';
@@ -250,6 +251,15 @@ describe('verify：describeVerifyFailure', () => {
       expect(text.length, kind).toBeGreaterThan(20);
       expect(/[\u4e00-\u9fa5]/.test(text), `${kind} 应为中文文案`).toBe(true);
       expect(text).not.toContain('undefined');
+    }
+  });
+
+  it('每一类都有中文短标签（UI 标题不直接暴露机器 kind）', () => {
+    for (const kind of KINDS) {
+      const label = describeVerifyFailureKind(kind);
+      expect(label.length, kind).toBeGreaterThan(0);
+      expect(label, kind).not.toBe(kind);
+      expect(/[\u4e00-\u9fa5]/.test(label), `${kind} 标签应为中文`).toBe(true);
     }
   });
 

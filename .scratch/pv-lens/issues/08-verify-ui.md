@@ -89,3 +89,15 @@
 - `bad-response` 的另一常见成因（server 未启动 ⇒ Vite 代理回非 JSON 错误页）与 `unreachable` 存在语义重叠：代理模式下拿不到更精确的信号，故已把「先 `pnpm start`」写进 `bad-response` 指引。
 - 面板在「重新运行中」会先隐藏上一次结果、跑完覆盖；若将来要求「跑动中保留旧结果」，需再改状态机。
 - ProVerif 侧仍是本机安装依赖（ADR-0002），缺可执行文件路径只能在真实环境验证（已由 #07 的本地集成冒烟覆盖）。
+
+### code-review 后处理（2026-09-18，提交 04/05/08 后）
+
+两轴 review（Standards + Spec）对 04/05/08 的合并 diff 给出 OK with notes。已修：
+
+- **Standards：Mysterious Name / 枚举泄漏**：失败面板标题原先直接拼机器枚举 `outcome.kind`。新增 `FAILURE_KIND_LABEL` + `describeVerifyFailureKind(kind)`（verify.ts），标题显示中文类别、`kind` 以 `<code>` 附后供排查；`verify.test.ts` 增加「每类都有中文短标签」回归。
+
+**保留但记录**：
+
+- **位置优先的查询映射**（条数相等即按序配对、条数不等退回文本匹配）：四样例实测顺序一致；ProVerif 会重命名变量（`x` → `x_2`），文本匹配对事件查询不可靠，故位置优先是必要策略，文本匹配只作兜底。已在 `query-presentation.ts` 头注释写明依据与局限。
+- 失败 kind 比 spec 的「五类」更细（10 类）；这是按 server 状态码与 body.kind 的实测事实落地的，属于超额细化而非偏差。
+- 运行中/取消态无自动化测试（无 jsdom、禁加依赖），由纯函数测试 + 真实 curl 端到端覆盖。

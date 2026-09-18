@@ -164,6 +164,25 @@ export interface VerifyFailureDetail {
   exitCode?: number | null;
 }
 
+/** 失败类别的中文短标签（UI 标题用；`kind` 是机器枚举，不应直接泄露到中文界面）。 */
+export const FAILURE_KIND_LABEL: Record<VerifyFailureKind, string> = {
+  'invalid-request': '请求无效',
+  'not-found': '验证接口不存在',
+  'method-not-allowed': '请求方法不被接受',
+  'missing-executable': '找不到 ProVerif',
+  'proverif-error': '模型自身错误',
+  timeout: '验证超时',
+  cancelled: '已取消',
+  'internal-error': '验证服务内部错误',
+  unreachable: '验证服务不可达',
+  'bad-response': '验证服务响应无法识别',
+};
+
+/** 失败类别的中文短标签；`kind` 供排查时以代码形式附在后面。 */
+export function describeVerifyFailureKind(kind: VerifyFailureKind): string {
+  return FAILURE_KIND_LABEL[kind];
+}
+
 const FAILURE_GUIDANCE: Record<VerifyFailureKind, string> = {
   'invalid-request':
     '请求未通过服务端校验：常见原因是模型文本为空，或超时不是正数（毫秒）。修正后重新运行。',

@@ -62,7 +62,7 @@ describe('未配对标注与 ticket 06 的配对接缝', () => {
     for (const lane of layout.lanes) {
       for (const card of lane.cards) {
         expect(card.unpaired, `${lane.name}#${card.stepIndex}`).toBe(true);
-        expect(card.badges).toContain('未配对');
+        expect(card.badges.some((b) => b.kind === 'unpaired')).toBe(true);
       }
     }
     expect(layout.crossLaneEdges).toEqual([]);
@@ -77,7 +77,7 @@ describe('未配对标注与 ticket 06 的配对接缝', () => {
     const to = layout.lanes[1].cards[0];
     expect(from.unpaired).toBe(false);
     expect(to.unpaired).toBe(false);
-    expect(from.badges).not.toContain('未配对');
+    expect(from.badges.some((b) => b.kind === 'unpaired')).toBe(false);
     expect(layout.crossLaneEdges).toHaveLength(1);
     expect(layout.crossLaneEdges[0].from.roleIndex).toBe(0);
     expect(layout.crossLaneEdges[0].to.roleIndex).toBe(1);
@@ -125,6 +125,8 @@ describe('诊断卡片归属（降级诊断以原文标注卡片入图）', () =
     expect(card.severityLabel).toBe('降级诊断');
     expect(card.lineNumber).toBe(4);
     expect(card.sourceText.length).toBeGreaterThan(0);
+    // US17：诊断卡片带行:列定位。
+    expect(card.lines[0].text).toContain('L4:');
   });
 
   it('落不进任何角色的诊断进入「未归属诊断」区', () => {

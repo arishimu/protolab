@@ -1,7 +1,8 @@
 /**
- * 词项符号化渲染（ticket 04）：把 core 语义模型的 `PvTerm` 串成密码学惯用记法。
+ * 词项符号化渲染：把语义模型的 `PvTerm` 串成密码学惯用记法。
  *
- * 纯函数，无 DOM 依赖，渲染黄金断言直接对它写（不测像素）。映射表见 `CRYPTO_NOTATION`：
+ * 定位（spec.md「core 公开能力」第 2 条）：这是 core 的功能级公共能力，纯 TS、无 DOM 依赖，
+ * 浏览器与 Node 双端可用；渲染黄金断言直接对它写（不测像素）。映射表见 `CRYPTO_NOTATION`：
  * 表内命中的构造子按惯用记法渲染，其余（含参数个数不符的）回退为函数调用写法
  * `functor(a, b)`。参数一律递归渲染；元组按 `(a, b, c)`（逗号后一个空格）渲染，
  * 但作为密码学构造子的消息参数时按 spec 铺开为 `{Na,A}pkB`（密码括号自带分组，不再多套括号）。
@@ -10,7 +11,7 @@
  * 不改变词项的语义结构。
  */
 
-import type { ApplicationTerm, PvTerm } from '@pv-lens/core';
+import type { ApplicationTerm, PvTerm } from './parser/model.js';
 
 /** 惯用记法模板：`arity` 为期望参数个数，`render` 收到已递归渲染的参数串。 */
 interface NotationTemplate {

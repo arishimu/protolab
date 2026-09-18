@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import type { ParseResult } from '@pv-lens/core';
-import { NARRATIVE_METRICS, buildNarrativeLayout } from './layout';
+import { NARRATIVE_METRICS, buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import type {
   CrossLaneEdge,
   DiagnosticCard,
@@ -77,9 +77,11 @@ function NoRoleStructure({ result }: { result: ParseResult }) {
               className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}
             >
               <span className="diagnostic-severity">
-                {diagnostic.severity === 'degraded' ? '降级诊断' : '错误诊断'}
+                {diagnosticSeverityLabel(diagnostic.severity)}
               </span>
-              <span className="diagnostic-line">L{diagnostic.span.start.line}</span>
+              <span className="diagnostic-line">
+                {`L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`}
+              </span>
               <span className="diagnostic-message">{diagnostic.message}</span>
               <code className="diagnostic-source">{diagnostic.sourceText}</code>
             </li>
@@ -209,9 +211,9 @@ function StepCardGroup({ card }: { card: StepCard }) {
   );
 }
 
-/** 卡片角标：`未配对` / `!` / `|`，右对齐在标题行上。 */
+/** 卡片角标：未配对 / `!` / `|`，右对齐在标题行上。`kind` 选样式、`label` 是文字。 */
 function CardBadges({ card }: { card: StepCard }) {
-  const widths = card.badges.map((badge) => badge.length * BADGE_CHAR_WIDTH + 10);
+  const widths = card.badges.map((badge) => badge.label.length * BADGE_CHAR_WIDTH + 10);
   const total =
     widths.reduce((sum, width) => sum + width, 0) + (card.badges.length - 1) * BADGE_GAP;
   let cursor = card.x + card.width - cardPaddingX - total;
@@ -222,12 +224,12 @@ function CardBadges({ card }: { card: StepCard }) {
         const x = cursor;
         cursor += width + BADGE_GAP;
         const modifier =
-          badge === '未配对' ? ' narrative-badge--unpaired' : ' narrative-badge--flag';
+          badge.kind === 'unpaired' ? ' narrative-badge--unpaired' : ' narrative-badge--flag';
         return (
-          <g key={badge} className={`narrative-badge${modifier}`}>
+          <g key={badge.kind} className={`narrative-badge${modifier}`}>
             <rect x={x} y={card.y + 4} width={width} height={BADGE_HEIGHT} rx={8} />
             <text x={x + width / 2} y={card.y + 4 + BADGE_HEIGHT / 2 + 4} textAnchor="middle">
-              {badge}
+              {badge.label}
             </text>
           </g>
         );

@@ -1,11 +1,11 @@
 /**
  * 规范叙事视图的图例（ticket 04）：解释图上出现的各记法。
  *
- * 符号化词项部分与 `symbolic-term.ts` 的映射表同源（`NOTATION_LEGEND`），
+ * 符号化词项部分与 core 的 `renderTerm` / `NOTATION_LEGEND` 映射表同源，
  * 不在两处各写一份记法说明。
  */
 
-import { NOTATION_LEGEND } from './symbolic-term';
+import { NOTATION_LEGEND } from '@pv-lens/core';
 
 export function Legend() {
   return (

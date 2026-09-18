@@ -11,7 +11,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { ParseResult } from '@pv-lens/core';
-import { describeVerifyFailure, requestVerification } from './verify';
+import { describeVerifyFailure, describeVerifyFailureKind, requestVerification } from './verify';
 import type { VerifyFailure, VerifyOutcome } from './verify';
 import { mapResultsToQueries, VERDICT_META } from './query-presentation';
 import type { QueryResultView } from './query-presentation';
@@ -241,7 +241,9 @@ export function QueryResultCard({ index, view }: { index: number; view: QueryRes
 export function VerifyFailureNotice({ outcome }: { outcome: VerifyFailure }) {
   return (
     <div className="verify-failure" role="alert">
-      <h4 className="verify-failure-title">验证未能完成（{outcome.kind}）</h4>
+      <h4 className="verify-failure-title">
+        验证未能完成：{describeVerifyFailureKind(outcome.kind)}（<code>{outcome.kind}</code>）
+      </h4>
       <p className="verify-failure-guidance">{describeVerifyFailure(outcome.kind, outcome)}</p>
       {outcome.exitCode !== undefined && (
         <p className="verify-failure-meta">

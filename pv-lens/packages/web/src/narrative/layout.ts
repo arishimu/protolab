@@ -16,7 +16,7 @@
  */
 
 import type { MessageStep, ParseResult, PvDiagnostic, PvRole } from '@pv-lens/core';
-import { renderTerm } from './symbolic-term';
+import { renderTerm } from '@pv-lens/core';
 
 /** 布局用的固定尺寸常量（改这里即可整体缩放，视图与测试共用同一份）。 */
 export const NARRATIVE_METRICS = {
@@ -83,10 +83,29 @@ export interface StepCard {
   parallel: boolean;
   /** 是否未配对（默认全部为 true；被 pairing 指到的端点转为 false）。 */
   unpaired: boolean;
-  /** 卡片角标（`未配对` / `!` / `|`），渲染端在标题行右侧绘制。 */
-  badges: readonly string[];
+  /** 卡片角标（未配对 / `!` / `|`），渲染端据此选样式并在标题行右侧绘制。 */
+  badges: readonly StepBadge[];
   /** 逐行文本（已按 `maxLineChars` 折行，一行对应一个 `<text>` 行）。 */
   lines: readonly LayoutTextLine[];
+}
+
+/** 卡片角标：`kind` 供渲染端选样式，`label` 是显示文字（不拿显示文字当类型用）。 */
+export interface StepBadge {
+  kind: 'unpaired' | 'replicated' | 'parallel';
+  label: string;
+}
+
+/** 消息方向 → 箭头与中文标签（卡片标题与布局共用同一份，避免两处各写一遍）。 */
+export function stepDirectionMeta(direction: 'out' | 'in'): {
+  arrow: '→' | '←';
+  label: '发出' | '接收';
+} {
+  return direction === 'out' ? { arrow: '→', label: '发出' } : { arrow: '←', label: '接收' };
+}
+
+/** 诊断级别 → 中文标签（布局与视图共用同一份）。 */
+export function diagnosticSeverityLabel(severity: 'degraded' | 'error'): '降级诊断' | '错误诊断' {
+  return severity === 'degraded' ? '降级诊断' : '错误诊断';
 }
 
 /** 一条诊断的「原文标注卡片」。 */
@@ -221,12 +240,11 @@ function guardText(guard: MessageStep['annotations']['guards'][number]): string 
 
 /** 步骤卡片的逐行文本：标题行（方向/信道/行号）+ 符号化词项 + new / event / 守卫注释。 */
 function stepCardLines(step: MessageStep): LayoutTextLine[] {
-  const arrow = step.direction === 'out' ? '→' : '←';
-  const directionLabel = step.direction === 'out' ? '发出' : '接收';
+  const { arrow, label } = stepDirectionMeta(step.direction);
   const lines: LayoutTextLine[] = [
     {
       kind: 'header',
-      text: `${arrow} ${directionLabel} · 信道 ${renderTerm(step.channel)} · L${step.span.start.line}`,
+      text: `${arrow} ${label} · 信道 ${renderTerm(step.channel)} · L${step.span.start.line}`,
     },
   ];
   pushWrapped(lines, 'term', renderTerm(step.term));
@@ -242,11 +260,12 @@ function stepCardLines(step: MessageStep): LayoutTextLine[] {
   return lines;
 }
 
-/** 诊断卡片的逐行文本：中文严重级别 + 行号 / 中文 message / 原文 sourceText。 */
+/** 诊断卡片的逐行文本：中文严重级别 + 行:列 / 中文 message / 原文 sourceText。 */
 function diagnosticCardLines(diagnostic: PvDiagnostic): LayoutTextLine[] {
-  const severityLabel = diagnostic.severity === 'degraded' ? '降级诊断' : '错误诊断';
+  const severityLabel = diagnosticSeverityLabel(diagnostic.severity);
+  const location = `L${diagnostic.span.start.line}:${diagnostic.span.start.column}`;
   const lines: LayoutTextLine[] = [
-    { kind: 'header', text: `${severityLabel} · L${diagnostic.span.start.line}` },
+    { kind: 'header', text: `${severityLabel} · ${location}` },
   ];
   pushWrapped(lines, 'message', diagnostic.message);
   pushWrapped(lines, 'source', diagnostic.sourceText);
@@ -261,7 +280,7 @@ function diagnosticCard(
   const lines = diagnosticCardLines(diagnostic);
   return {
     severity: diagnostic.severity,
-    severityLabel: diagnostic.severity === 'degraded' ? '降级诊断' : '错误诊断',
+    severityLabel: diagnosticSeverityLabel(diagnostic.severity),
     message: diagnostic.message,
     sourceText: diagnostic.sourceText,
     lineNumber: diagnostic.span.start.line,
@@ -334,10 +353,10 @@ export function buildNarrativeLayout(
     const cards: StepCard[] = role.steps.map((step, stepIndex) => {
       const lines = stepCardLines(step);
       const height = heightOfLines(lines);
-      const badges: string[] = [];
-      badges.push('未配对');
-      if (step.annotations.replicated) badges.push('!');
-      if (step.annotations.parallel) badges.push('|');
+      const directionMeta = stepDirectionMeta(step.direction);
+      const badges: StepBadge[] = [{ kind: 'unpaired', label: '未配对' }];
+      if (step.annotations.replicated) badges.push({ kind: 'replicated', label: '!' });
+      if (step.annotations.parallel) badges.push({ kind: 'parallel', label: '|' });
       const card: StepCard = {
         roleIndex,
         stepIndex,
@@ -346,8 +365,8 @@ export function buildNarrativeLayout(
         width: cardWidth,
         height,
         direction: step.direction,
-        directionLabel: step.direction === 'out' ? '发出' : '接收',
-        arrow: step.direction === 'out' ? '→' : '←',
+        directionLabel: directionMeta.label,
+        arrow: directionMeta.arrow,
         channelText: renderTerm(step.channel),
         termText: renderTerm(step.term),
         lineNumber: step.span.start.line,
@@ -415,7 +434,7 @@ export function buildNarrativeLayout(
           ...lane,
           cards: lane.cards.map((card) =>
             pairedKeys.has(`${card.roleIndex}:${card.stepIndex}`)
-              ? { ...card, unpaired: false, badges: card.badges.filter((b) => b !== '未配对') }
+              ? { ...card, unpaired: false, badges: card.badges.filter((b) => b.kind !== 'unpaired') }
               : card,
           ),
         }));

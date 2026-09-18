@@ -53,3 +53,17 @@
 - 步骤与源码的点击联动（spec US14）未做（不在本票验收清单内）。
 - 折行按字符数估算（`maxLineChars`），超长符号化词项可能与卡片宽度略有偏差（视觉层面，不影响布局确定性）。
 - 本票不实现配对引擎（ticket 06）；默认全未配对。
+
+### code-review 后处理（2026-09-18，提交 04/05/08 后）
+
+两轴 review（Standards + Spec）对 04/05/08 的合并 diff 给出 OK with notes。已修：
+
+- **Spec 落实（架构）**：spec.md「core 公开能力」第 2 条明确把「词项符号化渲染」列为 **core** 能力，原实现只在 web。已把 `renderTerm` / `NOTATION_LEGEND` 移到 `packages/core/src/symbolic-term.ts` 并由 core barrel 导出（web 的 `layout.ts` / `Legend.tsx` 改为从 `@pv-lens/core` 引入），黄金断言测试移到 `core/test/symbolic-term.test.ts`。
+- **Standards：Primitive Obsession**：`StepCard.badges` 由 `string[]` 改为 `StepBadge[]`（`kind` 选样式、`label` 显示文字），渲染端不再用显示文字 `=== '未配对'` 反查样式。
+- **Standards：Duplicated Code**：方向 → 箭头/中文标签（`stepDirectionMeta`）、诊断级别 → 中文标签（`diagnosticSeverityLabel`）各抽一处，`stepCardLines`/卡片构造与 `NarrativeView` 共用。
+- **Spec US17（定位到列）**：诊断卡片头由 `L{行}` 改为 `L{行}:{列}`。
+
+**保留但记录**：
+
+- **Spec US14（点击步骤 ⇄ 源码行高亮）未实现**：ticket 04 的验收清单未含此项，01–10 也没有工单承接；本票明示留作后续（ticket 09 验收若要求再开票）。当前 `StepCard.lineNumber` 已带源码行号，接缝在。
+- 折行按字符数估算；`Middle Man`（`verify.ts` 的 `defaultFetch`）、`Data Clumps`（`{x,y,width,height}`）为 judgement call，量小不单独重构。

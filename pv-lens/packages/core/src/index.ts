@@ -177,6 +177,15 @@ export type {
 } from './parser/model.js';
 
 /**
+ * core 公开能力：词项符号化渲染（spec.md「core 公开能力」第 2 条）。
+ *
+ * 纯函数 `renderTerm`：构造子 → 密码学惯用记法（未知构造子回退函数调用写法）；
+ * `NOTATION_LEGEND` 供 UI 图例复用同一份映射表。浏览器与 Node 双端可用。
+ */
+export { renderTerm, NOTATION_LEGEND } from './symbolic-term.js';
+export type { NotationLegendEntry } from './symbolic-term.js';
+
+/**
  * Seam B（ticket 07）：ProVerif stdout → 按查询切分的结构化验证结果。
  *
  * 纯转换：记录 stdout 文本进、结构化结果出；判定只以 RESULT 行为准。
