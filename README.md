@@ -55,4 +55,11 @@ proverif docs/proverif/pv/hello.pv | grep "RESULT"
 
 ## 下一步
 
-ProVerif 学习已完成。接下来是安全协议可视化建模 Web 项目的设计与实现，代码和笔记会逐步补充，并在本文档登记。
+ProVerif 学习已完成。接下来是安全协议可视化建模 Web 项目（代号 **pv-lens**）的设计与实现，代码和笔记会逐步补充，并在本文档登记。
+
+**已定方向**（2025 起，详见 `docs/adr/` 与 `CONTEXT.md` 词表）：
+
+- 用户：学习密码学的学生、教师、研究者；个人使用、本地/自托管运行，不上公网。
+- MVP：导入 `.pv` → 渲染「规范叙事视图」泳道图 → 一键调用本机 ProVerif → 展示每条 query 的结构化结论与反例 trace 原文；不含画布编辑、不含 trace 可视化归因、不含打包 ProVerif。
+- 二期：画布编辑（增删/拖拽组件）并把改动回写 `.pv`；反例 trace 映射回泳道图。
+- 技术栈：TypeScript 全栈（React + Vite 前端自绘 SVG；Node 后端 spawn ProVerif）。
