@@ -64,7 +64,7 @@ Status: ready-for-agent
   2. 词项符号化渲染：构造子 → 密码学惯用记法的映射表（加密/签名/元组/函数应用），未知构造子回退为函数调用写法。
   3. proverif stdout → 验证结果：按查询切段解析。
   4. 保守配对引擎：只在结构上可确定时产出跨泳道连线，否则不连（输出未配对标注，不猜测）。
-- **stdout 解析事实**（已对本机 ProVerif 2.05 实测，解析器按此实现）：输出按查询分节——`Starting query <归一化查询>` 开头，若证伪则中间是编号反例步骤（`1.` `2.` …）与 attacker 事实，节末 `RESULT <归一化查询> is true|false|cannot be proved.` 一行收尾。`attacker(x)` 在输出中归一化为 `not attacker(x)`；判定值针对归一化查询，UI 展示时映射回用户查询原文。退出码为 0 并不代表性质成立（有反例也常是 0），判定只能以 RESULT 行为准。`cannot be proved` 目前四样例均不出现，但解析器必须支持。
+- **stdout 解析事实**（已对本机 ProVerif 2.05 实测，解析器按此实现）：输出按查询分节——`Starting query <归一化查询>` 开头，若证伪则中间是编号反例步骤（`1.` `2.` …）与 attacker 事实，节末以一行 `RESULT` 收尾：证明成立 / 证伪为 `RESULT <归一化查询> is true|false.`，未证出为 `RESULT <归一化查询> cannot be proved.`（本机 ProVerif 2.05 实测 `cannot be proved` 前**不带** `is`，如 `RESULT Non-interference s cannot be proved.`；解析器同时兼容带 `is` 的形态）。`attacker(x)` 在输出中归一化为 `not attacker(x)`；判定值针对归一化查询，UI 展示时映射回用户查询原文。退出码为 0 并不代表性质成立（有反例也常是 0），判定只能以 RESULT 行为准。`cannot be proved` 目前四样例均不出现，但解析器必须支持。
 - **验证接口**：web 把 `.pv` 文本 POST 给 server；server 经 CLI 适配器写临时文件并 spawn proverif，返回按查询的结构化结果 + 完整原始输出；超时与取消由适配器负责（AD-0002）。渲染路径不走 server：web 直接用 core 解析文本绘图。
 - **CLI 适配器**（AD-0002 落点）：proverif 可执行路径可注入（默认读环境/配置）；区分三类失败：找不到可执行文件、proverif 自身错误（带输出）、超时。
 - **错误分类**：解析降级（部分可读）≠ 解析失败（带 span）≠ 验证不可用（缺 proverif）≠ 验证报错（模型错误）≠ 服务不可达。各类别在 UI 有对应中文呈现。
@@ -140,7 +140,7 @@ Status: ready-for-agent
 - 未配对：握手修正版默认 6 个步骤标「未配对」，跨泳道连线 0 条（保守配对不臆造），图例在位。
 - 降级：导入含 `choice [true]` 的 `.pv` → 面板提示「解析器不支持的语法」、泳道图保留 `choice [true]` 原文标注段；验证仍按原文运行并给出失败指引。
 
-**发现与处置**：验收未发现功能缺陷。仅发现一处文档口径问题：本 spec「stdout 解析事实」写的 `RESULT <查询> is true|false|cannot be proved.` 暗示存在 `is cannot be proved.` 形态，而本机 ProVerif 2.05 的 `cannot be proved` 真实输出不带 `is`（`RESULT <查询> cannot be proved.`，`noninterf` 查询可复现）——该差异已在 `packages/core/fixtures/PROVENANCE.md` 记录，解析器两种形态都兼容（`core/test/verify-result.test.ts`）。spec 该行措辞留待 #10 文档收尾统一。其余交付项（README 安装运行说明、工程收尾）同样由 #10 承接。
+**发现与处置**：验收未发现功能缺陷。仅发现一处文档口径问题：本 spec「stdout 解析事实」写的 `RESULT <查询> is true|false|cannot be proved.` 暗示存在 `is cannot be proved.` 形态，而本机 ProVerif 2.05 的 `cannot be proved` 真实输出不带 `is`（`RESULT <查询> cannot be proved.`，`noninterf` 查询可复现）——该差异已在 `packages/core/fixtures/PROVENANCE.md` 记录，解析器两种形态都兼容（`core/test/verify-result.test.ts`）。spec 该行措辞已由 #10 按真实形态统一（见本 spec「stdout 解析事实」）。其余交付项（README 安装运行说明、工程收尾）同样由 #10 承接。
 
-**自动测试现状**：`pnpm typecheck` 三包通过；`pnpm test` 16 文件 195 项通过（含真实 ProVerif 集成冒烟，本机装 ProVerif 时运行）。
+**自动测试现状**：`pnpm typecheck` 三包通过；`pnpm test` 16 文件 195 项通过（含真实 ProVerif 集成冒烟，本机装 ProVerif 时运行）；随后「trace 逐字切片」由 hello 单例推广到四条被证伪查询（commit 4e85ffe），总数为 196 项。
 

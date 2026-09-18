@@ -25,7 +25,7 @@ proverif <fixture .pv> > <id>.stdout.txt 2>&1
 
 - ProVerif 版本：2.05（`opam` 安装，`~/.opam/default/bin/proverif`）
 - 录制环境：本机（Linux），各样例运行 <20ms
-- 每条判定 `RESULT ... is true|false|cannot be proved.` 与 `packages/core/src/index.ts` 的 `expectedVerdicts` 一致；后者作为验收口径由 fixtures 测试交叉核对。
+- 每条判定 `RESULT ... is true|false.`（四个基准样例均不出现 `cannot be proved`；其真实输出不带 `is`，见文末「人工构造 fixture」）与 `packages/core/src/index.ts` 的 `expectedVerdicts` 一致；后者作为验收口径由 fixtures 测试交叉核对。
 
 ## 备注
 
