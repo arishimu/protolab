@@ -360,4 +360,24 @@ describe('Seam A：四个内置样例的鲁棒性（v1 未覆盖的语法降级�
       expect(model.queries.length, sample.id).toBe(sample.expectedVerdicts.length);
     });
   }
+
+  // v1 的降级画像：把「哪些样例需要 ticket 05 才能完整建模」钉下来。
+  // 这不是实现细节——它直接决定渲染层在每个样例上会看到多少条原文标注卡片，
+  // 也是「解析不了的语法降级而不报错」这条验收项在真实样例上的口径。
+  const degradedCountBySample: Record<string, number> = {
+    hello: 0,
+    'handshake-fixed': 0,
+    'ns-mutual-auth': 4, // 1×get + 2×insert + 1×无参顶层 let（processK 未入模型）
+    'ns-original': 0,
+  };
+
+  for (const sample of coreSamples) {
+    it(`${sample.id}：降级条数与 v1 画像一致，且全部是 degraded 不是 error`, () => {
+      const model = parsePv(readFixture(sample.pvFile));
+      const degraded = model.diagnostics.filter((d) => d.severity === 'degraded');
+      expect(degraded, sample.id).toHaveLength(degradedCountBySample[sample.id] ?? -1);
+      expect(model.hasDegraded, sample.id).toBe(degraded.length > 0);
+      expect(model.diagnostics.every((d) => d.severity === 'degraded'), sample.id).toBe(true);
+    });
+  }
 });

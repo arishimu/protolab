@@ -109,7 +109,7 @@ Status: ready-for-agent
   | hello（`hello.pv`） | `not attacker(RSA[]) is false`（保密性破坏，含 trace）；`not attacker(Cocks[])` 对应结论成立 |
   | 握手修正版（`ex_handshake_annotated_fixed.pv`） | 3 条全部 `is true` |
   | NS 修正版互认证（`NeedhamSchroederPK-corr-mutual-auth.pv`） | 2 条全部 `is true` |
-  | NS 原版（`NeedhamSchroederPK-var1.pv`） | `inj-event(endBparam(x)) ==> inj-event(beginBparam(x)) is false`（Lowe 攻击，含 trace）；其余 `is true` |
+  | NS 原版（`NeedhamSchroederPK-var1.pv`） | 共 6 条：`inj-event(endBparam(x)) ==> inj-event(beginBparam(x)) is false`（Lowe 攻击，含 trace）；`inj-event(endAparam(x)) ==> inj-event(beginAparam(x)) is true`；`not attacker(secretANa[])` / `not attacker(secretANb[])` 均 `is true`；`not attacker(secretBNa[])` / `not attacker(secretBNb[])` 均 `is false`（B 侧泄密，亦含 trace） |
 
 - 验收即「四样例在图与结果面板上都呈现正确」（含一处降级/未配对路径演示）。
 - 本 spec 由 `/to-spec` 从 grill-with-docs 访谈产出，后续由 `/to-tickets` 拆 tracer-bullet 工单，每张带阻塞边，逐张 `/implement`。

@@ -42,6 +42,10 @@ proverif <fixture .pv> > <id>.stdout.txt 2>&1
 - 它由手写的 `Process 0` 头 + 两节查询（`not attacker(s[])` 为 `cannot be proved`、`not attacker(k[])` 为 `true`）+ `Verification summary` 拼成，
   结构照抄真实录制的行文（`-- Query ... in process 0.` / `Translating the process into Horn clauses...` / `Completing...` / `Starting query ...` / `goal reachable: ...` / `RESULT ...`），
   但没有对应的 `.pv` 源文件，也不代表任何真实协议。
+- `cannot be proved` 那节**带一段 Derivation**，并以其前的 `Could not find a trace corresponding to this derivation.` 收尾——
+  这是真实形态：`cannot be proved` 来自手册 6.7.5 的「重复动作近似」，ProVerif 会给出推导但找不到对应 trace
+  （见 `docs/proverif/note/05-output.md` 的「假攻击案例」与 `docs/proverif/note/02-secrecy.md`）。
+  保留这段正是为了让测试能守住「不得把假推导当成反例 trace」这条纪律（见 `core/test/verify-result.test.ts`）。
 - 它只用于验证解析器对 `cannot be proved` 的判定与查询切段（见 `core/test/verify-result.test.ts`）。
 - 实测补充（本机 ProVerif 2.05）：`cannot be proved` 在真实输出里**没有** `is`，即 `RESULT <查询> cannot be proved.`
   （例如 `noninterf` 查询会打印 `RESULT Non-interference s cannot be proved.`）；解析器同时兼容 ticket 字面形态 `RESULT <查询> is cannot be proved.`。

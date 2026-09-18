@@ -118,7 +118,27 @@ describe('Seam B：stdout → 按查询的结构化验证结果', () => {
       { query: 'not attacker(k[])', verdict: 'true' },
     ]);
     expect(results[0]?.goalReachable).toBe('goal reachable: attacker(s[])');
-    expect(results[0]?.counterexampleTrace).toBeNull();
+  });
+
+  it('cannot be proved 的假推导不算反例 trace：即使有 Derivation 段也返回 null', () => {
+    // 真实形态：cannot be proved 来自「重复动作近似」，ProVerif 会打印一段推导，
+    // 紧接着声明 Could not find a trace corresponding to this derivation.
+    // 那不是攻击路径，UI 不得把它当反例 trace 展开（CONTEXT.md「反例 / 攻击 trace」）。
+    const stdout = [
+      'Starting query not attacker(s[])',
+      'goal reachable: attacker(s[])',
+      '',
+      'Derivation:',
+      '',
+      '1. The message s[] may be sent to the attacker at output {1}.',
+      '',
+      'Could not find a trace corresponding to this derivation.',
+      'RESULT not attacker(s[]) cannot be proved.',
+      '',
+    ].join('\n');
+    const [only] = parseVerifyStdout(stdout);
+    expect(only?.verdict).toBe('cannot-be-proved');
+    expect(only?.counterexampleTrace).toBeNull();
   });
 
   it('兼容 ticket 字面形态 `RESULT <query> is cannot be proved.`', () => {

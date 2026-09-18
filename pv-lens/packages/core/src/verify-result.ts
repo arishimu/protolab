@@ -11,12 +11,16 @@
  * - 一条 `query a; b;` 语句会展开成多个 `Starting query` 节，且不保证有
  *   `-- Query ... in process` 头，故只以 `Starting query` 行切节。
  * - 证伪时 `Starting query` 与 `RESULT` 之间是反例 trace（`Derivation:` 起）。
+ *   注意 `cannot be proved` 也会打印 derivation（"重复动作近似"下的假推导，
+ *   ProVerif 会在其前另起一行 `Could not find a trace corresponding to this derivation.`），
+ *   那不是攻击 trace，故只对 `is false` 的节产出 counterexampleTrace。
+ *   （见 docs/proverif/note/05-output.md 的「假攻击案例」。）
  * - 形如 `RESULT (even event(...) ...)` 的括号内衍生行是对偶查询的补充说明，
  *   query 以 `(` 开头，不是独立查询的判定，必须排除。
  * - 判定只信 `RESULT` 行：proverif 退出码为 0 不代表性质成立。
  */
 
-import type { Verdict } from './index.js';
+import type { Verdict } from './verdict.js';
 
 /** 单条查询的验证结论。 */
 export interface VerificationResult {
@@ -26,8 +30,11 @@ export interface VerificationResult {
   /** 该节的 `goal reachable: ...` 行原文；该节没有这一行时为 null。 */
   goalReachable: string | null;
   /**
-   * 该节的反例 / 攻击 trace 原文（`Derivation:` 行起、到本节 RESULT 行前止，逐字保留）；
-   * 该节没有 Derivation 段时为 null。
+   * 该节的反例 / 攻击 trace 原文（`Derivation:` 行起、到本节 RESULT 行前止，逐字保留）。
+   *
+   * 仅当判定为 `false`（被证伪）时非 null；`true` / `cannot-be-proved` 一律为 null——
+   * `cannot be proved` 的 derivation 是近似导致的假推导，不是真实攻击路径
+   * （CONTEXT.md「反例 / 攻击 trace」定义）。
    */
   counterexampleTrace: string | null;
 }
@@ -65,12 +72,13 @@ export function parseVerifyStdout(stdout: string): VerificationResult[] {
     const resultMatch = RESULT_RE.exec(line);
     if (resultMatch) {
       const verdictText = resultMatch[2] ?? '';
+      const verdict = VERDICT_BY_TEXT[verdictText] ?? 'cannot-be-proved';
       const trace = traceLines.join('\n').trimEnd();
       results.push({
         query: resultMatch[1] ?? '',
-        verdict: VERDICT_BY_TEXT[verdictText] ?? 'cannot-be-proved',
+        verdict,
         goalReachable,
-        counterexampleTrace: trace.length > 0 ? trace : null,
+        counterexampleTrace: verdict === 'false' && trace.length > 0 ? trace : null,
       });
       // RESULT 行收尾本节；后续行（衍生 RESULT 行、Verification summary 等）不属本节。
       goalReachable = null;

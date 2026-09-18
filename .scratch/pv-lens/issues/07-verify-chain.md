@@ -41,3 +41,24 @@
   `proverif-integration.test.ts` 6 项真实 ProVerif 冒烟（本机 `proverif` 2.05 存在则跑、四样例各 spawn 一次并断言判定 + 真实语法错误分支；`PROVERIF_PATH` 指向不存在路径时整组 skip，已验证）。
   全仓：`pnpm test` 8 文件 64 项全绿；无 ProVerif 环境（PATH 去掉 opam）下 7 文件 58 项通过、1 文件 6 项 skip；`pnpm typecheck` 三包通过。
 - **遗留风险**：真实 ProVerif 集成测试依赖本机安装（本机已实跑通过，2.05）；`/api/verify` 无鉴权、无请求体大小上限（本地工具、不上公网，与 spec 一致）。
+
+### code-review 后处理（2025-09-18，合并 ticket 03 之后）
+
+两轴 review（Standards + Spec）对合并后的 diff 给出 OK with notes。
+
+**已修（P1，正确性）**：`verify-result.ts` 原先对任意分节都收集 `Derivation:` 段，于是 `cannot be proved` 的
+**假推导**（重复动作近似；ProVerif 会在它前面打印一行 `Could not find a trace corresponding to this derivation.`）
+会被当成 `counterexampleTrace` 返回——与 CONTEXT.md「反例 / 攻击 trace」的定义、以及本票「证伪节的反例 trace」
+相矛盾，并会让 ticket 08 的「被证伪时可展开反例 trace」UI 把假攻击当成真攻击。现改为**仅 `is false` 时**产出 trace。
+依据：`docs/proverif/note/05-output.md`「假攻击案例」与 `docs/proverif/note/02-secrecy.md`。
+人工 fixture `cannot-be-proved.stdout.txt` 相应补上真实形态的 Derivation 段（`PROVENANCE.md` 已说明来源），
+并新增回归测试「cannot be proved 的假推导不算反例 trace」；已做红检确认（回退该修复后此测试失败）。
+
+**已修（P2，测试纪律）**：删掉 `proverif-adapter.test.ts` 里断言常量自身的
+`expect(DEFAULT_PROVERIF_TIMEOUT_MS).toBeGreaterThan(0)`——tautological，不可能失败，无独立真源。
+
+**保留但记录**：
+
+- `GET /api/health` 超出本票字面接口清单，但 spec 的「服务不可达」错误类需要探活入口，保留。
+- `PvQuery.variables` 目前无消费者：把 stdout 的归一化查询映射回用户查询原文是 ticket 08 的活。
+- 适配器测试用临时文件路径/存在性做侧信道断言，是本票「写临时文件并清理」验收项的直接要求，保留。

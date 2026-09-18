@@ -7,6 +7,16 @@ Translating the process into Horn clauses...
 Completing...
 Starting query not attacker(s[])
 goal reachable: attacker(s[])
+
+Derivation:
+
+1. The message senc(senc(s[],k[]),k[]) may be sent to the attacker at output {1}.
+2. The message senc(senc(s[],k[]),k[]) that the attacker may have by 1 may be received at input {2}.
+   So the message senc(s[],k[]) may be sent to the attacker at output {2}.
+3. The message senc(s[],k[]) that the attacker may have by 2 may be received at input {2}.
+   So the message s[] may be sent to the attacker at output {2}.
+
+Could not find a trace corresponding to this derivation.
 RESULT not attacker(s[]) cannot be proved.
 -- Query not attacker(k[]) in process 0.
 Translating the process into Horn clauses...

@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { coreSamples, getSampleSource } from '@pv-lens/core';
 import {
-  DEFAULT_PROVERIF_TIMEOUT_MS,
   PROVERIF_PATH_ENV,
   runProverif,
   type ProverifFailureKind,
@@ -62,10 +61,6 @@ const helloStdout = readCoreFixture('proverif/hello.stdout.txt');
 const helloExpected = coreSamples.find((s) => s.id === 'hello')?.expectedVerdicts ?? [];
 
 describe('ProVerif CLI 适配器（stub 可执行文件，不依赖本机 ProVerif）', () => {
-  it('默认超时为正值', () => {
-    expect(DEFAULT_PROVERIF_TIMEOUT_MS).toBeGreaterThan(0);
-  });
-
   it('成功分支：写临时 .pv、spawn、解析 stdout，并清理临时文件', async () => {
     const logPath = join(stubRoot, 'success.log.json');
     const exe = writeSuccessStub('proverif-success.js', helloStdout, logPath);

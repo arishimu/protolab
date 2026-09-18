@@ -92,3 +92,22 @@ type PvTerm = variable | name | application(functor,args) | tuple | unknown;
   无参命名进程 → 全部降级，ticket 05 覆盖（ns-mutual-auth 现产出 4 条 degraded，ns-original 0 条）。
 - 变量作用域是扁平的：不建模 `let` 的嵌套作用域与变量遮蔽，对展示足够，语义级使用需谨慎。
 - 仅在 4 个内置样例与手写用例上验证，未在真实任意 `.pv` 上压测。
+
+### code-review 后处理（2025-09-18，合并 ticket 07 之后）
+
+两轴 review（Standards + Spec）对合并后的 diff 给出 OK with notes。已修：
+
+- **未断言的口径**：新增「四个样例降级画像」测试，把 hello / handshake-fixed / ns-original = 0 条 degraded、
+  ns-mutual-auth = 4 条钉下来（上面遗留一节里的数字此前无测试支撑，也只有 degraded 无 error）。
+- **依赖方向**：`Verdict` 从 barrel `index.ts` 移到叶子模块 `src/verdict.ts`，
+  消除 `verify-result.ts ↔ index.ts` 的类型层循环；公共 API 不变（`index.ts` 仍再导出）。
+
+已记录、留待 ticket 05（扩展解析器时顺手做；均为纯内部重复，且现有测试已覆盖行为）：
+
+- possible Duplicated Code：括号深度扫描循环 5 份——`state.ts` 的 `findTopLevelToken` /
+  `matchCloseIndex` / `skipToStatementEnd`、`terms.ts` 的 `skipElement`、`parse.ts` 的 `splitTopLevel`
+  → 可提一个共享 walker。
+- possible Duplicated Code：空白折叠 5 份——`lexer.ts` 的 `collapseWhitespace`、
+  `state.ts` 的 `snippetOf`、`process.ts` 两处、`parse.ts` 一处 → 复用已导出的 `collapseWhitespace`。
+- possible Duplicated Code：`replicated` / `parallel` 传播——`process.ts` 的 `scanParallel`
+  与 `parse.ts` 的 `toPublicRole` 各写一遍。

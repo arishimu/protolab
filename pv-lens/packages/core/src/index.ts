@@ -10,9 +10,10 @@
  */
 
 import { sampleTexts } from './sample-texts.generated.js';
+import type { Verdict } from './verdict.js';
 
-/** ProVerif 对一条查询给出的判定值。 */
-export type Verdict = 'true' | 'false' | 'cannot-be-proved';
+/** ProVerif 对一条查询给出的判定值。类型定义在叶子模块 src/verdict.ts。 */
+export type { Verdict } from './verdict.js';
 
 /** 一条（归一化）查询的期望判定：query 为 ProVerif stdout 中呈现的原文形态。 */
 export interface ExpectedVerdict {
