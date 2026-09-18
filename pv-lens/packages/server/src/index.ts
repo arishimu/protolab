@@ -1,30 +1,36 @@
 /**
- * pv-lens 后端入口（ticket 01 脚手架阶段的最小形态）。
+ * pv-lens 后端入口。
  *
- * 当前职责：证明 @pv-lens/core 能被 Node 端按包名依赖并解析，
- * 并暴露一个最基本的运行信息。正式的 HTTP 服务与
- * ProVerif CLI 适配器（spawn / 超时 / 取消 / 缺可执行文件分类）见 ticket 07。
+ * 组成（ticket 07）：
+ * - `proverif-adapter`：CLI 适配器（写临时 .pv、spawn、超时/取消、失败分类，ADR-0002）
+ * - `verify-service`：收 .pv 文本 → 结构化结果 + 完整原始 stdout 的用例层（可注入适配器）
+ * - `http-service`：node:http 最小 HTTP 服务（POST /api/verify、GET /api/health）
+ *
+ * 直接执行（node dist/index.js）时启动 HTTP 服务并打印端口；被 import 时无副作用。
  */
 
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { coreSamples } from '@pv-lens/core';
 
-export interface ServerInfo {
-  name: string;
-  builtinSampleCount: number;
-}
+import { startVerifyHttpServer } from './http-service.js';
+// serverInfo / ServerInfo 在 server-info 模块定义，此处原样再导入并导出（保持既有公共接口）。
+import { serverInfo } from './server-info.js';
 
-/** 运行信息：目前只回显从 core 读到的内置样例数。 */
-export function serverInfo(): ServerInfo {
-  return { name: 'pv-lens-server', builtinSampleCount: coreSamples.length };
-}
+export { SERVER_NAME, serverInfo, type ServerInfo } from './server-info.js';
 
-// 直接执行（node dist/index.js）时打印就绪信息；被 import 时无副作用。
+export * from './proverif-adapter.js';
+export * from './verify-service.js';
+export * from './http-service.js';
+
+// 直接执行（node dist/index.js）时启动服务并打印端口；被 import 时无副作用。
 const thisFile = resolve(fileURLToPath(import.meta.url));
 const isMain = process.argv[1] !== undefined && resolve(process.argv[1]) === thisFile;
 
 if (isMain) {
   const info = serverInfo();
-  console.log(`${info.name} ready · built-in samples: ${info.builtinSampleCount}`);
+  const { port } = await startVerifyHttpServer();
+  console.log(
+    `${info.name} ready · built-in samples: ${info.builtinSampleCount} · ` +
+      `listening on http://127.0.0.1:${String(port)}`,
+  );
 }

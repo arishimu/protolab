@@ -1,0 +1,25 @@
+Process 0 (that is, the initial process):
+{1}out(c, senc(s,k))
+{2}in(c, x: bitstring)
+
+-- Query not attacker(s[]) in process 0.
+Translating the process into Horn clauses...
+Completing...
+Starting query not attacker(s[])
+goal reachable: attacker(s[])
+RESULT not attacker(s[]) cannot be proved.
+-- Query not attacker(k[]) in process 0.
+Translating the process into Horn clauses...
+Completing...
+Starting query not attacker(k[])
+RESULT not attacker(k[]) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker(s[]) cannot be proved.
+
+Query not attacker(k[]) is true.
+
+--------------------------------------------------------------
+

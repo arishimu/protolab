@@ -6,6 +6,7 @@
 
 - `pv/<id>.pv`：样例 `.pv` 原文（复制自 `docs/proverif/pv/`，字节一致，不读取该相对路径）
 - `proverif/<id>.stdout.txt`：对对应 `.pv` 调用本机 ProVerif 的全量 stdout 录制（未裁剪）
+- `proverif/cannot-be-proved.stdout.txt`：**人工构造**的 stdout（见下「人工构造 fixture」）
 
 ## 源文件映射（与 `docs/proverif/pv/` 逐字一致）
 
@@ -32,3 +33,15 @@ proverif <fixture .pv> > <id>.stdout.txt 2>&1
 - `ns-original.stdout.txt` 末尾对 `inj-event(endBparam(x)) ==> inj-event(beginBparam(x))` 判 false 后，ProVerif 会额外打印一行括号内衍生说明
   `RESULT (even event(endBparam(x)) ==> event(beginBparam(x)) is false.)` —— 这是对非注入版查询的诊断回声，不是独立的查询分节；解析时按「query 不以 `(` 开头」的 RESULT 行识别正片（见 `core/test/fixtures.test.ts`）。
 - NS 原版除 Lowe 攻击查询（false）与 A 侧认证（true）外，B 侧 nonce 保密查询 `not attacker(secretBNa[]/secretBNb[])` 亦为 false——与学习笔记 06b「A 侧正常、B 侧全灭」一致。spec.md Further Notes 表中「NS 原版：其余 is true」为简写，应以本机实测与本表为准。
+
+## 人工构造 fixture
+
+`proverif/cannot-be-proved.stdout.txt` **不是**真实录制，是 ticket 07 人工构造的 stdout：
+四个基准样例都不会出现 `cannot be proved`，而解析器必须支持该判定（spec 的 stdout 解析事实）。
+
+- 它由手写的 `Process 0` 头 + 两节查询（`not attacker(s[])` 为 `cannot be proved`、`not attacker(k[])` 为 `true`）+ `Verification summary` 拼成，
+  结构照抄真实录制的行文（`-- Query ... in process 0.` / `Translating the process into Horn clauses...` / `Completing...` / `Starting query ...` / `goal reachable: ...` / `RESULT ...`），
+  但没有对应的 `.pv` 源文件，也不代表任何真实协议。
+- 它只用于验证解析器对 `cannot be proved` 的判定与查询切段（见 `core/test/verify-result.test.ts`）。
+- 实测补充（本机 ProVerif 2.05）：`cannot be proved` 在真实输出里**没有** `is`，即 `RESULT <查询> cannot be proved.`
+  （例如 `noninterf` 查询会打印 `RESULT Non-interference s cannot be proved.`）；解析器同时兼容 ticket 字面形态 `RESULT <查询> is cannot be proved.`。

@@ -143,3 +143,6 @@ export interface LoadableSample {
 export function listLoadableSamples(): readonly LoadableSample[] {
   return coreSamples.map((def) => ({ def, source: sampleTexts[def.id] }));
 }
+
+export type { VerificationResult } from './verify-result.js';
+export { parseVerifyStdout } from './verify-result.js';
