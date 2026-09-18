@@ -143,3 +143,33 @@ export interface LoadableSample {
 export function listLoadableSamples(): readonly LoadableSample[] {
   return coreSamples.map((def) => ({ def, source: sampleTexts[def.id] }));
 }
+
+/**
+ * Seam A（ticket 03）：`.pv` 文本 → 语义模型。
+ *
+ * 纯转换：字符串进、结构化数据出；不读文件、不抛异常，解析失败一律以诊断返回。
+ * 类型定义见 src/parser/model.ts，契约说明见 src/parser/parse.ts 文件头。
+ */
+export { parsePv, MAIN_PROCESS_NAME } from './parser/parse.js';
+export type {
+  AnnotationPlacement,
+  ApplicationTerm,
+  DiagnosticSeverity,
+  EventAnnotation,
+  FreshName,
+  GuardNote,
+  MessageStep,
+  NameTerm,
+  ParseResult,
+  PvDiagnostic,
+  PvQuery,
+  PvRole,
+  PvTerm,
+  RoleParameter,
+  SourcePosition,
+  SourceSpan,
+  StepAnnotations,
+  TupleTerm,
+  UnknownTerm,
+  VariableTerm,
+} from './parser/model.js';
