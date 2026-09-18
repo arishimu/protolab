@@ -1,9 +1,21 @@
+import { useMemo } from 'react';
+import { parsePv } from '@pv-lens/core';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
 import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
+import { NarrativeView } from './narrative/NarrativeView';
 import './styles.css';
 
-/** 已装载视图：标题 + 只读源码面板；渲染/验证区域由后续工单（04/08）在此扩展。 */
+/**
+ * 规范叙事视图（ticket 04）：把当前 .pv 文本解析成语义模型并绘制泳道图。
+ * 解析是纯转换（不进 server），按 source 记忆化，避免每次渲染重解析。
+ */
+function NarrativeSection({ source }: { source: string }) {
+  const result = useMemo(() => parsePv(source), [source]);
+  return <NarrativeView result={result} />;
+}
+
+/** 已装载视图：标题 + 只读源码面板 + 规范叙事视图；验证结果面板由后续工单（08）在此扩展。 */
 function LoadedView() {
   const { current, clear } = useCurrentProtocol();
   if (!current) return null;
@@ -24,9 +36,7 @@ function LoadedView() {
       </div>
       <p className="hint">{current.description}</p>
       <SourcePanel protocol={current} />
-      <p className="hint" style={{ marginTop: '1rem' }}>
-        规范叙事视图（泳道图）与运行验证将在此协议文本之上展开——本阶段仅到文本与源码展示。
-      </p>
+      <NarrativeSection source={current.source} />
     </div>
   );
 }
@@ -37,7 +47,7 @@ export function App() {
       <div className="app">
         <header className="app-header">
           <h1>pv-lens</h1>
-          <span className="subtitle">安全协议规范叙事视图 · 只读源码（本阶段）</span>
+          <span className="subtitle">安全协议规范叙事视图 · 只读（画布编辑属二期）</span>
         </header>
         <ContentView />
       </div>
