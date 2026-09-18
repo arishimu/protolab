@@ -5,17 +5,17 @@
  * - 纯转换，只「字符串进 → 结构化数据出」，不读文件、不抛异常。解析失败一律以
  *   `diagnostics` 返回：`degraded` = 看不懂但可跳过（带 span 与原文片段），
  *   `error` = 语法错误（带 span）。
- * - `roles` 只放命名进程（协议角色，`.pv` 里的 `let name(params) = body`）。
- *   无命名进程的内联主进程（`process` 关键字后的进程体）单独放在 `mainProcess`：
- *   它是协议启动处而非协议参与方，hello 这类样例只有它。渲染方在 `roles` 为空而
- *   `mainProcess` 非空时，应把主进程当作一条 `main` 泳道展示，而不是当作「无角色结构」。
+ * - `roles` 只放命名进程（协议角色）：`let name(params) = body` 与无参的 `let name = body`
+ *   （`name` 后不是 `(`，且 `body` 以进程起始构造开头）。无命名进程的内联主进程
+ *   （`process` 关键字后的进程体）单独放在 `mainProcess`：它是协议启动处而非协议参与方，
+ *   hello 这类样例只有它。渲染方在 `roles` 为空而 `mainProcess` 非空时，应把主进程当作
+ *   一条 `main` 泳道展示，而不是当作「无角色结构」。
  * - 声明区（`type` / `fun` / `reduc` / `free` / `const` / `event` / `table` / `not` /
- *   顶层 `let` 绑定）宽容解析：整体跳过，不建模、不报错。ticket 05 需要按声明种类
- *   细分解析时，扩展 `skipDeclaration` 即可。
+ *   顶层词项绑定 `let`）宽容解析：整体跳过，不建模、不报错。
  */
 
 import type { ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan } from './model.js';
-import { tokenize } from './lexer.js';
+import { tokenize, type Token } from './lexer.js';
 import {
   TokenCursor,
   findTopLevelToken,
@@ -34,6 +34,32 @@ export const MAIN_PROCESS_NAME = 'main';
  * 结尾的 `.`（它在 `.pv` 里总是最后一段），两种写法都容忍。
  */
 const PROCESS_BODY_TERMINATORS: ReadonlySet<string> = new Set(['.']);
+
+/**
+ * 进程起始构造：无参 `let NAME = body .` 用它区分「无参命名进程」与「顶层词项绑定」。
+ * `0` 是终止进程、`!` 是复制、`(` 是括号分组。
+ */
+const PROCESS_START_TOKENS: ReadonlySet<string> = new Set([
+  'in',
+  'out',
+  'new',
+  'let',
+  'if',
+  'event',
+  'insert',
+  'get',
+  'table',
+  'phase',
+  'choice',
+  'not',
+  '!',
+  '(',
+  '0',
+]);
+
+function isProcessBodyStart(token: Token): boolean {
+  return PROCESS_START_TOKENS.has(token.text);
+}
 
 /** 扫描中的角色（步骤先留在 `body`，最后统一落到公开模型）。 */
 interface MutableRole {
@@ -95,10 +121,13 @@ function parseMainProcess(cursor: TokenCursor): MutableRole {
 }
 
 /**
- * 解析命名进程定义 `let name(params) = body.`（协议角色）。
+ * 解析命名进程定义（协议角色）。
  *
- * 顶层 `let NAME = ... .`（无参数列表）既可能是无参进程定义、也可能是词项绑定，
- * 语法上无法区分：v1 一并降级跳过（ticket 05 覆盖）。
+ * 两种形态：
+ * - `let name(params) = body.`：带参数列表，必然是无参进程定义的反面，直接建模。
+ * - `let NAME = body.`（`NAME` 后不是 `(`）：与顶层词项绑定语法同形，用 `body` 的首个记号
+ *   区分——以进程起始构造（见 `PROCESS_START_TOKENS`）开头则建模为无参角色，
+ *   否则按顶层词项绑定降级跳过（带原文标注）。
  */
 function parseRoleDefinition(cursor: TokenCursor): MutableRole | null {
   const keyword = cursor.next();
@@ -110,20 +139,26 @@ function parseRoleDefinition(cursor: TokenCursor): MutableRole | null {
     return null;
   }
 
-  if (cursor.peek(1).text !== '(') {
+  let parameters: RoleParameter[] = [];
+  if (cursor.peek(1).text === '(') {
     cursor.next();
-    const start = keyword.span.start;
-    recoverToDeclarationEnd(cursor);
-    cursor.degraded(
-      'v1 只建模带参数列表的命名进程（`let name(params) = body`）；已跳过顶层 `let` 绑定',
-      cursor.span(start),
-    );
-    return null;
+    const parsed = parseRoleParameters(cursor);
+    if (parsed === null) return null;
+    parameters = parsed;
+  } else {
+    cursor.next();
+    // `=` 缺失时交给下面统一的缺 `=` 报错处理；只在能看到 body 首记号时才判定。
+    const bodyStart = cursor.atPunct('=') ? cursor.peek(1) : null;
+    if (bodyStart !== null && !isProcessBodyStart(bodyStart)) {
+      const start = keyword.span.start;
+      recoverToDeclarationEnd(cursor);
+      cursor.degraded(
+        '顶层 `let` 绑定不是命名进程（`let name(params) = body` 或无参 `let name = body`），已按词项绑定降级跳过',
+        cursor.span(start),
+      );
+      return null;
+    }
   }
-
-  cursor.next();
-  const parameters = parseRoleParameters(cursor);
-  if (parameters === null) return null;
 
   if (!cursor.match('=')) {
     cursor.error('角色定义缺少 `=`', cursor.span(keyword.span.start));

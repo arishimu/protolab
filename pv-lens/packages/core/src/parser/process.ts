@@ -1,13 +1,18 @@
 /**
  * 进程体扫描：`.pv` 的进程（角色体 / 主进程体）→ 有序消息步骤 + 角色级事实。
  *
- * v1 覆盖握手级子集：`out` / `in` / `new` / `let` / `if` / `event` / `0` / 顺序 `;` /
- * 并行 `|` / 复制 `!` / 括号 / 命名进程调用。不支持的语句产生 degraded 诊断并跳过，
+ * 覆盖顺序协议子集：`out` / `in` / `new` / `let` / `if`[`else`] / `event` / `insert` /
+ * `get`[`else`] / `0` / 顺序 `;` / 并行 `|` / 复制 `!` / 括号 / 命名进程调用。
+ * 不支持的语句（`table` / `phase` / `choice` / `not`）产生 degraded 诊断并跳过，
  * 语法错误产生 error 诊断并跳到语句结尾继续，绝不抛异常。
  *
- * 标注挂载规则：`new` / `event` / 守卫条件先记为「待挂标注」，挂到其后最近的消息步骤
+ * 标注挂载规则：`new` / `event` / 守卫与表操作注释先记为「待挂标注」，挂到其后最近的消息步骤
  * （placement `before`，因为扫描按源码顺序推进）；进程体结束时仍未消费的标注挂到最后
  * 一条消息步骤（placement `after`）。若进程体没有任何消息步骤，则记一条 degraded。
+ *
+ * 进程体是**线性展开**的：`let` 的 continuation、`get ... in P else Q` 与 `if ... then P else Q`
+ * 的两个分支内的消息步都按源码顺序并入同一序列（分支树结构不保留，其条件 / 模式以
+ * `GuardNote` 注释挂在步骤上）。
  */
 
 import type {
@@ -18,6 +23,7 @@ import type {
   PvTerm,
   SourceSpan,
 } from './model.js';
+import { collapseWhitespace } from './lexer.js';
 import {
   TokenCursor,
   findTopLevelToken,
@@ -170,12 +176,16 @@ function scanStatement(cursor: TokenCursor, body: BodyScan, terminators: Readonl
         scanEvent(cursor, body);
         return;
       case 'insert':
+        scanInsert(cursor, body);
+        return;
       case 'get':
+        scanGet(cursor, body, terminators);
+        return;
       case 'table':
       case 'phase':
       case 'choice':
       case 'not':
-        scanUnsupported(cursor, `v1 不支持 \`${token.text}\` 语句（留待 ticket 05 覆盖）`);
+        scanUnsupported(cursor, `暂不支持 \`${token.text}\` 语句，已按原文降级`);
         return;
       default:
         scanInvocation(cursor, body);
@@ -334,13 +344,57 @@ function scanLet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
     };
     body.pending.guards.push({
       kind: 'let-pattern',
-      text: cursor.slice(span).replace(/\s+/g, ' ').trim(),
+      text: collapseWhitespace(cursor.slice(span)),
       span,
     });
   }
 
   cursor.position = inIndex + 1;
   scanSequence(cursor, body, terminators);
+}
+
+/**
+ * `get 模式 in P else Q`：模式作为语句注释挂到两个分支展开出的首个消息步
+ * （placement `before`）。`in` 分支与 `let` 一样内联展开（`in` 之后直到当前序列的 `else`
+ * 或结尾），`else` 分支与 `if ... else ...` 同一套处理。
+ * 与 if 一样不伪造反向条件：两个分支都带源码里的模式原文，不区分 in / else。
+ */
+function scanGet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<string>): void {
+  const keyword = cursor.next();
+  const patternStart = cursor.position;
+  const inIndex = findTopLevelToken(cursor, patternStart, ['in']);
+  if (inIndex < 0 || inIndex === patternStart) {
+    cursor.error('`get` 语句应为 `get 模式 in 进程`', cursor.span(keyword.span.start));
+    skipToStatementEnd(cursor);
+    return;
+  }
+
+  const patternTokens = cursor.tokens.slice(patternStart, inIndex);
+  for (const name of collectPatternBinders(patternTokens)) body.variables.add(name);
+
+  const span: SourceSpan = {
+    start: patternTokens[0].span.start,
+    end: cursor.tokens[inIndex - 1].span.end,
+  };
+  const guard: PendingGuard = { kind: 'get', text: collapseWhitespace(cursor.slice(span)), span };
+  body.pending.guards.push(guard);
+
+  cursor.position = inIndex + 1;
+  scanBranches(cursor, body, terminators, guard);
+}
+
+/** `insert 表(键, 值)`：整条语句作注释，挂到其后最近的消息步。 */
+function scanInsert(cursor: TokenCursor, body: BodyScan): void {
+  const keyword = cursor.next();
+  const contentStart = cursor.position;
+  skipToStatementEnd(cursor);
+  if (cursor.position === contentStart) {
+    cursor.error('`insert` 后缺少表操作内容', cursor.span(keyword.span.start));
+    return;
+  }
+
+  const span = cursor.span(cursor.tokens[contentStart].span.start);
+  body.pending.guards.push({ kind: 'insert', text: collapseWhitespace(cursor.slice(span)), span });
 }
 
 function scanIf(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<string>): void {
@@ -357,26 +411,37 @@ function scanIf(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<st
     start: cursor.tokens[conditionStart].span.start,
     end: cursor.tokens[thenIndex - 1].span.end,
   };
-  body.pending.guards.push({
-    kind: 'if',
-    text: cursor.slice(span).replace(/\s+/g, ' ').trim(),
-    span,
-  });
+  const guard: PendingGuard = { kind: 'if', text: collapseWhitespace(cursor.slice(span)), span };
+  body.pending.guards.push(guard);
 
   cursor.position = thenIndex + 1;
-  scanSequence(cursor, body, new Set([...terminators, 'else']));
+  scanBranches(cursor, body, terminators, guard);
+}
 
-  if (cursor.atIdent('else')) {
-    cursor.next();
-    const elseStart = cursor.peek().span.start;
-    skipToStatementEnd(cursor);
-    cursor.degraded('v1 只建模 `if` 的 then 分支，`else` 分支已跳过（留待 ticket 05 覆盖）', cursor.span(elseStart));
-  }
+/**
+ * `X ... P else Q` 的公共线性展开（`if ... then` 与 `get ... in` 共用）：先扫 P（把 `else`
+ * 当分支边界），遇到 `else` 再扫 Q。两个分支的首个消息步都带同一条守卫注释——
+ * 不伪造 `!cond`（避免臆造源码里没有的条件），见 model.ts 的 GuardNote 注释。
+ */
+function scanBranches(
+  cursor: TokenCursor,
+  body: BodyScan,
+  terminators: ReadonlySet<string>,
+  guard: PendingGuard,
+): void {
+  scanSequence(cursor, body, new Set([...terminators, 'else']));
+  if (!cursor.atIdent('else')) return;
+
+  cursor.next();
+  // 守卫已挂到 then / in 分支的消息步上时（pending 已被清空），这里重新放回，让 else 分支的
+  // 首个消息步也带上；若前一分支没有消息步，守卫还在 pending 里，就自然落到 else 分支。
+  if (!body.pending.guards.includes(guard)) body.pending.guards.push({ ...guard });
+  scanSequence(cursor, body, terminators);
 }
 
 function scanInvocation(cursor: TokenCursor, body: BodyScan): void {
   const nameToken = cursor.next();
-  // v1 不建模调用实参，只需知道被调用的角色名。
+  // 不建模调用实参，只需知道被调用的角色名。
   skipBalanced(cursor);
   body.invocations.push({
     name: nameToken.text,

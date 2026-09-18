@@ -156,6 +156,7 @@ export type {
   AnnotationPlacement,
   ApplicationTerm,
   DiagnosticSeverity,
+  EqualityTerm,
   EventAnnotation,
   FreshName,
   GuardNote,

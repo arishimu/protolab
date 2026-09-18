@@ -53,14 +53,32 @@ export interface TupleTerm {
   text: string;
 }
 
+/**
+ * 等值模式 `=M`：接收到的词项必须等于 `M`。
+ * 结构化保留被比较的词项 `M` 与原文（如 `=Na`），供展示端渲染为「等于某值」的模式；
+ * ProVerif 的等值约束语义本身不在此建模。
+ */
+export interface EqualityTerm {
+  kind: 'equality';
+  term: PvTerm;
+  /** 模式原文（源码切片，如 `=Na`）。 */
+  text: string;
+}
+
 /** 解析不了的词项：保留原文兜底，并配一条 degraded 诊断。 */
 export interface UnknownTerm {
   kind: 'unknown';
   text: string;
 }
 
-/** 结构化词项（构造子 + 参数 + 变量 / 名字）。 */
-export type PvTerm = VariableTerm | NameTerm | ApplicationTerm | TupleTerm | UnknownTerm;
+/** 结构化词项（构造子 + 参数 + 变量 / 名字 / 等值模式）。 */
+export type PvTerm =
+  | VariableTerm
+  | NameTerm
+  | ApplicationTerm
+  | TupleTerm
+  | EqualityTerm
+  | UnknownTerm;
 
 /** 标注相对所挂消息步骤的源码位置：`before` 出现在该步骤之前，`after` 出现在之后（尾部标注）。 */
 export type AnnotationPlacement = 'before' | 'after';
@@ -84,10 +102,25 @@ export interface EventAnnotation {
   span: SourceSpan;
 }
 
-/** 生效于消息步骤的守卫条件：`if` 的条件，或含等值模式 `=M` 的 `let` 语句模式。 */
+/**
+ * 挂在消息步骤上的守卫条件或表操作语句注释。
+ *
+ * - `if`：`if cond then P [else Q]` 的条件 `cond` 原文。
+ * - `get`：`get 模式 in P [else Q]` 的模式原文；continuation `P` 已内联展开为该步骤之后的
+ *   消息步，故这条注释说明「取到匹配项才继续」。
+ * - `let-pattern`：含等值模式 `=M` 的 `let` 语句模式原文。
+ * - `insert`：`insert ...` 表操作语句的原文。
+ *
+ * 进程体是线性展开的，`if` / `get` 的 then（in）与 else 两条分支不保留树结构：两分支的
+ * 消息步都带同一条条件 / 模式原文，不伪造反向条件（不臆造源码里没有的 `!cond`）。
+ * 渲染端据此提示「该步骤处于受守卫分支」，但不区分 then / else。
+ *
+ * 挂载规则与 `EventAnnotation` 相同：`before` = 该语句出现在这条消息步骤之前；
+ * `after` = 进程体结束时仍未消费、补挂到最后一条消息步骤上。
+ */
 export interface GuardNote {
-  kind: 'if' | 'let-pattern';
-  /** 条件原文（内部连续空白压成单空格）。 */
+  kind: 'if' | 'let-pattern' | 'get' | 'insert';
+  /** 语句原文（内部连续空白压成单空格）。 */
   text: string;
   placement: AnnotationPlacement;
   span: SourceSpan;
@@ -101,7 +134,8 @@ export interface StepAnnotations {
    *  规则：`event` 语句挂到其后最近的消息步骤（`before`）；角色体结束时仍未被消费的
    *  事件挂到最后一条消息步骤（`after`）。 */
   events: readonly EventAnnotation[];
-  /** 生效于该步骤的守卫条件，挂载规则与事件相同。 */
+  /** 生效于该步骤的守卫条件与表操作语句注释（`if` / `let-pattern` / `get` / `insert`），
+   *  挂载规则与事件相同。线性展开下 `if` 的 then / else 分支共带同一条条件原文，见 GuardNote。 */
   guards: readonly GuardNote[];
   /** 该步骤是否处于复制 `!` 作用域内（角色体被 `!` 包裹，或该角色被 `!` 实例化）。 */
   replicated: boolean;

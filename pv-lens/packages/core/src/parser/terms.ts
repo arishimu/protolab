@@ -1,14 +1,13 @@
 /**
  * 词项解析：`.pv` 的词项 / 模式 → 结构化 `PvTerm`。
  *
- * v1 支持：名字与变量叶子（含 `: 类型` 标注）、构造子应用、元组、括号。
- * v1 不支持：等值模式 `=M`（降级为 `unknown` + degraded 诊断，见 ticket 05）；
+ * 支持：名字与变量叶子（含 `: 类型` 标注）、构造子应用、元组、括号、等值模式 `=M`。
  * 语法错误返回 null 并写入 error 诊断，由调用方决定是否放弃该语句。
  */
 
 import type { PvTerm } from './model.js';
 import type { Token } from './lexer.js';
-import { OPEN_PUNCT, CLOSE_PUNCT, type TokenCursor } from './state.js';
+import type { TokenCursor } from './state.js';
 
 /**
  * 变量作用域：裸标识符在此集合中判为变量，否则判为名字
@@ -44,14 +43,13 @@ export function parseTerm(cursor: TokenCursor, scope: VariableScope): PvTerm | n
       : { kind: 'name', name: token.text, text: token.text };
   }
 
-  // 等值模式 `=M`：接收到的词项必须等于 M。v1 不建模其语义，保留原文并降级。
+  // 等值模式 `=M`：接收到的词项必须等于 M。结构化保留 M 与原文（ticket 05）。
   if (token.kind === 'punct' && token.text === '=') {
     const start = token.span.start;
     cursor.next();
-    if (parseTerm(cursor, scope) === null) skipElement(cursor);
-    const span = cursor.span(start);
-    cursor.degraded('v1 不支持等值模式 `=M`（收到的词项必须等于 M），已按原文降级', span);
-    return { kind: 'unknown', text: cursor.slice(span) };
+    const term = parseTerm(cursor, scope);
+    if (term === null) return null;
+    return { kind: 'equality', term, text: cursor.slice(cursor.span(start)) };
   }
 
   cursor.error(`期望词项，实际遇到 \`${token.text || '文件末尾'}\``, token.span);
@@ -124,24 +122,6 @@ function parseParenOrTuple(cursor: TokenCursor, scope: VariableScope): PvTerm | 
 
   if (items.length === 1) return items[0];
   return { kind: 'tuple', items, text: cursor.slice(cursor.span(open.span.start)) };
-}
-
-/** 跳过一个语法残缺的条目（用于出错恢复），返回跳过的原文。 */
-function skipElement(cursor: TokenCursor): string {
-  const start = cursor.peek().span.start;
-  let depth = 0;
-  while (!cursor.atEnd) {
-    const token = cursor.peek();
-    if (token.kind === 'punct') {
-      if (OPEN_PUNCT.includes(token.text)) depth += 1;
-      else if (CLOSE_PUNCT.includes(token.text)) {
-        if (depth === 0) break;
-        depth -= 1;
-      } else if (depth === 0 && (token.text === ',' || token.text === ';' || token.text === '.')) break;
-    }
-    cursor.next();
-  }
-  return cursor.slice(cursor.span(start));
 }
 
 /** 收集模式里的绑定变量名（`x: t`、裸 `x`；`=x` 与 `: t` 的类型名不算绑定），用于变量作用域。 */
