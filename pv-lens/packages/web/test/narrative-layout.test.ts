@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { parsePv } from '@pv-lens/core';
+import { parsePv, pairSteps } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { buildNarrativeLayout } from '../src/narrative/layout';
 
@@ -94,6 +94,21 @@ describe('未配对标注与 ticket 06 的配对接缝', () => {
     });
     expect(layout.crossLaneEdges).toEqual([]);
     expect(layout.lanes[0].cards[0].unpaired).toBe(true);
+  });
+
+  it('core 的保守配对结果可直接喂给布局：结构确定的两条消息产出两条连线', () => {
+    const result = parsePv(`
+      free c: channel.
+      let roleA = out(c, (n1, n2)); in(c, (n3, n4)).
+      let roleB = in(c, (x, y)); out(c, (n3, n4)).
+      process roleA | roleB.
+    `);
+    const layout = buildNarrativeLayout(result, { pairings: pairSteps(result) });
+    expect(layout.crossLaneEdges).toHaveLength(2);
+    expect(layout.lanes[0].cards[0].unpaired).toBe(false);
+    expect(layout.lanes[1].cards[0].unpaired).toBe(false);
+    expect(layout.lanes[0].cards[1].unpaired).toBe(false);
+    expect(layout.lanes[1].cards[1].unpaired).toBe(false);
   });
 });
 

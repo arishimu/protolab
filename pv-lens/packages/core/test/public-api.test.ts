@@ -48,6 +48,7 @@ describe('core 无 Node / 浏览器 API 泄漏（src 纯净性守卫）', () => 
     expect(files.length).toBeGreaterThanOrEqual(7);
     expect(files.map((f) => relative(srcDir, f)).sort()).toEqual([
       'index.ts',
+      'pairing.ts',
       'parser/lexer.ts',
       'parser/model.ts',
       'parser/parse.ts',

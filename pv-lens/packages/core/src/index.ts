@@ -192,3 +192,10 @@ export type { NotationLegendEntry } from './symbolic-term.js';
  */
 export { parseVerifyStdout } from './verify-result.js';
 export type { VerificationResult } from './verify-result.js';
+
+/**
+ * 保守配对引擎（ticket 06）：跨泳道 out → in 配对判定，只在双向唯一可确定时连线。
+ * `pairSteps` 的下标对齐 `narrativeRoleOrder` 的泳道顺序，可直接喂给 web 的布局。
+ */
+export { pairSteps, narrativeRoleOrder } from './pairing.js';
+export type { StepPairing, StepPairingAnchor } from './pairing.js';

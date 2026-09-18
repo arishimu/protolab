@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from 'react';
-import type { ParseResult } from '@pv-lens/core';
+import type { ParseResult, StepPairing } from '@pv-lens/core';
 import { NARRATIVE_METRICS, buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import type {
   CrossLaneEdge,
@@ -16,7 +16,6 @@ import type {
   NarrativeLane,
   NarrativeLayout,
   StepCard,
-  StepPairing,
 } from './layout';
 import { Legend } from './Legend';
 
@@ -46,7 +45,8 @@ export function NarrativeView({ result, pairings }: NarrativeViewProps) {
         <>
           <p className="hint">
             每条泳道是一个角色，泳道内按源码顺序排列消息步骤（方向 / 信道 / 符号化词项 /
-            new / event / 守卫注释）。默认所有步骤都标为「未配对」——配对不确定时不臆造连线。
+            new / event / 守卫注释）。无法可靠确定收发配对的步骤标为「未配对」——只有保守
+            配对引擎在结构上双向唯一确定时才画跨泳道连线，歧义一律不臆造。
           </p>
           <NarrativeCanvas layout={layout} />
           <Legend />

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { parsePv } from '@pv-lens/core';
+import { pairSteps, parsePv } from '@pv-lens/core';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
 import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
@@ -13,6 +13,8 @@ function LoadedView() {
   // 解析是纯转换（不进 server）。在这里解析一次、按 source 记忆化，泳道图与验证面板共用，
   // 避免两处各解析一遍；`current` 为空时解析空串，随后立即返回（不在条件里调 hook）。
   const parseResult = useMemo(() => parsePv(current?.source ?? ''), [current?.source]);
+  // 保守配对引擎（ticket 06）：只在结构可确定时给跨泳道连线；解析结果变则重算。
+  const pairings = useMemo(() => pairSteps(parseResult), [parseResult]);
   if (!current) return null;
 
   const originText =
@@ -31,7 +33,7 @@ function LoadedView() {
       </div>
       <p className="hint">{current.description}</p>
       <SourcePanel protocol={current} />
-      <NarrativeView result={parseResult} />
+      <NarrativeView result={parseResult} pairings={pairings} />
       <VerifyPanel source={current.source} parseResult={parseResult} />
     </div>
   );

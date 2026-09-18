@@ -15,8 +15,15 @@
  * 跨泳道连线（连线形态由渲染端决定，布局只给端点锚点）。
  */
 
-import type { MessageStep, ParseResult, PvDiagnostic, PvRole } from '@pv-lens/core';
-import { renderTerm } from '@pv-lens/core';
+import type {
+  MessageStep,
+  ParseResult,
+  PvDiagnostic,
+  PvRole,
+  StepPairing,
+  StepPairingAnchor,
+} from '@pv-lens/core';
+import { narrativeRoleOrder, renderTerm } from '@pv-lens/core';
 
 /** 布局用的固定尺寸常量（改这里即可整体缩放，视图与测试共用同一份）。 */
 export const NARRATIVE_METRICS = {
@@ -146,19 +153,8 @@ export interface NarrativeLane {
   height: number;
 }
 
-/** 配对端点：`roleIndex` 为泳道下标，`stepIndex` 为该泳道内的步骤下标。 */
-export interface StepPairingAnchor {
-  roleIndex: number;
-  stepIndex: number;
-}
-
-/** 一条跨泳道配对（ticket 06 的保守配对引擎产出，渲染端只消费）。 */
-export interface StepPairing {
-  from: StepPairingAnchor;
-  to: StepPairingAnchor;
-}
-
-/** 一条跨泳道连线的端点锚点（卡片边缘中点），连线形态由渲染端决定。 */
+/** 一条跨泳道连线的端点锚点（卡片边缘中点），连线形态由渲染端决定。
+ *  配对端点 `StepPairingAnchor` / `StepPairing` 由 core 的配对引擎定义（ticket 06）。 */
 export interface CrossLaneEdge {
   from: StepPairingAnchor & { x: number; y: number };
   to: StepPairingAnchor & { x: number; y: number };
@@ -304,17 +300,12 @@ interface LaneSource {
 }
 
 /**
- * 选出要画成泳道的角色：有命名进程就用命名进程，否则退回内联主进程（`main`）。
- * 两者都没有时返回空数组，视图据此显示「无角色结构」中文提示。
+ * 选出要画成泳道的角色：复用 core 的 `narrativeRoleOrder`（与配对引擎同一份泳道顺序，
+ * 从而配对下标不会与泳道下标漂移）。有命名进程就用命名进程，否则退回内联主进程（`main`）。
  */
 function selectLaneSources(result: ParseResult): LaneSource[] {
-  if (result.roles.length > 0) {
-    return result.roles.map((role) => ({ role, kind: 'role' as const }));
-  }
-  if (result.mainProcess !== null) {
-    return [{ role: result.mainProcess, kind: 'main' as const }];
-  }
-  return [];
+  const kind = result.roles.length > 0 ? 'role' : 'main';
+  return narrativeRoleOrder(result).map((role) => ({ role, kind }));
 }
 
 function signatureOf(role: PvRole): string {
