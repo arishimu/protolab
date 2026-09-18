@@ -78,67 +78,45 @@ function isDeterminatePattern(pattern: PvTerm): boolean {
 }
 
 /**
- * 发送词项 `out` 能否按接收模式 `pattern` 匹配。
- * 模式里的变量是通配符；名字必须同名；元组 / 构造子应用要求形状一致后逐项递归。
+ * 发送词项 `out` 能否按模式 `pattern` 匹配。
+ *
+ * `wildcardVariables` 为 true 时（`in` 模式语义）模式里的变量是通配符；为 false 时
+ * （等值模式 `=n` 的值比对语义）变量要求同名。名字必须同名；元组 / 构造子应用在形状一致后
+ * 逐项递归；等值模式总是按值比对；解析不了的词项不匹配。
  */
-function matchesPattern(out: PvTerm, pattern: PvTerm): boolean {
+function matchesTerm(out: PvTerm, pattern: PvTerm, wildcardVariables: boolean): boolean {
   switch (pattern.kind) {
     case 'variable':
-      return true;
+      return (
+        wildcardVariables ||
+        ((out.kind === 'variable' || out.kind === 'name') && out.name === pattern.name)
+      );
     case 'name':
-      return out.kind === 'name' && out.name === pattern.name;
+      return (
+        (out.kind === 'name' || (!wildcardVariables && out.kind === 'variable')) &&
+        out.name === pattern.name
+      );
     case 'application':
       return (
         out.kind === 'application' &&
         out.functor === pattern.functor &&
         out.args.length === pattern.args.length &&
-        out.args.every((arg, index) => matchesPattern(arg, pattern.args[index]))
+        out.args.every((arg, index) => matchesTerm(arg, pattern.args[index], wildcardVariables))
       );
     case 'tuple':
       return (
         out.kind === 'tuple' &&
         out.items.length === pattern.items.length &&
-        out.items.every((item, index) => matchesPattern(item, pattern.items[index]))
+        out.items.every((item, index) => matchesTerm(item, pattern.items[index], wildcardVariables))
       );
     case 'equality':
-      return matchesValue(out, pattern.term);
+      return matchesTerm(out, pattern.term, false);
     case 'unknown':
       return false;
   }
 }
 
-/**
- * 等值模式 `=M` 的值比对：`M` 里的名字 / 变量按同名判定（不是通配符——`=Na` 要求收到的
- * 正是该角色绑定的 `Na`），构造子与元组逐项递归。
- */
-function matchesValue(out: PvTerm, value: PvTerm): boolean {
-  switch (value.kind) {
-    case 'variable':
-    case 'name':
-      return (out.kind === 'variable' || out.kind === 'name') && out.name === value.name;
-    case 'application':
-      return (
-        out.kind === 'application' &&
-        out.functor === value.functor &&
-        out.args.length === value.args.length &&
-        out.args.every((arg, index) => matchesValue(arg, value.args[index]))
-      );
-    case 'tuple':
-      return (
-        out.kind === 'tuple' &&
-        out.items.length === value.items.length &&
-        out.items.every((item, index) => matchesValue(item, value.items[index]))
-      );
-    case 'equality':
-      return matchesValue(out, value.term);
-    case 'unknown':
-      return out.kind === 'unknown' && out.text === value.text;
-  }
-}
-
-interface StepEndpoint {
-  roleIndex: number;
-  stepIndex: number;
+interface StepEndpoint extends StepPairingAnchor {
   step: MessageStep;
 }
 
@@ -148,7 +126,7 @@ function isCandidate(out: StepEndpoint, incoming: StepEndpoint): boolean {
     out.roleIndex !== incoming.roleIndex &&
     isDeterminatePattern(incoming.step.term) &&
     termEquals(out.step.channel, incoming.step.channel) &&
-    matchesPattern(out.step.term, incoming.step.term)
+    matchesTerm(out.step.term, incoming.step.term, true)
   );
 }
 

@@ -54,3 +54,30 @@ Dolev-Yao 公共信道下攻击者可注入/重放，非唯一即不可信，故
   的 in 模式普遍被判为裸变量；这是保守侧偏差，不会产生误配。
 - `StepPairing` 的 `roleIndex` 语义绑定叙事视图泳道顺序（`narrativeRoleOrder`），属视图派生的下标；
   已由 core 与 web 共用一个函数消除漂移。
+
+### code-review 后处理（2026-09-18，提交 354bc2f 后）
+
+两轴 review（Standards + Spec）对 `3a55330..354bc2f` 的 diff：Standards 无硬违规；
+Spec 无正确性缺陷，留下两条提示。
+
+已修（Standards 判断项）：
+
+- **Repeated Switches / Duplicated Code**：`pairing.ts` 原本对 `PvTerm` 有三份平行 switch
+  （`termEquals` / `matchesPattern` / `matchesValue`），把后两者合并为单个
+  `matchesTerm(out, pattern, wildcardVariables)`（in 模式里变量是通配符；等值模式 `=n`
+  要求同名），消掉两份逐项递归重复。
+- **Data Clumps**：`StepEndpoint` 改为 `extends StepPairingAnchor`，不再重复
+  `roleIndex` / `stepIndex` 字段。
+
+保留并记录（Spec 提示，非缺陷）：
+
+- 四真实 fixture 仅断言「零边」；「正确产出连线」分支由合成夹具覆盖。ticket 明确允许零边结果，
+  真实例断言旁已注明「若将来补上结构不同的 in 模式，应改为经人工核实的正确边」。
+- US13「看到少数跨泳道连线」在四个内置样例上不可观察（全部零边），是 Dolev-Yao 公共信道下
+  保守配对的预期；机制正确，体验载体有待结构可确定的样例。
+- 「可确定模式」把全通配元组也算有区分力，唯一性实际由「双向唯一」闸门保证；类型标注不参与
+  区分（保守方向，不误配）。二者与 ticket 注释一致，保留。
+- core 新增公开 `narrativeRoleOrder` + web `selectLaneSources` 改写，属清单外的一处重构，
+  用于消除配对下标与泳道下标的漂移。
+
+验证：`pnpm test` → 16 files / 195 passed；`pnpm typecheck` 三包通过。
