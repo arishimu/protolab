@@ -381,6 +381,249 @@ body {
   fill: var(--accent);
 }
 
+/* ---- 验证结果面板（ticket 08） ---- */
+.verify {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.verify-title {
+  font-size: 1.05rem;
+  margin: 0 0 0.25rem;
+}
+
+.verify-subtitle {
+  font-size: 0.95rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.verify-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.verify-timeout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.verify-timeout input {
+  font: inherit;
+  width: 6.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.verify-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.verify-progress {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.verify-notice {
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.verify-notice p {
+  margin: 0 0 0.35rem;
+}
+
+.verify-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.verify-notice--info {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+}
+
+.verify-notice--error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.query-result-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.query-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.query-card--positive {
+  border-left-color: #16a34a;
+}
+
+.query-card--negative {
+  border-left-color: #dc2626;
+}
+
+.query-card--unknown {
+  border-left-color: #d97706;
+}
+
+.query-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.query-card-index {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.verdict-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.verdict-badge--positive {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.verdict-badge--negative {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.verdict-badge--unknown {
+  color: #b45309;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.query-card-label {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.query-card-user {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  background: #f6f7fb;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.query-card-normalized,
+.query-card-vars,
+.query-card-goal {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.query-card-normalized code,
+.query-card-vars code,
+.query-card-goal code {
+  font-family: var(--mono);
+  color: #475569;
+}
+
+.query-card-explanation {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+}
+
+.counterexample,
+.raw-output {
+  margin-top: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fbfbfc;
+}
+
+.counterexample summary,
+.raw-output summary {
+  cursor: pointer;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.counterexample-body,
+.raw-output-body {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 0.7rem;
+  max-height: 40vh;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.verify-failure {
+  background: var(--panel);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.verify-failure-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  color: #b91c1c;
+}
+
+.verify-failure-guidance {
+  margin: 0;
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+}
+
+.verify-failure-meta {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 /* ---- 无角色结构提示 ---- */
 .narrative-empty {
   background: var(--panel);

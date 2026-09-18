@@ -4,20 +4,15 @@ import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolCo
 import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
 import { NarrativeView } from './narrative/NarrativeView';
+import { VerifyPanel } from './VerifyPanel';
 import './styles.css';
 
-/**
- * 规范叙事视图（ticket 04）：把当前 .pv 文本解析成语义模型并绘制泳道图。
- * 解析是纯转换（不进 server），按 source 记忆化，避免每次渲染重解析。
- */
-function NarrativeSection({ source }: { source: string }) {
-  const result = useMemo(() => parsePv(source), [source]);
-  return <NarrativeView result={result} />;
-}
-
-/** 已装载视图：标题 + 只读源码面板 + 规范叙事视图；验证结果面板由后续工单（08）在此扩展。 */
+/** 已装载视图：标题 + 只读源码面板 + 规范叙事视图（ticket 04）+ 验证结果面板（ticket 08）。 */
 function LoadedView() {
   const { current, clear } = useCurrentProtocol();
+  // 解析是纯转换（不进 server）。在这里解析一次、按 source 记忆化，泳道图与验证面板共用，
+  // 避免两处各解析一遍；`current` 为空时解析空串，随后立即返回（不在条件里调 hook）。
+  const parseResult = useMemo(() => parsePv(current?.source ?? ''), [current?.source]);
   if (!current) return null;
 
   const originText =
@@ -36,7 +31,8 @@ function LoadedView() {
       </div>
       <p className="hint">{current.description}</p>
       <SourcePanel protocol={current} />
-      <NarrativeSection source={current.source} />
+      <NarrativeView result={parseResult} />
+      <VerifyPanel source={current.source} parseResult={parseResult} />
     </div>
   );
 }
