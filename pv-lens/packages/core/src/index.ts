@@ -173,3 +173,11 @@ export type {
   UnknownTerm,
   VariableTerm,
 } from './parser/model.js';
+
+/**
+ * Seam B（ticket 07）：ProVerif stdout → 按查询切分的结构化验证结果。
+ *
+ * 纯转换：记录 stdout 文本进、结构化结果出；判定只以 RESULT 行为准。
+ */
+export { parseVerifyStdout } from './verify-result.js';
+export type { VerificationResult } from './verify-result.js';

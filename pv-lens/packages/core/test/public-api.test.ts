@@ -54,6 +54,7 @@ describe('core 无 Node / 浏览器 API 泄漏（src 纯净性守卫）', () => 
       'parser/process.ts',
       'parser/state.ts',
       'parser/terms.ts',
+      'verify-result.ts',
     ]);
   });
 
