@@ -97,12 +97,28 @@ describe('Seam B：stdout → 按查询的结构化验证结果', () => {
 
   it('证伪节的反例 trace 原文与录制逐字一致（切片对照，未做任何加工）', () => {
     const stdout = readFixture('proverif/hello.stdout.txt');
-    const results = parseVerifyStdout(stdout);
     // 从录制里按分节边界手工切片：`Derivation:` 起、RESULT 行前止。
     const start = stdout.indexOf('Derivation:');
     const end = stdout.indexOf('RESULT not attacker(RSA[]) is false.');
     const expected = stdout.slice(start, end).trimEnd();
-    expect(results[0]?.counterexampleTrace).toBe(expected);
+    expect(parseVerifyStdout(stdout)[0]?.counterexampleTrace).toBe(expected);
+  });
+
+  it('所有证伪节的 trace 都是对应录制 stdout 的逐字切片（四样例全覆盖）', () => {
+    let checked = 0;
+    for (const s of coreSamples) {
+      const stdout = readFixture(s.stdoutFile);
+      for (const result of parseVerifyStdout(stdout)) {
+        if (result.counterexampleTrace === null) continue;
+        checked += 1;
+        expect(result.counterexampleTrace.startsWith('Derivation:'), s.stdoutFile).toBe(true);
+        expect(stdout.includes(result.counterexampleTrace), `${s.stdoutFile} · ${result.query}`).toBe(
+          true,
+        );
+      }
+    }
+    // 录制里共 4 条被证伪查询：hello 1 条 + ns-original 3 条。
+    expect(checked).toBe(4);
   });
 
   it('成立/未证出的分节没有反例 trace（null，而非空串）', () => {

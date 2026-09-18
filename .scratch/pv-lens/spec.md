@@ -115,3 +115,32 @@ Status: ready-for-agent
 - 本 spec 由 `/to-spec` 从 grill-with-docs 访谈产出，后续由 `/to-tickets` 拆 tracer-bullet 工单，每张带阻塞边，逐张 `/implement`。
 
 ## Comments
+
+### 验收记录（/implement #09，2026-09-18）
+
+**环境**：ProVerif 2.05（`~/.opam/default/bin/proverif`）· Node 26 · 基线 commit `791b3ee`。
+
+**方法**：`pnpm build` 后启动 `node packages/server/dist/index.js`（127.0.0.1:8787）与 `vite preview`（127.0.0.1:4173），用真实无头 Chromium 在浏览器里逐样例走「装载 → 渲染 → 运行验证 → 核对结果」；另用 `pnpm typecheck` + `pnpm test`（195 项）护航。
+
+**四样例实测结论**（浏览器内：泳道图 + 判定徽标 + 反例折叠 + 完整 stdout 四方核对）：
+
+| 样例 | 泳道 | 渲染要点 | 本次实测证据 |
+|---|---|---|---|
+| hello | `main`（无命名角色） | RSA 明文步骤 + 符号化词项 | 2 条判定；被证伪那条反例 trace 374 字符 |
+| 握手修正版 | `clientA`、`serverB` | `{[pkX,pkB,k]skB}pkX`、`{|s|}k` | 3 条判定 |
+| NS 修正版 | `processInitiator`、`processResponder`、`processS`、`processK` | 四泳道 | 2 条判定 |
+| NS 原版 | `processA`、`processB` | Lowe 攻击样例 | 6 条判定；三条被证伪的 trace 4320 / 3896 / 4149 字符 |
+
+上表的判定结果与 Further Notes 的实测结果表**逐条一致**（不自维护一份副本，以那张表为准）。
+
+**与录制 fixture 的一致性**：四样例的完整 stdout 与 `packages/core/fixtures/proverif/*.stdout.txt` **逐字一致**；三条被证伪查询的反例 trace 文本与 fixture 解析出的 `counterexampleTrace` **逐字一致**（浏览器内展开折叠块后比对；仓库侧回归见 `core/test/verify-result.test.ts` 的切片对照）。
+
+**降级 / 未配对路径**：
+
+- 未配对：握手修正版默认 6 个步骤标「未配对」，跨泳道连线 0 条（保守配对不臆造），图例在位。
+- 降级：导入含 `choice [true]` 的 `.pv` → 面板提示「解析器不支持的语法」、泳道图保留 `choice [true]` 原文标注段；验证仍按原文运行并给出失败指引。
+
+**发现与处置**：验收未发现功能缺陷。仅发现一处文档口径问题：本 spec「stdout 解析事实」写的 `RESULT <查询> is true|false|cannot be proved.` 暗示存在 `is cannot be proved.` 形态，而本机 ProVerif 2.05 的 `cannot be proved` 真实输出不带 `is`（`RESULT <查询> cannot be proved.`，`noninterf` 查询可复现）——该差异已在 `packages/core/fixtures/PROVENANCE.md` 记录，解析器两种形态都兼容（`core/test/verify-result.test.ts`）。spec 该行措辞留待 #10 文档收尾统一。其余交付项（README 安装运行说明、工程收尾）同样由 #10 承接。
+
+**自动测试现状**：`pnpm typecheck` 三包通过；`pnpm test` 16 文件 195 项通过（含真实 ProVerif 集成冒烟，本机装 ProVerif 时运行）。
+

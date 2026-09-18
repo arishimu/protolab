@@ -32,7 +32,7 @@ proverif <fixture .pv> > <id>.stdout.txt 2>&1
 - ProVerif 默认不打印自身版本号，故 stdout 录制中无版本行；版本信息以此文件为准。
 - `ns-original.stdout.txt` 末尾对 `inj-event(endBparam(x)) ==> inj-event(beginBparam(x))` 判 false 后，ProVerif 会额外打印一行括号内衍生说明
   `RESULT (even event(endBparam(x)) ==> event(beginBparam(x)) is false.)` —— 这是对非注入版查询的诊断回声，不是独立的查询分节；解析时按「query 不以 `(` 开头」的 RESULT 行识别正片（见 `core/test/fixtures.test.ts`）。
-- NS 原版除 Lowe 攻击查询（false）与 A 侧认证（true）外，B 侧 nonce 保密查询 `not attacker(secretBNa[]/secretBNb[])` 亦为 false——与学习笔记 06b「A 侧正常、B 侧全灭」一致。spec.md Further Notes 表中「NS 原版：其余 is true」为简写，应以本机实测与本表为准。
+- NS 原版除 Lowe 攻击查询（false）与 A 侧认证（true）外，B 侧 nonce 保密查询 `not attacker(secretBNa[]/secretBNb[])` 亦为 false——与学习笔记 06b「A 侧正常、B 侧全灭」一致，也与 spec.md 的实测结果表逐条一致。
 
 ## 人工构造 fixture
 
