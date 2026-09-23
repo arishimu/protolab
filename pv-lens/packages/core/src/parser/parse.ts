@@ -14,12 +14,13 @@
  *   顶层词项绑定 `let`）宽容解析：整体跳过，不建模、不报错。
  */
 
-import type { ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan } from './model.js';
+import type { FunctionSignature, ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan, TypedName } from './model.js';
 import { tokenize, type Token } from './lexer.js';
 import {
   TokenCursor,
   findTopLevelToken,
   snippetOf,
+  skipBalanced,
   OPEN_PUNCT,
   CLOSE_PUNCT,
 } from './state.js';
@@ -75,6 +76,8 @@ export function parsePv(source: string): ParseResult {
   const cursor = new TokenCursor(source, lexed.tokens, diagnostics);
   const definitions: MutableRole[] = [];
   const queries: PvQuery[] = [];
+  const functions: FunctionSignature[] = [];
+  const names: TypedName[] = [];
   let main: MutableRole | null = null;
 
   try {
@@ -85,6 +88,15 @@ export function parsePv(source: string): ParseResult {
       }
       if (cursor.atIdent('query')) {
         queries.push(...parseQueryStatement(cursor));
+        continue;
+      }
+      if (cursor.atIdent('fun')) {
+        const signature = parseFunDeclaration(cursor);
+        if (signature !== null) functions.push(signature);
+        continue;
+      }
+      if (cursor.atIdent('free') || cursor.atIdent('const')) {
+        names.push(...parseNameDeclaration(cursor));
         continue;
       }
       if (cursor.atIdent('let')) {
@@ -109,6 +121,8 @@ export function parsePv(source: string): ParseResult {
     roles: definitions.map((definition) => toPublicRole(definition, invocations)),
     mainProcess: main === null ? null : toPublicRole(main, invocations),
     queries,
+    functions,
+    names,
     diagnostics: sorted,
   };
 }
@@ -251,6 +265,109 @@ function skipDeclaration(cursor: TokenCursor): void {
     // 不消费 `process`（它是主进程的开始），只报声明缺 `.`。
     cursor.error('声明缺少结尾的 `.`', cursor.span(start));
   }
+}
+
+/**
+ * `fun name(argtypes): rettype [attrs].` → 函数签名。
+ * 顺带消费 `[private]` 之类的属性后缀；出错时返回 null 并恢复到声明结尾。
+ */
+function parseFunDeclaration(cursor: TokenCursor): FunctionSignature | null {
+  const keyword = cursor.next();
+  const nameToken = cursor.peek();
+  if (nameToken.kind !== 'ident') {
+    cursor.error('`fun` 后缺少函数名', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  cursor.next();
+
+  if (!cursor.match('(')) {
+    cursor.error('`fun` 声明缺少参数列表 `(`', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  const argTypes: string[] = [];
+  if (!cursor.atPunct(')')) {
+    for (;;) {
+      const argToken = cursor.peek();
+      if (argToken.kind !== 'ident') {
+        cursor.error(`\`fun\` 参数应为类型名，实际遇到 \`${argToken.text}\``, cursor.span(keyword.span.start));
+        recoverToDeclarationEnd(cursor);
+        return null;
+      }
+      cursor.next();
+      argTypes.push(argToken.text);
+      if (cursor.match(',')) continue;
+      break;
+    }
+  }
+  if (!cursor.match(')')) {
+    cursor.error('`fun` 参数列表缺少结尾的 `)`', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  if (!cursor.match(':')) {
+    cursor.error('`fun` 声明缺少返回类型（`:`）', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  const returnToken = cursor.peek();
+  if (returnToken.kind !== 'ident') {
+    cursor.error('`fun` 返回类型应为类型名', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  cursor.next();
+
+  if (!finishDeclaration(cursor, keyword.span.start)) return null;
+  return { name: nameToken.text, argTypes, returnType: returnToken.text };
+}
+
+/**
+ * `free a, b: t [attrs].` / `const` → 具名类型条目（一个名字一条）。
+ * 类型标注可省略；出错时返回空数组并恢复到声明结尾。
+ */
+function parseNameDeclaration(cursor: TokenCursor): TypedName[] {
+  const keyword = cursor.next();
+  const names: string[] = [];
+
+  for (;;) {
+    const token = cursor.peek();
+    if (token.kind !== 'ident') {
+      cursor.error(`\`${keyword.text}\` 后应为名字`, cursor.span(keyword.span.start));
+      recoverToDeclarationEnd(cursor);
+      return [];
+    }
+    cursor.next();
+    names.push(token.text);
+    if (cursor.match(',')) continue;
+    break;
+  }
+
+  let typeName: string | undefined;
+  if (cursor.atPunct(':')) {
+    const colon = cursor.next();
+    const typeToken = cursor.peek();
+    if (typeToken.kind !== 'ident') {
+      cursor.error('类型标注缺少类型名：`:` 后应为类型名', cursor.span(colon.span.start));
+      recoverToDeclarationEnd(cursor);
+      return [];
+    }
+    cursor.next();
+    typeName = typeToken.text;
+  }
+
+  if (!finishDeclaration(cursor, keyword.span.start)) return [];
+  return names.map((name) => (typeName === undefined ? { name } : { name, typeName }));
+}
+
+/** 消费 `[private]` / `[data,typeConverter]` 之类的属性后缀，然后要求声明以 `.` 收尾。 */
+function finishDeclaration(cursor: TokenCursor, start: SourceSpan['start']): boolean {
+  while (cursor.atPunct('[')) skipBalanced(cursor);
+  if (cursor.match('.')) return true;
+  cursor.error('声明缺少结尾的 `.`', cursor.span(start));
+  recoverToDeclarationEnd(cursor);
+  return false;
 }
 
 /** 出错恢复：跳到声明 / 定义结尾的 `.` 并消费它。 */

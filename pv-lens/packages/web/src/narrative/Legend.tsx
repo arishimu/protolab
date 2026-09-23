@@ -2,7 +2,7 @@
  * 规范叙事视图的图例（ticket 04）：解释图上出现的各记法。
  *
  * 符号化词项部分与 core 的 `renderTerm` / `NOTATION_LEGEND` 映射表同源，
- * 不在两处各写一份记法说明。
+ * 不在两处各写一份记法说明。配对图例与 ADR-0003 的口径一致：连线是设计意图，不是可达性。
  */
 
 import { NOTATION_LEGEND } from '@pv-lens/core';
@@ -42,7 +42,13 @@ export function Legend() {
           <dt>
             <span className="legend-chip legend-chip--unpaired">未配对</span>
           </dt>
-          <dd>跨泳道无法可靠确定「谁发出的消息被谁接收」，图上不画连线（画对优先于画全）</dd>
+          <dd>无法可靠推断设计上的收发关系（多方协议不自动连线），图上不画连线（画对优先于画全）</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
+            <span className="legend-chip">跨泳道连线</span>
+          </dt>
+          <dd>设计意图上的 out → in：两方协议按源码顺序自动推断。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准</dd>
         </div>
         <div className="legend-item">
           <dt>

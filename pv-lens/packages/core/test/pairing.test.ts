@@ -19,57 +19,28 @@ function pairingKeys(source: string): string[] {
   );
 }
 
-// 合成夹具：源码里未建模 `free` 声明，故 out 侧的裸标识符是名字，in 侧的裸标识符是模式变量。
-// 这正是「结构可确定」与「不可确定」的分界：元组 / 构造子应用 / 等值模式有区分力，裸变量没有。
+// 意图配对（ADR-0003）：连线表达「设计上这条 out 发给这条 in」，类型 + 顺序，只服务两方协议。
 
-const DETERMINATE = `
-free c: channel.
-
-let roleA = out(c, (n1, n2)); in(c, (n3, n4)).
-let roleB = in(c, (x, y)); out(c, (n3, n4)).
-
-process roleA | roleB.
-`;
-
-const SAME_SHAPE_AMBIGUOUS = `
-free c: channel.
-
-let alpha = out(c, (n1, n2)).
-let beta = out(c, (n3, n4)).
-let gamma = in(c, (x, y)).
-
-process alpha | beta | gamma.
-`;
-
-const BARE_VARIABLE_PATTERN = `
-free c: channel.
-
-let sender = out(c, (n1, n2)).
-let receiver = in(c, anything).
-
-process sender | receiver.
-`;
-
-const CHANNEL_MISMATCH = `
-free c1: channel.
-free c2: channel.
-
-let sender = out(c1, (n1, n2)).
-let receiver = in(c2, (x, y)).
-
-process sender | receiver.
-`;
-
-describe('pairSteps：结构可确定时产出连线', () => {
-  it('两个角色各发一条结构可唯一确定的元组消息 → 两条双向连线', () => {
-    expect(pairingKeys(DETERMINATE)).toEqual(['0:0->1:0', '1:1->0:1']);
+describe('pairSteps：类型确定的两方协议产出连线', () => {
+  it('类型兼容的形状匹配 → 连线', () => {
+    const source = `
+      type skey. type pkey. type bitstring.
+      fun pk(skey): pkey.
+      fun aenc(bitstring, pkey): bitstring.
+      free c: channel.
+      let alice = out(c, aenc(secret, pkB)).
+      let bob(pkB: pkey) = in(c, m: bitstring).
+      process alice | bob(pk(skB)).
+    `;
+    // alice.out 的 aenc 返回 bitstring，bob.in 是 m: bitstring → 兼容。
+    expect(pairingKeys(source)).toEqual(['0:0->1:0']);
   });
 
-  it('构造子应用按形状与名字匹配：senc(n1,k) 对上 senc(m,k)', () => {
+  it('两侧都无类型标注时按形状通配匹配（裸变量接收也连）', () => {
     const source = `
       free c: channel.
-      let sender = out(c, senc(n1, k)).
-      let receiver = in(c, senc(m, k)).
+      let sender = out(c, (n1, n2)).
+      let receiver = in(c, anything).
       process sender | receiver.
     `;
     expect(pairingKeys(source)).toEqual(['0:0->1:0']);
@@ -96,20 +67,82 @@ describe('pairSteps：结构可确定时产出连线', () => {
   });
 });
 
-describe('pairSteps：歧义 / 无法确定时不连（零误配）', () => {
-  it('同一形状的两个 out 争一个 in → 双向不唯一，整条丢弃', () => {
-    expect(pairingKeys(SAME_SHAPE_AMBIGUOUS)).toEqual([]);
+describe('pairSteps：类型不符 / 缺类型时保守不连', () => {
+  it('aenc(...)（bitstring）配到 pkX: pkey 的接收 → 类型不符，不连', () => {
+    const source = `
+      type skey. type pkey. type bitstring.
+      fun pk(skey): pkey.
+      fun aenc(bitstring, pkey): bitstring.
+      free c: channel.
+      let sender = out(c, aenc(n, pkB)).
+      let receiver = in(c, pkX: pkey).
+      process sender | receiver.
+    `;
+    expect(pairingKeys(source)).toEqual([]);
   });
 
-  it('in 是裸变量（收到任何消息都成立）→ 不可确定，永远不连', () => {
-    expect(pairingKeys(BARE_VARIABLE_PATTERN)).toEqual([]);
+  it('out 侧取不到类型、in 侧有类型 → 保守不连', () => {
+    const source = `
+      type bitstring.
+      free c: channel.
+      let sender = out(c, unknownThing).
+      let receiver = in(c, m: bitstring).
+      process sender | receiver.
+    `;
+    expect(pairingKeys(source)).toEqual([]);
   });
 
-  it('信道不同 → 同一角色间的收发不成立', () => {
-    expect(pairingKeys(CHANNEL_MISMATCH)).toEqual([]);
+  it('信道不同 → 不连', () => {
+    const source = `
+      free c1: channel.
+      free c2: channel.
+      let sender = out(c1, (n1, n2)).
+      let receiver = in(c2, (x, y)).
+      process sender | receiver.
+    `;
+    expect(pairingKeys(source)).toEqual([]);
+  });
+});
+
+describe('pairSteps：两方协议按源码顺序贪心配对，一对一消费', () => {
+  it('同一角色两条同型 out 对两条同型 in → 按源码顺序一一对应，不交叉', () => {
+    const source = `
+      type bitstring.
+      fun pair(bitstring, bitstring): bitstring.
+      free c: channel.
+      let alice = out(c, pair(a, b)); out(c, pair(c2, d)).
+      let bob = in(c, x: bitstring); in(c, y: bitstring).
+      process alice | bob.
+    `;
+    expect(pairingKeys(source)).toEqual(['0:0->1:0', '0:1->1:1']);
   });
 
-  it('自己角色内的 out / in 不与自己配对', () => {
+  it('同型 out 数多于 in 数 → 只消费最早的几个', () => {
+    const source = `
+      type bitstring.
+      fun pair(bitstring, bitstring): bitstring.
+      free c: channel.
+      let alice = out(c, pair(a, b)); out(c, pair(c2, d)); out(c, pair(e, f)).
+      let bob = in(c, x: bitstring).
+      process alice | bob.
+    `;
+    expect(pairingKeys(source)).toEqual(['0:0->1:0']);
+  });
+});
+
+describe('pairSteps：非两方协议不自动连线（ADR-0003）', () => {
+  it('三条泳道 → 空集（多方消息路由不可静态推断）', () => {
+    const source = `
+      free c: channel.
+      let alpha = out(c, (n1, n2)).
+      let beta = in(c, (x, y)).
+      let gamma = in(c, (p, q)).
+      process alpha | beta | gamma.
+    `;
+    expect(pairingKeys(source)).toEqual([]);
+  });
+
+  it('单角色不与自己配对', () => {
     const source = `
       free c: channel.
       let solo = out(c, (n1, n2)); in(c, (x, y)).
@@ -127,18 +160,44 @@ describe('pairSteps：泳道顺序与主进程伪角色', () => {
   });
 });
 
-describe('pairSteps：四个真实 fixture 的保守画像（全部零边）', () => {
-  // Dolev-Yao 公共信道下，四样例的接收模式要么是裸变量（收到任何消息都成立），要么彼此同形
-  // 争抢同一条 out；本引擎据此判定「不可确定」，产出零条边——这是预期而非缺陷。
-  // 若将来为真实例补上结构不同的 in 模式，这里的断言应改为经人工核实的正确边。
-  const expectedZeroEdgeSamples = coreSamples.map((sample) => ({
-    id: sample.id,
-    pvFile: sample.pvFile,
-  }));
+describe('pairSteps：四个真实 fixture 的意图流', () => {
+  // 两方教科书写法：源码顺序即消息顺序。类型门槛挡住预共享公钥类的错位。
 
-  for (const sample of expectedZeroEdgeSamples) {
-    it(`${sample.id}：零条跨泳道连线`, () => {
-      expect(pairingKeys(readFixture(sample.pvFile))).toEqual([]);
-    });
-  }
+  it('handshake-fixed：三条教科书连线', () => {
+    // clientA.out pkA → serverB.in pkX；clientA.out senc → serverB.in x；
+    // serverB.out aenc → clientA.in x。
+    expect(pairingKeys(readFixture('pv/handshake-fixed.pv'))).toEqual([
+      '0:0->1:0',
+      '0:2->1:2',
+      '1:1->0:1',
+    ]);
+  });
+
+  it('ns-original：三条 aenc 消息按序配对，预共享公钥接收不误配', () => {
+    // processA.out1 aenc → processB.in m；processA.out2 aenc → processB.in m3；
+    // processB.out1 aenc → processA.in m。processA.in pkX(pkey) 不匹配任何 bitstring out。
+    expect(pairingKeys(readFixture('pv/ns-original.pv'))).toEqual([
+      '0:1->1:0',
+      '0:3->1:2',
+      '1:1->0:2',
+    ]);
+  });
+
+  it('ns-mutual-auth：四角色，自动配对关闭 → 零边', () => {
+    expect(pairingKeys(readFixture('pv/ns-mutual-auth.pv'))).toEqual([]);
+  });
+
+  it('hello：单个主进程，无接收方 → 零边', () => {
+    expect(pairingKeys(readFixture('pv/hello.pv'))).toEqual([]);
+  });
+
+  it('四样例都仍是两条或以下泳道判定下的确定行为', () => {
+    for (const sample of coreSamples) {
+      const model = parsePv(readFixture(sample.pvFile));
+      const roles = narrativeRoleOrder(model);
+      const keys = pairSteps(model).length;
+      if (roles.length === 2) expect(keys, sample.id).toBeGreaterThan(0);
+      else expect(keys, sample.id).toBe(0);
+    }
+  });
 });

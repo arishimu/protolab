@@ -181,6 +181,25 @@ export interface PvRole {
   span: SourceSpan;
 }
 
+/**
+ * 构造子的类型签名（`fun name(argtypes): rettype`）。
+ *
+ * 声明区此前整体跳过不建模；意图配对（ADR-0003）需要返回类型做轻量类型推断，故收回模型。
+ * `reduc` 声明仍是析构函数、不在此列。
+ */
+export interface FunctionSignature {
+  name: string;
+  /** 参数类型名；不写类型的位置为空串。 */
+  argTypes: readonly string[];
+  returnType: string;
+}
+
+/** `free` / `const` 声明的具名类型（`free a, b: t` → 两个条目）。typeName 缺失表示未标注。 */
+export interface TypedName {
+  name: string;
+  typeName?: string;
+}
+
 /** 一条查询：用户书写的查询原文（可被结果面板映射回展示）。 */
 export interface PvQuery {
   /** 查询表达式原文（去掉 `query` 关键字与变量声明前缀；内部连续空白压成单空格）。 */
@@ -215,6 +234,10 @@ export interface ParseResult {
   mainProcess: PvRole | null;
   /** 查询列表，按源码顺序。 */
   queries: readonly PvQuery[];
+  /** `fun` 构造子签名，按声明顺序。 */
+  functions: readonly FunctionSignature[];
+  /** `free` / `const` 具名类型，按声明顺序。 */
+  names: readonly TypedName[];
   /** 诊断列表，按源码位置排序。 */
   diagnostics: readonly PvDiagnostic[];
 }

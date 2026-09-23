@@ -1,20 +1,20 @@
 /**
- * 保守配对引擎（ticket 06，spec.md「core 公开能力」第 4 条）。
+ * 意图配对引擎（ticket 12，ADR-0003）。
  *
- * 纯函数 `pairSteps`：`ParseResult` 进 → 跨泳道配对判定出。它只回答「哪条 out 与哪条 in
- * 在结构上可确定地对应」，连线形态由渲染端决定（见 web 的 `buildNarrativeLayout`）。
+ * 纯函数 `pairSteps`：`ParseResult` 进 → 跨泳道**设计意图**配对出。连线回答的是「设计上这条
+ * `out` 发给这条 `in`」的 A→B 消息流，**不是** Dolev-Yao 可达性——连上不代表消息在攻击者
+ * 模型下达得到，那由 ProVerif 的 RESULT 回答。
  *
- * 纪律：**只在可确定时连线，任何歧义一律不连**（画对优先于画全）。具体地：
- * 1. 只考虑不同角色之间、同一信道（词项结构相等）的 `out` → `in`。
- * 2. 接收模式必须是「可确定模式」——裸变量 `in(c, x)` 收到任何消息都成立，不参与配对；
- *    元组 / 构造子应用 / 等值模式 `=M` 的形状或常量才具有区分力。
- * 3. 发送词项要与接收模式结构匹配（构造子同名同元数、元组等长；模式里的变量是通配符，
- *    名字必须同名，等值模式 `=M` 按值比对）。
- * 4. 匹配还必须**双向唯一**：该 out 只匹配一条 in，且那条 in 只匹配该 out。
- *    两个候选就一律不连——Dolev-Yao 公共信道下攻击者可注入/重放，非唯一即不可信。
- *
- * 在四个真实样例上，接收模式普遍是裸变量或彼此同形，因此本引擎大概率产出零条边；
- * 这是预期结果，机制与「不误配」保证才是本票的交付。
+ * 判定规则（ADR-0003）：
+ * 1. 只考虑不同角色、同一信道（词项结构相等）的 `out` → `in`。
+ * 2. **类型兼容**：用 `fun` 返回类型、角色参数、`in` 模式类型标注、`free` / `const` 类型做
+ *    轻量类型推断。两侧都取到类型时须相等；一侧缺类型则保守不匹配（宁缺毋滥）。
+ * 3. **形状匹配**：构造子同名同元数、元组等长逐项递归；`in` 里的裸变量是受类型约束的通配符；
+ *    等值模式 `=M` 按值比对。
+ * 4. **顺序配对**：仅当协议**恰好两条泳道**时启用。按接收步骤在源码中的顺序，逐个选最早
+ *    尚未使用的兼容 `out`，一对一消费。两方教科书协议的消息顺序即源码顺序。
+ * 5. 泳道多于两条（或不足两条）时返回空集：多方协议的消息路由无法从 `.pv` 静态推断
+ *    （服务器中转、攻击者选择身份等），任何启发式都会画出错误的箭。宁可不画。
  *
  * 术语遵循 CONTEXT.md：角色、信道、消息步骤、未配对步骤。
  */
@@ -69,48 +69,148 @@ function termEquals(a: PvTerm, b: PvTerm): boolean {
   }
 }
 
-/**
- * 接收模式是否有区分力：裸变量 / 解析不了的词项一律不可确定（收到任何东西都成立）。
- * 元组与构造子应用靠形状区分，等值模式靠常量值区分，都算可确定。
- */
-function isDeterminatePattern(pattern: PvTerm): boolean {
-  return pattern.kind !== 'variable' && pattern.kind !== 'unknown';
+/** 等值模式 `=M` 的值比对：名字 / 变量要求同名，构造子与元组逐项递归。 */
+function termValueEquals(out: PvTerm, value: PvTerm): boolean {
+  switch (value.kind) {
+    case 'variable':
+      return (out.kind === 'variable' || out.kind === 'name') && out.name === value.name;
+    case 'name':
+      return (out.kind === 'name' || out.kind === 'variable') && out.name === value.name;
+    case 'application':
+      return (
+        out.kind === 'application' &&
+        out.functor === value.functor &&
+        out.args.length === value.args.length &&
+        out.args.every((arg, index) => termValueEquals(arg, value.args[index]))
+      );
+    case 'tuple':
+      return (
+        out.kind === 'tuple' &&
+        out.items.length === value.items.length &&
+        out.items.every((item, index) => termValueEquals(item, value.items[index]))
+      );
+    case 'equality':
+      return termValueEquals(out, value.term);
+    case 'unknown':
+      return false;
+  }
+}
+
+/** 类型推断的静态环境：`fun` 返回类型 + `free` / `const` 具名类型 + 每角色的参数与新鲜名。 */
+interface TypeContext {
+  /** 构造子名 → 返回类型。 */
+  returnTypes: ReadonlyMap<string, string>;
+  /** `free` / `const` 名 → 类型。 */
+  namedTypes: ReadonlyMap<string, string>;
+  /** 角色下标 → （参数名 → 类型）。 */
+  roleParams: readonly ReadonlyMap<string, string>[];
+  /** 角色下标 → （`new` 新鲜名 → 类型）。 */
+  roleFresh: readonly ReadonlyMap<string, string>[];
+}
+
+function buildTypeContext(result: ParseResult, roles: readonly PvRole[]): TypeContext {
+  const returnTypes = new Map<string, string>();
+  for (const fn of result.functions) returnTypes.set(fn.name, fn.returnType);
+
+  const namedTypes = new Map<string, string>();
+  for (const name of result.names) {
+    if (name.typeName !== undefined) namedTypes.set(name.name, name.typeName);
+  }
+
+  const roleParams = roles.map((role) => {
+    const params = new Map<string, string>();
+    for (const parameter of role.parameters) {
+      if (parameter.typeName !== undefined) params.set(parameter.name, parameter.typeName);
+    }
+    return params;
+  });
+
+  const roleFresh = roles.map((role) => {
+    const fresh = new Map<string, string>();
+    for (const step of role.steps) {
+      for (const name of step.annotations.freshNames) {
+        if (name.typeName !== undefined) fresh.set(name.name, name.typeName);
+      }
+    }
+    return fresh;
+  });
+
+  return { returnTypes, namedTypes, roleParams, roleFresh };
+}
+
+/** 词项的轻量类型：构造子取返回类型，具名叶子取声明类型，变量取标注或角色参数类型。 */
+function inferType(term: PvTerm, roleIndex: number, ctx: TypeContext): string | undefined {
+  switch (term.kind) {
+    case 'variable':
+      return term.typeName ?? ctx.roleParams[roleIndex]?.get(term.name);
+    case 'name':
+      return ctx.namedTypes.get(term.name) ?? ctx.roleFresh[roleIndex]?.get(term.name);
+    case 'application':
+      return ctx.returnTypes.get(term.functor);
+    case 'tuple':
+      return undefined;
+    case 'equality':
+      return inferType(term.term, roleIndex, ctx);
+    case 'unknown':
+      return undefined;
+  }
 }
 
 /**
- * 发送词项 `out` 能否按模式 `pattern` 匹配。
+ * 类型门槛：两侧都取到类型时须相等；一侧缺类型则保守不匹配。
  *
- * `wildcardVariables` 为 true 时（`in` 模式语义）模式里的变量是通配符；为 false 时
- * （等值模式 `=n` 的值比对语义）变量要求同名。名字必须同名；元组 / 构造子应用在形状一致后
- * 逐项递归；等值模式总是按值比对；解析不了的词项不匹配。
+ * 对元组 / 未标注词项 inferType 返回 undefined，此时由形状匹配逐项递归把关；只有在
+ * 「一侧确实带类型、另一侧取不到」时才用这里的不匹配兜底，宁可少连也不误配。
  */
-function matchesTerm(out: PvTerm, pattern: PvTerm, wildcardVariables: boolean): boolean {
+function typeCompatible(
+  outType: string | undefined,
+  inType: string | undefined,
+): boolean {
+  if (outType !== undefined && inType !== undefined) return outType === inType;
+  return outType === undefined && inType === undefined;
+}
+
+/**
+ * 发送词项 `out` 能否按接收模式 `pattern` 匹配（设计意图语义）。
+ *
+ * 先过类型门槛，再按形状递归：构造子同名同元数、元组等长；模式里的裸变量是受类型约束的
+ * 通配符；等值模式 `=M` 按值比对；解析不了的词项不匹配。
+ */
+function matchesIntent(
+  out: PvTerm,
+  pattern: PvTerm,
+  outRoleIndex: number,
+  inRoleIndex: number,
+  ctx: TypeContext,
+): boolean {
+  if (!typeCompatible(inferType(out, outRoleIndex, ctx), inferType(pattern, inRoleIndex, ctx))) {
+    return false;
+  }
+
   switch (pattern.kind) {
     case 'variable':
-      return (
-        wildcardVariables ||
-        ((out.kind === 'variable' || out.kind === 'name') && out.name === pattern.name)
-      );
+      return true;
     case 'name':
-      return (
-        (out.kind === 'name' || (!wildcardVariables && out.kind === 'variable')) &&
-        out.name === pattern.name
-      );
+      return out.kind === 'name' && out.name === pattern.name;
+    case 'equality':
+      return termValueEquals(out, pattern.term);
     case 'application':
       return (
         out.kind === 'application' &&
         out.functor === pattern.functor &&
         out.args.length === pattern.args.length &&
-        out.args.every((arg, index) => matchesTerm(arg, pattern.args[index], wildcardVariables))
+        out.args.every((arg, index) =>
+          matchesIntent(arg, pattern.args[index], outRoleIndex, inRoleIndex, ctx),
+        )
       );
     case 'tuple':
       return (
         out.kind === 'tuple' &&
         out.items.length === pattern.items.length &&
-        out.items.every((item, index) => matchesTerm(item, pattern.items[index], wildcardVariables))
+        out.items.every((item, index) =>
+          matchesIntent(item, pattern.items[index], outRoleIndex, inRoleIndex, ctx),
+        )
       );
-    case 'equality':
-      return matchesTerm(out, pattern.term, false);
     case 'unknown':
       return false;
   }
@@ -120,47 +220,71 @@ interface StepEndpoint extends StepPairingAnchor {
   step: MessageStep;
 }
 
-/** 两条步骤能否配成一条候选边：不同角色 + 同一信道 + 可确定模式 + 结构匹配。 */
-function isCandidate(out: StepEndpoint, incoming: StepEndpoint): boolean {
+function endpointKey(endpoint: StepPairingAnchor): string {
+  return `${endpoint.roleIndex}:${endpoint.stepIndex}`;
+}
+
+/** 两条步骤能否配成一条候选边：不同角色 + 同一信道 + 类型与形状兼容。 */
+function isCandidate(
+  out: StepEndpoint,
+  incoming: StepEndpoint,
+  ctx: TypeContext,
+): boolean {
   return (
     out.roleIndex !== incoming.roleIndex &&
-    isDeterminatePattern(incoming.step.term) &&
     termEquals(out.step.channel, incoming.step.channel) &&
-    matchesTerm(out.step.term, incoming.step.term, true)
+    matchesIntent(out.step.term, incoming.step.term, out.roleIndex, incoming.roleIndex, ctx)
   );
 }
 
+/** 端点「先后」的确定性排序：先泳道，再步骤（两方协议里泳道内步骤顺序即消息顺序）。 */
+function compareEndpoints(a: StepEndpoint, b: StepEndpoint): number {
+  return a.roleIndex - b.roleIndex || a.stepIndex - b.stepIndex;
+}
+
 /**
- * 保守配对：返回**双向唯一**的 out → in 配对，按 `out` 在源码中的顺序。
- *
- * 「双向唯一」= 该 out 恰好匹配一条 in，且那条 in 恰好匹配该 out；任一方向多于一个候选
- * 就整条丢弃（保持未配对标注）。返回的下标对应 `narrativeRoleOrder(result)` 的泳道顺序，
- * 可原样喂给 web 的 `buildNarrativeLayout({ pairings })`。
+ * 设计意图配对：返回两方协议里按源码顺序一对一消费的 `out` → `in` 配对，按 `out` 顺序排列。
+ * 泳道数不等于 2 时返回空集（ADR-0003：多方消息路由不可静态推断，不画）。
  */
 export function pairSteps(result: ParseResult): readonly StepPairing[] {
+  const roles = narrativeRoleOrder(result);
+  if (roles.length !== 2) return [];
+
   const outs: StepEndpoint[] = [];
   const ins: StepEndpoint[] = [];
-
-  narrativeRoleOrder(result).forEach((role, roleIndex) => {
+  roles.forEach((role, roleIndex) => {
     role.steps.forEach((step, stepIndex) => {
       const endpoint: StepEndpoint = { roleIndex, stepIndex, step };
       (step.direction === 'out' ? outs : ins).push(endpoint);
     });
   });
 
+  const ctx = buildTypeContext(result, roles);
+  const usedOuts = new Set<string>();
+  const usedIns = new Set<string>();
   const pairings: StepPairing[] = [];
-  for (const out of outs) {
-    const compatibleIns = ins.filter((incoming) => isCandidate(out, incoming));
-    if (compatibleIns.length !== 1) continue;
 
-    const target = compatibleIns[0];
-    const compatibleOuts = outs.filter((candidate) => isCandidate(candidate, target));
-    if (compatibleOuts.length !== 1) continue;
+  for (const incoming of ins) {
+    const inKey = endpointKey(incoming);
+    if (usedIns.has(inKey)) continue;
 
+    const candidates = outs
+      .filter((out) => !usedOuts.has(endpointKey(out)) && isCandidate(out, incoming, ctx))
+      .sort(compareEndpoints);
+    if (candidates.length === 0) continue;
+
+    // 两方协议：按消息顺序，接收端认领**最早**尚未使用的兼容 out。选择是确定性的。
+    const chosen = candidates[0];
+    usedOuts.add(endpointKey(chosen));
+    usedIns.add(inKey);
     pairings.push({
-      from: { roleIndex: out.roleIndex, stepIndex: out.stepIndex },
-      to: { roleIndex: target.roleIndex, stepIndex: target.stepIndex },
+      from: { roleIndex: chosen.roleIndex, stepIndex: chosen.stepIndex },
+      to: { roleIndex: incoming.roleIndex, stepIndex: incoming.stepIndex },
     });
   }
+
+  pairings.sort(
+    (a, b) => a.from.roleIndex - b.from.roleIndex || a.from.stepIndex - b.from.stepIndex,
+  );
   return pairings;
 }

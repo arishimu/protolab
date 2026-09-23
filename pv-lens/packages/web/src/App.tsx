@@ -13,7 +13,7 @@ function LoadedView() {
   // 解析是纯转换（不进 server）。在这里解析一次、按 source 记忆化，泳道图与验证面板共用，
   // 避免两处各解析一遍；`current` 为空时解析空串，随后立即返回（不在条件里调 hook）。
   const parseResult = useMemo(() => parsePv(current?.source ?? ''), [current?.source]);
-  // 保守配对引擎（ticket 06）：只在结构可确定时给跨泳道连线；解析结果变则重算。
+  // 设计意图配对（ADR-0003）：两方协议按类型 + 源码顺序给跨泳道连线；解析结果变则重算。
   const pairings = useMemo(() => pairSteps(parseResult), [parseResult]);
   if (!current) return null;
 

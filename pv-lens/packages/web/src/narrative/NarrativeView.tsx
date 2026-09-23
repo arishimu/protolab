@@ -3,7 +3,7 @@
  *
  * React + SVG 自绘，不引入自动布局引擎（布局坐标全在 `layout.ts` 里算好）。
  * 未配对标注、跨泳道连线、降级诊断卡片、图例都在这里落地；
- * 配对数据来自 ticket 06（`pairings`），缺省为空即「全部未配对」。
+ * 配对数据来自意图配对引擎（ADR-0003），缺省为空即「全部未配对」。
  */
 
 import { useMemo } from 'react';
@@ -28,7 +28,7 @@ const BADGE_GAP = 4;
 
 export interface NarrativeViewProps {
   result: ParseResult;
-  /** ticket 06 的保守配对结果；缺省为空数组 ⇒ 所有步骤标未配对、不画连线。 */
+  /** ADR-0003 的意图配对结果；缺省为空数组 ⇒ 所有步骤标未配对、不画连线。 */
   pairings?: readonly StepPairing[];
 }
 
@@ -45,8 +45,9 @@ export function NarrativeView({ result, pairings }: NarrativeViewProps) {
         <>
           <p className="hint">
             每条泳道是一个角色，泳道内按源码顺序排列消息步骤（方向 / 信道 / 符号化词项 /
-            new / event / 守卫注释）。无法可靠确定收发配对的步骤标为「未配对」——只有保守
-            配对引擎在结构上双向唯一确定时才画跨泳道连线，歧义一律不臆造。
+            new / event / 守卫注释）。无法可靠推断「设计上这条消息发给谁」的步骤标为「未配对」。
+            跨泳道连线表示**设计意图**的收发关系（两方协议按源码顺序自动推断，多方协议不自动连线）；
+            它**不是**安全保证——消息在攻击者模型下是否可达以 ProVerif 的验证结论为准。
           </p>
           <NarrativeCanvas layout={layout} />
           <Legend />

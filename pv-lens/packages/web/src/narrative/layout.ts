@@ -10,9 +10,9 @@
  * - 没有任何命名进程而有内联主进程时（如 hello），主进程渲染为一条名为 `main` 的泳道；
  * - 两者都没有时 `hasLanes` 为 false，视图据此显示中文提示而非白屏。
  *
- * 未配对与配对接缝（ticket 06）：默认 `pairings` 为空 ⇒ 每个步骤卡片都标 `未配对`，
- * 布局绝不臆造连线。传入 pairing 时，其两个端点步骤去掉 `未配对` 标注，并产出一条
- * 跨泳道连线（连线形态由渲染端决定，布局只给端点锚点）。
+ * 未配对与配对接缝（ADR-0003）：默认 `pairings` 为空 ⇒ 每个步骤卡片都标 `未配对`，
+ * 布局绝不臆造连线。传入意图配对结果时，其两个端点步骤去掉 `未配对` 标注，
+ * 并产出一条跨泳道连线（连线形态由渲染端决定，布局只给端点锚点）。
  */
 
 import type {
@@ -154,7 +154,7 @@ export interface NarrativeLane {
 }
 
 /** 一条跨泳道连线的端点锚点（卡片边缘中点），连线形态由渲染端决定。
- *  配对端点 `StepPairingAnchor` / `StepPairing` 由 core 的配对引擎定义（ticket 06）。 */
+ *  配对端点 `StepPairingAnchor` / `StepPairing` 由 core 的意图配对引擎定义（ADR-0003）。 */
 export interface CrossLaneEdge {
   from: StepPairingAnchor & { x: number; y: number };
   to: StepPairingAnchor & { x: number; y: number };

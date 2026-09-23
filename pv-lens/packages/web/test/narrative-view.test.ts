@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { parsePv } from '@pv-lens/core';
+import { pairSteps, parsePv } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
@@ -17,6 +17,11 @@ function fixture(name: string): ParseResult {
 }
 function render(result: ParseResult): string {
   return renderToString(createElement(NarrativeView, { result }));
+}
+
+/** 装配 App 实际传入的意图配对（ADR-0003），验证渲染端能画出连线。 */
+function renderWithPairings(result: ParseResult): string {
+  return renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
 }
 
 describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
@@ -42,11 +47,23 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
     expect(html).toContain('{|s|}k');
   });
 
-  it('未配对步骤有明确视觉标注，且默认不画跨泳道连线', () => {
+  it('未配对步骤有明确视觉标注，且默认（不传配对）不画跨泳道连线', () => {
     const html = render(fixture('handshake-fixed'));
     expect(html).toContain('未配对');
     expect(html).toContain('narrative-card--unpaired');
     expect(html).not.toContain('narrative-edge"'); // 无连线 path
+  });
+
+  it('两方协议经意图配对后画出跨泳道连线、端点去掉未配对标注', () => {
+    const html = renderWithPairings(fixture('handshake-fixed'));
+    expect(html).toContain('narrative-edge');
+    expect(html).toContain('2 条泳道，3 条跨泳道连线');
+  });
+
+  it('多方协议（ns-mutual-auth）不自动连线，保持全部未配对', () => {
+    const html = renderWithPairings(fixture('ns-mutual-auth'));
+    expect(html).not.toContain('narrative-edge"');
+    expect(html).toContain('0 条跨泳道连线');
   });
 
   it('图例解释记法；中文 UI', () => {

@@ -96,7 +96,7 @@ describe('未配对标注与 ticket 06 的配对接缝', () => {
     expect(layout.lanes[0].cards[0].unpaired).toBe(true);
   });
 
-  it('core 的保守配对结果可直接喂给布局：结构确定的两条消息产出两条连线', () => {
+  it('core 的意图配对结果可直接喂给布局：结构确定的两条消息产出两条连线', () => {
     const result = parsePv(`
       free c: channel.
       let roleA = out(c, (n1, n2)); in(c, (n3, n4)).

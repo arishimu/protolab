@@ -81,3 +81,9 @@ Spec 无正确性缺陷，留下两条提示。
   用于消除配对下标与泳道下标的漂移。
 
 验证：`pnpm test` → 16 files / 195 passed；`pnpm typecheck` 三包通过。
+
+### superseded（2026-09-19，ADR-0003）
+
+本票的「Dolev-Yao 双向唯一、四真实样例零边」验收被 **ADR-0003** 取代：配对语义改为「设计意图」，
+两方协议按类型 + 源码顺序自动连线（handshake-fixed / ns-original 各产出三条教科书连线），
+多方协议仍不自动连线。新引擎与验收见 ticket 12；`packages/core/test/pairing.test.ts` 已按新语义重写。

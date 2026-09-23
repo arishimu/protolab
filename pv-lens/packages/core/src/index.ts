@@ -159,6 +159,7 @@ export type {
   EqualityTerm,
   EventAnnotation,
   FreshName,
+  FunctionSignature,
   GuardNote,
   MessageStep,
   NameTerm,
@@ -172,6 +173,7 @@ export type {
   SourceSpan,
   StepAnnotations,
   TupleTerm,
+  TypedName,
   UnknownTerm,
   VariableTerm,
 } from './parser/model.js';
