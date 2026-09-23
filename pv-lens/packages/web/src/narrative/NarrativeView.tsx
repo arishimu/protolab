@@ -1,55 +1,66 @@
-/**
- * 规范叙事视图（ticket 04）：把 `buildNarrativeLayout` 的确定性布局自绘为 SVG。
- *
- * React + SVG 自绘，不引入自动布局引擎（布局坐标全在 `layout.ts` 里算好）。
- * 未配对标注、跨泳道连线、降级诊断卡片、图例都在这里落地；
- * 配对数据来自意图配对引擎（ADR-0003），缺省为空即「全部未配对」。
- */
-
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ParseResult, StepPairing } from '@pv-lens/core';
-import { NARRATIVE_METRICS, buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
-import type {
-  CrossLaneEdge,
-  DiagnosticCard,
-  LayoutTextLine,
-  NarrativeLane,
-  NarrativeLayout,
-  StepCard,
-} from './layout';
+import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
+import {
+  CHANNEL_STYLES,
+  MESSAGE_COLORS,
+  VALUE_COLORS,
+  buildStructuredNarrativeLayout,
+  legacyPairingsToMessagePairings,
+} from './structured-layout';
+import type { StructuredNarrativeLayout, StructuredNode } from './structured-layout';
 import { Legend } from './Legend';
+import './v2.css';
 
-const { cardPaddingX, cardPaddingY, lineBaseline, lineHeight } = NARRATIVE_METRICS;
-
-/** 角标文字宽度估计（装饰用，不影响布局坐标）。 */
-const BADGE_CHAR_WIDTH = 12;
-const BADGE_HEIGHT = 16;
-const BADGE_GAP = 4;
 
 export interface NarrativeViewProps {
   result: ParseResult;
-  /** ADR-0003 的意图配对结果；缺省为空数组 ⇒ 所有步骤标未配对、不画连线。 */
   pairings?: readonly StepPairing[];
 }
 
-export function NarrativeView({ result, pairings }: NarrativeViewProps) {
-  const layout = useMemo(
-    () => buildNarrativeLayout(result, { pairings }),
-    [result, pairings],
+export function NarrativeView({ result, pairings = [] }: NarrativeViewProps) {
+  const [compactness, setCompactness] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const structured = useMemo(
+    () => buildStructuredNarrativeLayout(result, {
+      pairings: legacyPairingsToMessagePairings(pairings),
+      compactness,
+    }),
+    [result, pairings, compactness],
   );
+  const legacy = useMemo(() => buildNarrativeLayout(result, { pairings }), [result, pairings]);
 
   return (
     <section className="narrative" aria-label="规范叙事视图">
-      <h3 className="narrative-title">规范叙事视图（泳道图）</h3>
-      {layout.hasLanes ? (
+      <div className="narrative-heading">
+        <h3 className="narrative-title">规范叙事视图</h3>
+        <div className="narrative-controls" aria-label="画布控制">
+          <label>
+            紧凑度
+            <input
+              aria-label="画布紧凑度"
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={compactness}
+              onChange={(event) => setCompactness(Number(event.target.value))}
+            />
+          </label>
+          <button type="button" className="icon-btn" aria-label="缩小画布" title="缩小画布" onClick={() => setZoom((value) => Math.max(0.6, value - 0.1))}>−</button>
+          <output aria-label="当前缩放">{Math.round(zoom * 100)}%</output>
+          <button type="button" className="icon-btn" aria-label="放大画布" title="放大画布" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))}>+</button>
+          <button type="button" className="icon-btn icon-btn--wide" aria-label="适合宽度" title="适合宽度" onClick={() => setZoom(1)}>适合宽度</button>
+        </div>
+      </div>
+      {structured.hasLanes ? (
         <>
           <p className="hint">
-            每条泳道是一个角色，泳道内按源码顺序排列消息步骤（方向 / 信道 / 符号化词项 /
-            new / event / 守卫注释）。无法可靠推断「设计上这条消息发给谁」的步骤标为「未配对」。
-            跨泳道连线表示**设计意图**的收发关系（两方协议按源码顺序自动推断，多方协议不自动连线）；
-            它**不是**安全保证——消息在攻击者模型下是否可达以 ProVerif 的验证结论为准。
+            纵轴是每个角色自己的消息序，信道是共享空间锚点；颜色只表示消息和值，不表示信道或验证结论。
+            跨角色连接表达设计意图，不代表攻击者模型下的可达性。
           </p>
-          <NarrativeCanvas layout={layout} />
+          <StructuredNarrativeCanvas layout={structured} zoom={zoom} legacy={legacy} />
+          <NarrativeDiagnostics result={result} />
           <Legend />
         </>
       ) : (
@@ -59,13 +70,165 @@ export function NarrativeView({ result, pairings }: NarrativeViewProps) {
   );
 }
 
-/** 无角色结构时的中文提示（而非白屏），并列出解析器诊断。 */
+function StructuredNarrativeCanvas({
+  layout,
+  zoom,
+  legacy,
+}: {
+  layout: StructuredNarrativeLayout;
+  zoom: number;
+  legacy: ReturnType<typeof buildNarrativeLayout>;
+}) {
+  const pairedEndpointCount = layout.endpoints.filter((endpoint) => !endpoint.unpaired).length;
+  const messageCount = pairedEndpointCount / 2;
+  return (
+    <div className="narrative-canvas narrative-canvas--structured">
+      <svg
+        width={layout.width * zoom}
+        height={layout.height * zoom}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
+        role="img"
+        aria-label={`规范叙事视图：${layout.columns.filter((column) => column.kind === 'role').length} 条泳道，${messageCount} 条跨泳道连线`}
+      >
+        <defs>
+          {MESSAGE_COLORS.map((color, index) => (
+            <marker key={color} id={`message-arrow-${String(index)}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+            </marker>
+          ))}
+        </defs>
+        <StructuredColumns layout={layout} />
+        <g className="structured-message-layer">
+          {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
+          {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
+        </g>
+        <g className="structured-node-layer">
+          {layout.nodes.map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
+        </g>
+        {layout.conflicts.map((conflict) => (
+          <g key={conflict.id} className="structured-conflict" aria-label={conflict.message}>
+            <path d={`M ${layout.width - 42} ${conflict.y - 10} l 10 20 h -20 z`} />
+            <text x={layout.width - 26} y={conflict.y + 4}>{conflict.message}</text>
+          </g>
+        ))}
+        {/* 兼容旧 DOM 查询：旧布局数据不参与可见几何。 */}
+        <title>{legacy.hasLanes ? 'v2 结构化叙事布局' : '无角色结构'}</title>
+      </svg>
+    </div>
+  );
+}
+
+function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
+  return (
+    <g className="structured-columns">
+      {layout.columns.map((column) => {
+        const isChannel = column.kind === 'channel';
+        const style = CHANNEL_STYLES[column.index % CHANNEL_STYLES.length];
+        return (
+          <g key={`${column.kind}-${column.name}`} className={`structured-column structured-column--${column.kind}`} data-identity={column.name}>
+            {isChannel ? (
+              <rect className={`structured-channel structured-channel--${style}`} x={column.x + 10} y="28" width={column.width - 20} height={layout.height - 60} />
+            ) : (
+              <line className="structured-lifeline" x1={column.x + column.width / 2} x2={column.x + column.width / 2} y1="62" y2={layout.height - 24} />
+            )}
+            <text className="structured-column-label" x={column.x + column.width / 2} y="20" textAnchor="middle">{isChannel ? `信道 ${column.name}` : column.name}</text>
+            {!isChannel && column.signatureText !== undefined && column.signatureText.length > 0 && (
+              <text className="structured-column-signature" x={column.x + column.width / 2} y="36" textAnchor="middle">{column.signatureText}</text>
+            )}
+            {!isChannel && (column.replicated || column.parallel) && (
+              <text className="structured-column-flags" x={column.x + column.width / 2} y="51" textAnchor="middle">
+                {[column.replicated ? '!' : '', column.parallel ? '|' : ''].filter(Boolean).join(' ')}
+              </text>
+            )}
+            {isChannel && <text className="structured-channel-index" x={column.x + column.width / 2} y="48" textAnchor="middle">{channelGlyph(column.index)}</text>}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pillars'][number] }) {
+  return (
+    <g className="structured-message-pillar" data-identity={pillar.id} aria-label={`消息 ${pillar.sequence} · 信道 ${pillar.channelName}`}>
+      <rect x={pillar.channelX - 5} y={pillar.top - 6} width="10" height={Math.max(12, pillar.bottom - pillar.top + 12)} fill={pillar.color} />
+      <text x={pillar.channelX + 10} y={pillar.top + 4} fill={pillar.color}>M{pillar.sequence}</text>
+    </g>
+  );
+}
+
+function EndpointSvg({
+  endpoint,
+  messageIndex,
+}: {
+  endpoint: StructuredNarrativeLayout['endpoints'][number];
+  messageIndex: number;
+}) {
+  const color = messageIndex >= 0 ? MESSAGE_COLORS[messageIndex % MESSAGE_COLORS.length] : '#C2410C';
+  const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
+  const start = endpoint.direction === 'out' ? endpoint.roleX : endpoint.channelX;
+  const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
+  const curve = Math.abs(end - start) > 100 ? (start + end) / 2 : start + (end - start) / 2;
+  const path = `M ${start} ${endpoint.y} Q ${curve} ${endpoint.y - 16} ${end} ${endpoint.y}`;
+  return (
+    <g className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}`} data-identity={endpoint.id} data-channel={endpoint.channelName} aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}`}>
+      <path d={path} stroke={color} markerEnd={marker} />
+      <rect className="structured-term-chip" x={(start + end) / 2 - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
+      <text x={(start + end) / 2} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 12)}</text>
+      {endpoint.unpaired && <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />}
+    </g>
+  );
+}
+
+function StructuredNodeSvg({ node }: { node: StructuredNode }) {
+  if (node.kind === 'event') {
+    return (
+      <g className="structured-event" data-source-offset={node.span.start.offset} aria-label={node.label}>
+        <path d={`M ${node.x + node.width / 2} ${node.y + 5} l 9 9 l -9 9 l -9 -9 z`} />
+        <line x1={node.x + node.width / 2 + 8} y1={node.y + 10} x2={node.x + node.width / 2 + 20} y2={node.y - 3} />
+        <text x={node.x + node.width / 2 + 24} y={node.y + 18}>{node.label}</text>
+      </g>
+    );
+  }
+  return (
+    <g className={`structured-node structured-node--${node.kind}`} data-source-offset={node.span.start.offset} aria-label={node.label}>
+      <rect x={node.x} y={node.y} width={node.width} height={node.height} />
+      <text x={node.x + node.width / 2} y={node.y + node.height / 2 + 4} textAnchor="middle">{truncate(node.label, 22)}</text>
+    </g>
+  );
+}
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function channelGlyph(index: number): string {
+  return ['①', '②', '③', '④', '⑤'][index] ?? `(${String(index + 1)})`;
+}
+
+function NarrativeDiagnostics({ result }: { result: ParseResult }) {
+  if (result.diagnostics.length === 0) return null;
+  return (
+    <section className="narrative-diagnostics" aria-label="解析诊断">
+      <h4>解析诊断</h4>
+      <ul className="diagnostic-list">
+        {result.diagnostics.map((diagnostic, index) => (
+          <li key={`${diagnostic.span.start.offset}-${index}`} className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}>
+            <span className="diagnostic-severity">{diagnosticSeverityLabel(diagnostic.severity)}</span>
+            <span className="diagnostic-line">{`L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`}</span>
+            <span className="diagnostic-message">{diagnostic.message}</span>
+            <code className="diagnostic-source">{diagnostic.sourceText}</code>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 function NoRoleStructure({ result }: { result: ParseResult }) {
   return (
     <div className="narrative-empty" role="status">
       <p className="narrative-empty-lead">
-        当前 `.pv` 里没有可识别的角色结构：既没有命名进程（`let 角色名(参数) = 进程体.`），
-        也没有内联主进程（`process` 关键字后的进程体），因此无法绘制泳道图。
+        当前 `.pv` 里没有可识别的角色结构：既没有命名进程，也没有内联主进程，因此无法绘制规范叙事视图。
       </p>
       <p className="hint">下面是解析器给出的诊断，可用于定位模型里的问题：</p>
       {result.diagnostics.length === 0 ? (
@@ -73,16 +236,9 @@ function NoRoleStructure({ result }: { result: ParseResult }) {
       ) : (
         <ul className="diagnostic-list">
           {result.diagnostics.map((diagnostic, index) => (
-            <li
-              key={`${diagnostic.span.start.offset}-${index}`}
-              className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}
-            >
-              <span className="diagnostic-severity">
-                {diagnosticSeverityLabel(diagnostic.severity)}
-              </span>
-              <span className="diagnostic-line">
-                {`L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`}
-              </span>
+            <li key={`${diagnostic.span.start.offset}-${index}`} className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}>
+              <span className="diagnostic-severity">{diagnosticSeverityLabel(diagnostic.severity)}</span>
+              <span className="diagnostic-line">{`L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`}</span>
               <span className="diagnostic-message">{diagnostic.message}</span>
               <code className="diagnostic-source">{diagnostic.sourceText}</code>
             </li>
@@ -93,215 +249,4 @@ function NoRoleStructure({ result }: { result: ParseResult }) {
   );
 }
 
-function NarrativeCanvas({ layout }: { layout: NarrativeLayout }) {
-  return (
-    <div className="narrative-canvas">
-      <svg
-        width={layout.width}
-        height={layout.height}
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
-        role="img"
-        aria-label={`规范叙事视图泳道图：${layout.lanes.length} 条泳道，${layout.crossLaneEdges.length} 条跨泳道连线`}
-      >
-        <defs>
-          <marker
-            id="narrative-edge-arrow"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path className="narrative-edge-arrow" d="M 0 0 L 10 5 L 0 10 z" />
-          </marker>
-        </defs>
-        {layout.lanes.map((lane) => (
-          <LaneGroup key={lane.roleIndex} lane={lane} />
-        ))}
-        <g className="narrative-edges">
-          {layout.crossLaneEdges.map((edge, index) => (
-            <path
-              key={`${edge.from.roleIndex}:${edge.from.stepIndex}->${edge.to.roleIndex}:${edge.to.stepIndex}:${index}`}
-              className="narrative-edge"
-              d={edgePath(edge)}
-              markerEnd="url(#narrative-edge-arrow)"
-            />
-          ))}
-        </g>
-        {layout.unassignedSection !== null && (
-          <UnassignedGroup layout={layout} section={layout.unassignedSection} />
-        )}
-      </svg>
-    </div>
-  );
-}
-
-/** 跨泳道连线的形态由渲染端决定：右出左入的折线（同向/反向都走得通）。 */
-function edgePath(edge: CrossLaneEdge): string {
-  const midX = (edge.from.x + edge.to.x) / 2;
-  return `M ${edge.from.x} ${edge.from.y} H ${midX} V ${edge.to.y} H ${edge.to.x}`;
-}
-
-function LaneGroup({ lane }: { lane: NarrativeLane }) {
-  const headerY = lane.y + 22;
-  const signatureY = lane.y + 38;
-  return (
-    <g
-      className={`narrative-lane narrative-lane--${lane.kind}${
-        lane.replicated ? ' narrative-lane--replicated' : ''
-      }`}
-    >
-      <rect
-        className="narrative-lane-bg"
-        x={lane.x}
-        y={lane.y}
-        width={lane.width}
-        height={lane.height}
-        rx={10}
-      />
-      <text className="narrative-lane-name" x={lane.x + 14} y={headerY}>
-        {lane.name}
-      </text>
-      {lane.signatureText.length > 0 && (
-        <text className="narrative-lane-signature" x={lane.x + 14} y={signatureY}>
-          {lane.signatureText}
-        </text>
-      )}
-      {lane.kind === 'main' && (
-        <text className="narrative-lane-note" x={lane.x + lane.width - 14} y={headerY} textAnchor="end">
-          内联主进程（非协议角色）
-        </text>
-      )}
-      {lane.cards.length === 0 && lane.diagnosticCards.length === 0 && (
-        <text
-          className="narrative-lane-empty"
-          x={lane.x + 14}
-          y={lane.y + NARRATIVE_METRICS.laneHeaderHeight + 24}
-        >
-          （该角色没有可展示的消息步骤）
-        </text>
-      )}
-      {lane.cards.map((card) => (
-        <StepCardGroup key={card.stepIndex} card={card} />
-      ))}
-      {lane.diagnosticCards.map((card, index) => (
-        <DiagnosticCardGroup key={`${card.lineNumber}-${index}`} card={card} />
-      ))}
-    </g>
-  );
-}
-
-function StepCardGroup({ card }: { card: StepCard }) {
-  return (
-    <g className={`narrative-card${card.unpaired ? ' narrative-card--unpaired' : ''}`}>
-      <title>
-        {`${card.arrow} ${card.directionLabel} · 信道 ${card.channelText} · ${card.termText}（源码 L${card.lineNumber}）`}
-      </title>
-      <rect
-        className="narrative-card-bg"
-        x={card.x}
-        y={card.y}
-        width={card.width}
-        height={card.height}
-        rx={6}
-      />
-      <TextLines lines={card.lines} x={card.x + cardPaddingX} y={card.y + cardPaddingY} />
-      {card.badges.length > 0 && <CardBadges card={card} />}
-    </g>
-  );
-}
-
-/** 卡片角标：未配对 / `!` / `|`，右对齐在标题行上。`kind` 选样式、`label` 是文字。 */
-function CardBadges({ card }: { card: StepCard }) {
-  const widths = card.badges.map((badge) => badge.label.length * BADGE_CHAR_WIDTH + 10);
-  const total =
-    widths.reduce((sum, width) => sum + width, 0) + (card.badges.length - 1) * BADGE_GAP;
-  let cursor = card.x + card.width - cardPaddingX - total;
-  return (
-    <g className="narrative-badges">
-      {card.badges.map((badge, index) => {
-        const width = widths[index];
-        const x = cursor;
-        cursor += width + BADGE_GAP;
-        const modifier =
-          badge.kind === 'unpaired' ? ' narrative-badge--unpaired' : ' narrative-badge--flag';
-        return (
-          <g key={badge.kind} className={`narrative-badge${modifier}`}>
-            <rect x={x} y={card.y + 4} width={width} height={BADGE_HEIGHT} rx={8} />
-            <text x={x + width / 2} y={card.y + 4 + BADGE_HEIGHT / 2 + 4} textAnchor="middle">
-              {badge.label}
-            </text>
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-function DiagnosticCardGroup({ card }: { card: DiagnosticCard }) {
-  return (
-    <g className={`narrative-diag narrative-diag--${card.severity}`}>
-      <title>
-        {`${card.severityLabel} · L${card.lineNumber} · ${card.message}（原文：${card.sourceText}）`}
-      </title>
-      <rect
-        className="narrative-diag-bg"
-        x={card.x}
-        y={card.y}
-        width={card.width}
-        height={card.height}
-        rx={6}
-      />
-      <TextLines lines={card.lines} x={card.x + cardPaddingX} y={card.y + cardPaddingY} />
-    </g>
-  );
-}
-
-function UnassignedGroup({
-  layout,
-  section,
-}: {
-  layout: NarrativeLayout;
-  section: { title: string; x: number; y: number };
-}) {
-  return (
-    <g className="narrative-unassigned">
-      <text
-        className="narrative-section-title"
-        x={section.x}
-        y={section.y + lineBaseline + 6}
-      >
-        {section.title}
-      </text>
-      {layout.unassignedDiagnostics.map((card, index) => (
-        <DiagnosticCardGroup key={`${card.lineNumber}-${index}`} card={card} />
-      ))}
-    </g>
-  );
-}
-
-function TextLines({
-  lines,
-  x,
-  y,
-}: {
-  lines: readonly LayoutTextLine[];
-  x: number;
-  y: number;
-}) {
-  return (
-    <>
-      {lines.map((line, index) => (
-        <text
-          key={`${line.kind}-${index}`}
-          className={`narrative-line narrative-line--${line.kind}`}
-          x={x}
-          y={y + lineBaseline + index * lineHeight}
-        >
-          {line.text}
-        </text>
-      ))}
-    </>
-  );
-}
+export { VALUE_COLORS };

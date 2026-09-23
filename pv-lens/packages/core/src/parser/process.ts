@@ -335,7 +335,8 @@ function scanLet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
 
   // 绑定模式 = `=` 与 `in` 之间的部分；等值约束（`=x`）只看模式，不看被绑定的词项。
   const patternTokens = cursor.tokens.slice(patternStart, equalsIndex);
-  for (const name of collectPatternBinders(patternTokens)) body.variables.add(name);
+  const names = collectPatternBinders(patternTokens);
+  for (const name of names) body.variables.add(name);
 
   if (patternTokens.some((t) => t.kind === 'punct' && t.text === '=')) {
     const span: SourceSpan = {
@@ -370,7 +371,8 @@ function scanGet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
   }
 
   const patternTokens = cursor.tokens.slice(patternStart, inIndex);
-  for (const name of collectPatternBinders(patternTokens)) body.variables.add(name);
+  const names = collectPatternBinders(patternTokens);
+  for (const name of names) body.variables.add(name);
 
   const span: SourceSpan = {
     start: patternTokens[0].span.start,

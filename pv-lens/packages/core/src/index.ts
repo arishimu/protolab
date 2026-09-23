@@ -155,12 +155,25 @@ export { parsePv, MAIN_PROCESS_NAME } from './parser/parse.js';
 export type {
   AnnotationPlacement,
   ApplicationTerm,
+  Binding,
+  BindingKind,
+  BranchItem,
+  ChannelDeclaration,
+  Condition,
+  ConditionComparison,
+  ConditionCompound,
+  ConditionalTerm,
+  DestructorDeclaration,
   DiagnosticSeverity,
   EqualityTerm,
   EventAnnotation,
+  EventItem,
   FreshName,
   FunctionSignature,
   GuardNote,
+  LocalItem,
+  MessageEndpoint,
+  MessageItem,
   MessageStep,
   NameTerm,
   ParseResult,
@@ -168,6 +181,7 @@ export type {
   PvQuery,
   PvRole,
   PvTerm,
+  RoleItem,
   RoleParameter,
   SourcePosition,
   SourceSpan,
@@ -201,3 +215,22 @@ export type { VerificationResult } from './verify-result.js';
  */
 export { pairSteps, narrativeRoleOrder } from './pairing.js';
 export type { StepPairing, StepPairingAnchor } from './pairing.js';
+export { solveHorizontalSequence, collectChannels } from './horizontal-sequence.js';
+export type { HorizontalNode, HorizontalOrderConstraint, HorizontalSequence } from './horizontal-sequence.js';
+export { composeMessagePairings } from './message-pairing.js';
+export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix } from './correspondence.js';
+export type {
+  CorrespondenceCell,
+  CorrespondencePlan,
+  CorrespondenceQuery,
+  CorrespondenceVerdict,
+  EventReference,
+} from './correspondence.js';
+
+export type {
+  MessageEndpointRef,
+  MessagePairing,
+  PairingDiagnostic,
+  PairingIntent,
+  PairingOrigin,
+} from './message-pairing.js';

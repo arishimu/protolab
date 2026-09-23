@@ -73,6 +73,17 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
     expect(html).toContain('复制');
   });
 
+  it('ticket #01：角色参数簇和多信道生命线可从 v2 视图读取', () => {
+    const handshake = render(fixture('handshake-fixed'));
+    expect(handshake).toContain('(pkA: pkey, skA: skey, pkB: spkey)');
+    expect(handshake).toContain('structured-column-signature');
+
+    const multiChannel = render(fixture('multi-channel'));
+    expect(multiChannel).toContain('信道 c1');
+    expect(multiChannel).toContain('信道 c2');
+    expect(multiChannel).toContain('信道 c3');
+    expect(multiChannel).toContain('structured-channel');
+  });
   it('完全没有角色结构时给中文提示而非白屏', () => {
     const html = render(parsePv('free c: channel.\n'));
     expect(html).toContain('没有可识别的角色结构');

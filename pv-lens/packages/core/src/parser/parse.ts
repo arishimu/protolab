@@ -25,6 +25,7 @@ import {
   CLOSE_PUNCT,
 } from './state.js';
 import { newBodyScan, scanProcessBody, type BodyScan, type InvocationFact } from './process.js';
+import { buildRoleItems } from './ir.js';
 import { parseTypeAscription } from './terms.js';
 
 /** 内联主进程在模型里的固定角色名。 */
@@ -78,6 +79,7 @@ export function parsePv(source: string): ParseResult {
   const queries: PvQuery[] = [];
   const functions: FunctionSignature[] = [];
   const names: TypedName[] = [];
+  const destructors: { name: string; span: SourceSpan }[] = [];
   let main: MutableRole | null = null;
 
   try {
@@ -93,6 +95,10 @@ export function parsePv(source: string): ParseResult {
       if (cursor.atIdent('fun')) {
         const signature = parseFunDeclaration(cursor);
         if (signature !== null) functions.push(signature);
+        continue;
+      }
+      if (cursor.atIdent('reduc')) {
+        destructors.push(...parseReducDeclaration(cursor));
         continue;
       }
       if (cursor.atIdent('free') || cursor.atIdent('const')) {
@@ -118,11 +124,19 @@ export function parsePv(source: string): ParseResult {
   return {
     hasErrors: sorted.some((d) => d.severity === 'error'),
     hasDegraded: sorted.some((d) => d.severity === 'degraded'),
-    roles: definitions.map((definition) => toPublicRole(definition, invocations)),
-    mainProcess: main === null ? null : toPublicRole(main, invocations),
+    roles: definitions.map((definition, index) => toPublicRole(definition, invocations, index)),
+    mainProcess: main === null ? null : toPublicRole(main, invocations, 0),
     queries,
     functions,
     names,
+    channels: names.filter((name) => name.typeName === 'channel').map((name) => ({
+      name: name.name,
+      typeName: name.typeName,
+    })),
+    destructors,
+    bindings: [...definitions, ...(main === null ? [] : [main])].flatMap((role) =>
+      toPublicRole(role, invocations).bindings,
+    ),
     diagnostics: sorted,
   };
 }
@@ -232,22 +246,30 @@ function collectInvocationFacts(roles: readonly MutableRole[]): Map<string, Invo
 }
 
 /** 把扫描结果落到公开角色模型：角色级 `!` / `|` 传给该角色的每条步骤。 */
-function toPublicRole(role: MutableRole, invocations: ReadonlyMap<string, InvocationFact>): PvRole {
+function toPublicRole(
+  role: MutableRole,
+  invocations: ReadonlyMap<string, InvocationFact>,
+  roleIndex = -1,
+): PvRole {
   const invocation = invocations.get(role.name);
   const replicated = (invocation?.replicated ?? false) || role.body.steps.some((s) => s.annotations.replicated);
   const parallel = (invocation?.parallel ?? false) || role.body.steps.some((s) => s.annotations.parallel);
 
+  const projectedSteps = role.body.steps.map((step) => ({
+    ...step,
+    annotations: {
+      ...step.annotations,
+      replicated: step.annotations.replicated || replicated,
+      parallel: step.annotations.parallel || parallel,
+    },
+  }));
+  const itemsResult = buildRoleItems(role.name, role.parameters, projectedSteps, roleIndex);
   return {
     name: role.name,
     parameters: role.parameters,
-    steps: role.body.steps.map((step) => ({
-      ...step,
-      annotations: {
-        ...step.annotations,
-        replicated: step.annotations.replicated || replicated,
-        parallel: step.annotations.parallel || parallel,
-      },
-    })),
+    steps: projectedSteps,
+    items: itemsResult.items,
+    bindings: itemsResult.bindings,
     replicated,
     parallel,
     span: role.span,
@@ -265,6 +287,29 @@ function skipDeclaration(cursor: TokenCursor): void {
     // 不消费 `process`（它是主进程的开始），只报声明缺 `.`。
     cursor.error('声明缺少结尾的 `.`', cursor.span(start));
   }
+}
+
+function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {
+  const keyword = cursor.next();
+  const stop = findTopLevelToken(cursor, cursor.position, ['.']);
+  const end = stop < 0 ? cursor.tokens.length - 1 : stop;
+  const result: { name: string; span: SourceSpan }[] = [];
+  let afterSemicolon = false;
+  for (let index = cursor.position; index < end; index++) {
+    const token = cursor.tokens[index];
+    if (token.text === ';') {
+      afterSemicolon = true;
+      continue;
+    }
+    if (afterSemicolon && token.kind === 'ident' && cursor.tokens[index + 1]?.text === '(') {
+      if (!result.some((entry) => entry.name === token.text)) {
+        result.push({ name: token.text, span: token.span });
+      }
+    }
+  }
+  cursor.position = stop < 0 ? end : stop + 1;
+  if (stop < 0) cursor.error('`reduc` 声明缺少结尾的 `.`', cursor.span(keyword.span.start));
+  return result;
 }
 
 /**

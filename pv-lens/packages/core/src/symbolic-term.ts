@@ -74,6 +74,8 @@ export function renderTerm(term: PvTerm): string {
       return `(${term.items.map(renderTerm).join(', ')})`;
     case 'application':
       return renderApplication(term);
+    case 'conditional':
+      return term.text;
     case 'equality':
       return `=${renderTerm(term.term)}`;
     case 'unknown':

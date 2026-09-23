@@ -8,6 +8,8 @@
 import type { PvTerm } from './model.js';
 import type { Token } from './lexer.js';
 import type { TokenCursor } from './state.js';
+import { findTopLevelToken } from './state.js';
+import { parseConditionText } from './condition.js';
 
 /**
  * 变量作用域：裸标识符在此集合中判为变量，否则判为名字
@@ -25,6 +27,8 @@ export function parseTerm(cursor: TokenCursor, scope: VariableScope): PvTerm | n
     cursor.next();
     return { kind: 'name', name: token.text, text: token.text };
   }
+
+  if (token.kind === 'ident' && token.text === 'if') return parseConditional(cursor, scope);
 
   if (token.kind === 'ident') {
     cursor.next();
@@ -54,6 +58,38 @@ export function parseTerm(cursor: TokenCursor, scope: VariableScope): PvTerm | n
 
   cursor.error(`期望词项，实际遇到 \`${token.text || '文件末尾'}\``, token.span);
   return null;
+}
+
+function parseConditional(cursor: TokenCursor, scope: VariableScope): PvTerm | null {
+  const keyword = cursor.next();
+  const conditionStart = cursor.position;
+  const thenIndex = findTopLevelToken(cursor, conditionStart, ['then']);
+  if (thenIndex < 0 || thenIndex === conditionStart) {
+    cursor.error('条件表达式缺少 `then`', cursor.span(keyword.span.start));
+    return null;
+  }
+  const conditionEnd = cursor.tokens[thenIndex - 1]?.span.end ?? keyword.span.end;
+  const conditionText = cursor.source.slice(
+    cursor.tokens[conditionStart].span.start.offset,
+    conditionEnd.offset,
+  );
+  const condition = parseConditionText(conditionText, scope);
+  cursor.position = thenIndex + 1;
+  const thenTerm = parseTerm(cursor, scope);
+  if (thenTerm === null || !cursor.atIdent('else')) {
+    cursor.error('条件表达式缺少 `else` 或 then 词项', cursor.span(keyword.span.start));
+    return null;
+  }
+  cursor.next();
+  const elseTerm = parseTerm(cursor, scope);
+  if (elseTerm === null) return null;
+  return {
+    kind: 'conditional',
+    condition,
+    thenTerm,
+    elseTerm,
+    text: cursor.slice(cursor.span(keyword.span.start)),
+  };
 }
 
 /** 解析 `: 类型名`；没有则返回 undefined。 */

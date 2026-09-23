@@ -62,6 +62,12 @@ function termEquals(a: PvTerm, b: PvTerm): boolean {
         a.items.length === b.items.length &&
         a.items.every((item, index) => termEquals(item, b.items[index]))
       );
+    case 'conditional':
+      return (
+        b.kind === 'conditional' &&
+        termEquals(a.thenTerm, b.thenTerm) &&
+        termEquals(a.elseTerm, b.elseTerm)
+      );
     case 'equality':
       return b.kind === 'equality' && termEquals(a.term, b.term);
     case 'unknown':
@@ -89,6 +95,8 @@ function termValueEquals(out: PvTerm, value: PvTerm): boolean {
         out.items.length === value.items.length &&
         out.items.every((item, index) => termValueEquals(item, value.items[index]))
       );
+    case 'conditional':
+      return termValueEquals(out, value.thenTerm) && termValueEquals(out, value.elseTerm);
     case 'equality':
       return termValueEquals(out, value.term);
     case 'unknown':
@@ -149,6 +157,8 @@ function inferType(term: PvTerm, roleIndex: number, ctx: TypeContext): string | 
       return ctx.returnTypes.get(term.functor);
     case 'tuple':
       return undefined;
+    case 'conditional':
+      return inferType(term.thenTerm, roleIndex, ctx) ?? inferType(term.elseTerm, roleIndex, ctx);
     case 'equality':
       return inferType(term.term, roleIndex, ctx);
     case 'unknown':
@@ -194,6 +204,8 @@ function matchesIntent(
       return out.kind === 'name' && out.name === pattern.name;
     case 'equality':
       return termValueEquals(out, pattern.term);
+    case 'conditional':
+      return false;
     case 'application':
       return (
         out.kind === 'application' &&

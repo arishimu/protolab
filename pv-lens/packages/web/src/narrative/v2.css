@@ -1,0 +1,179 @@
+
+/* ---- v2 结构化叙事视图 ---- */
+.narrative-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.narrative-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.narrative-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.narrative-controls input[type='range'] {
+  accent-color: var(--accent);
+  width: 6rem;
+}
+
+.icon-btn {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.icon-btn--wide {
+  min-width: 4.8rem;
+  font-size: 0.75rem;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.narrative-canvas--structured {
+  overflow: auto;
+  min-height: 20rem;
+}
+
+.structured-column-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  font-family: var(--mono);
+}
+
+.structured-channel-index {
+  fill: var(--muted);
+  font-size: 13px;
+}
+
+.structured-column-signature,
+.structured-column-flags {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+
+.structured-lifeline {
+  stroke: #64748b;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.structured-channel {
+  fill: #f8fafc;
+  stroke: #64748b;
+  stroke-width: 1.5;
+}
+
+.structured-channel--long-dash {
+  stroke-dasharray: 8 4;
+}
+
+.structured-channel--dot {
+  stroke-dasharray: 2 4;
+}
+
+.structured-node rect,
+.structured-term-chip {
+  fill: #ffffff;
+  stroke-width: 1.25;
+}
+
+.structured-node text,
+.structured-endpoint text {
+  fill: var(--text);
+  font-size: 10px;
+  font-family: var(--mono);
+}
+
+.structured-node--message rect {
+  fill: #f8fafc;
+  stroke: #94a3b8;
+  stroke-dasharray: 3 2;
+}
+
+.structured-node--local rect {
+  fill: #fefce8;
+  stroke: #d4a72c;
+}
+
+.structured-node--branch rect {
+  fill: #eff6ff;
+  stroke: #2563eb;
+  transform: skewY(-8deg);
+}
+
+.structured-event path {
+  fill: #334155;
+  stroke: #334155;
+}
+
+.structured-event line {
+  stroke: #334155;
+  stroke-width: 1.5;
+}
+
+.structured-event text {
+  fill: var(--text);
+  font-size: 10px;
+  font-family: var(--mono);
+}
+
+.structured-endpoint path {
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.structured-endpoint--unpaired path {
+  stroke-dasharray: 4 3;
+}
+
+.structured-endpoint--unpaired .structured-term-chip {
+  stroke: #c2410c;
+  stroke-dasharray: 3 2;
+}
+
+.structured-unpaired-dot {
+  fill: #ffffff;
+  stroke: #c2410c;
+  stroke-width: 2;
+}
+
+.structured-message-pillar text {
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 650;
+}
+
+.structured-conflict path {
+  fill: #b91c1c;
+  stroke: #b91c1c;
+}
+
+.structured-conflict text {
+  fill: #b91c1c;
+  font-size: 10px;
+}
