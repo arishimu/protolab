@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信道管 · 一色一消息 · 同色柱连端（wayfinder ticket 10，v3）</title>
+<style>
+  :root { --bg:#f7f7f9; --panel:#fff; --border:#d9d9de; --text:#1f2329; --muted:#6b7280; --accent:#2563eb; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; line-height:1.6; padding-bottom:90px; }
+  .wrap { max-width:1220px; margin:0 auto; padding:1.25rem 1rem; }
+  header.prototype-head h1 { font-size:1.18rem; margin:0 0 .25rem; }
+  header.prototype-head .tag { display:inline-block; font-size:.72rem; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:.05rem .5rem; }
+  .question { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.9rem 1rem; margin:.9rem 0; font-size:.9rem; }
+  .question p { margin:0 0 .35rem; } .question p:last-child { margin-bottom:0; }
+  .question .criteria { color:var(--muted); font-size:.85rem; }
+  .controls { position:sticky; top:0; z-index:10; background:rgba(247,247,249,.95); backdrop-filter:blur(4px); border-bottom:1px solid var(--border); padding:.55rem 1rem; margin:0 -1rem .9rem; display:flex; flex-wrap:wrap; gap:.9rem; align-items:center; }
+  .controls .group { display:flex; align-items:center; gap:.35rem; }
+  .controls .group-label { font-size:.8rem; color:var(--muted); }
+  .chip { font:inherit; font-size:.82rem; cursor:pointer; padding:.28rem .68rem; border-radius:999px; border:1px solid var(--border); background:var(--panel); color:var(--text); }
+  .chip.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.85rem; margin-bottom:1rem; overflow-x:auto; }
+  .panel h2 { font-size:.98rem; margin:0 0 .15rem; }
+  .panel .caption { font-size:.82rem; color:var(--muted); margin:0 0 .6rem; }
+  .panel svg { display:block; }
+  .note { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:.75rem .95rem; margin:0 0 1rem; font-size:.87rem; }
+  .note h2 { font-size:.95rem; margin:0 0 .3rem; }
+  .note ul { margin:.3rem 0 0; padding-left:1.1rem; } .note li { margin:.15rem 0; }
+  .legend { margin-top:1rem; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem; }
+  .legend h3 { margin:0 0 .5rem; font-size:.9rem; }
+  .legend dl { margin:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:.3rem 1.25rem; }
+  .legend .item { display:flex; align-items:baseline; gap:.5rem; font-size:.8rem; }
+  .legend dd { margin:0; color:var(--muted); }
+  .float-bar { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:.6rem; background:#1f2329; color:#fff; border-radius:999px; padding:.4rem .8rem; box-shadow:0 4px 16px rgba(0,0,0,.25); font-size:.8rem; z-index:40; max-width:96vw; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="prototype-head">
+    <h1>信道管：一色一消息 · 同色柱相连</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 10（v3，按反馈重做）· ns-mutual-auth 切片</span>
+  </header>
+
+  <div class="question">
+    <p><b>口径</b>：一条消息 = <b>一种颜色</b>；信道管里用<b>同色柱</b>把同一条消息的全部端连起来。一发多收与多发一收于是<b>同一种画法</b>——「一根同色柱 + 抽头」，区别只在抽头落在哪一侧。
+    <p class="criteria"><b>看什么</b>：① 广播（<code>s_out2</code>）一色、一根柱、扇出到 I/R；② 合流（<code>s_in1</code>）是<b>两条不同消息</b>（I 的 M1、R 的 M4）两种颜色、两根柱汇到同一个接收步；③ 1-1 消息（M3/M6/M7）也各一色、在管里有自己的柱。</p>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">整体移动（刚性）</span>
+      <span class="chip" data-shift="-60">上移 60</span>
+      <span class="chip" data-shift="0">复位</span>
+      <span class="chip" data-shift="60">下移 60</span>
+    </div>
+    <div class="group">
+      <span class="group-label">消息色</span>
+      <span id="legend-inline" style="font-size:.8rem"></span>
+    </div>
+  </div>
+
+  <div class="note">
+    <h2>这版新增 / 保留</h2>
+    <ul>
+      <li><b>新增</b>：颜色 = 消息身份（一色一消息）；信道管（加宽为多道）内每条消息一根<b>同色柱</b>，跨度 = 该消息各端的 y 区间。</li>
+      <li><b>统一</b>：扇出 = 一根柱 + 多个出口抽头；合流 = 多根柱汇到同一入口抽头（该抽头用两色并排表示两条消息）。</li>
+      <li><b>保留</b>：各端 y 不同（无共享行）；整团 = 一个刚性间距单元（上/下移按钮验证内部间距不变）；无「跨序」、无「收到 ×N 梁」。</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>信道管里的同色柱（ns-mutual-auth）</h2>
+    <p class="caption">每条消息一种颜色：<code>i_out1</code>=M1 青、<code>r_out4</code>=M4 玫红、<code>s_out2</code>=广播 紫、<code>i_out3</code>=M3 绿、<code>r_out6</code>=M6 橙、<code>i_out7</code>=M7 蓝。柱在管内的横向分道由 y 区间是否重叠决定。</p>
+    <div id="svg-main"></div>
+  </div>
+
+  <div class="legend">
+    <h3>图例</h3>
+    <dl>
+      <div class="item"><span style="display:inline-block;width:26px;height:12px;background:#7c3aed;border-radius:2px;vertical-align:-1px"></span><dd>信道管内的消息柱（同色 = 同一条消息；柱的跨度 = 该消息各端的 y 区间）</dd></div>
+      <div class="item"><span style="display:inline-block;width:22px;height:0;border-top:2px solid #e11d48;vertical-align:3px"></span><dd>消息段 / 抽头（同色）；合流处入口抽头用两色并排 = 两条消息汇入同一步</dd></div>
+      <div class="item"><span style="border:1.4px dashed #94a3b8;width:22px;height:0;display:inline-block;vertical-align:2px"></span><dd>刚性间距单元（整团移动、内部间距固定）</dd></div>
+      <div class="item"><span style="display:inline-block;width:30px;height:14px;border-radius:4px;background:#f5f3ff;border:1.4px solid #6d28d9;vertical-align:-2px"></span><dd>信道紫框：消息词项</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="float-bar">
+  <span>一色一消息 · 信道管内同色柱相连 · 扇出 / 合流同形</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 1220, H_MAIN = 1240, TOP = 118;
+  var RAIL = 560;
+  var C = {
+    ink:'#111827', muted:'#6b7280', lifeline:'#cbd5e1',
+    channel:'#6d28d9', channelFill:'#f8f7ff', channelInk:'#5b21b6',
+    unpaired:'#d97706', unpairedFill:'#fffbeb', unpairedInk:'#b45309',
+    event:'#0d9488', eventFill:'#f0fdfa', eventInk:'#0f766e', rigid:'#94a3b8'
+  };
+
+  var ROLES = {
+    I: { x:220, name:'processInitiator' },
+    R: { x:860, name:'processResponder' },
+    S: { x:1010, name:'processS' }
+  };
+  function roleX(r) { return ROLES[r].x; }
+  function towardRail(r) { return roleX(r) < RAIL ? 1 : -1; }
+
+  var ITEM = {};
+  function item(id, role, dir, term, y) { ITEM[id] = { id:id, role:role, dir:dir, term:term, y:y }; }
+  item('i_in0','I','in','(xA,hostX)',96);
+  item('i_out1','I','out','(xA,hostX)',170);
+  item('i_in2','I','in','ms',340);
+  item('i_out3','I','out','m3',500);
+  item('i_in6','I','in','m',840);
+  item('i_out7','I','out','(m7,messtermI)',1040);
+  item('r_in0','R','in','xB',96);
+  item('r_in3','R','in','m',500);
+  item('r_out4','R','out','(xB,hostY)',670);
+  item('r_in5','R','in','ms',740);
+  item('r_out6','R','out','m6',900);
+  item('r_in7','R','in','m3',1040);
+  item('r_out7b','R','out','messtermR',1120);
+  item('s_in1','S','in','(a, b)',170);
+  item('s_out2','S','out','sign(...)',340);
+
+  // 一条消息 = 一种颜色（这是 v3 的核心：颜色即消息身份）
+  var MSG_COLOR = {
+    i_out1:'#0891b2',   // Message 1
+    r_out4:'#e11d48',   // Message 4
+    s_out2:'#7c3aed',   // Message 2 & 5（一次广播 = 一条消息）
+    i_out3:'#16a34a',   // Message 3
+    r_out6:'#ea580c',   // Message 6
+    i_out7:'#2563eb'    // Message 7
+  };
+  var MSG_LABEL = { i_out1:'M1', r_out4:'M4', s_out2:'M2/M5', i_out3:'M3', r_out6:'M6', i_out7:'M7' };
+
+  var EDGES = [
+    { out:'i_out1', in:'s_in1' }, { out:'r_out4', in:'s_in1' },   // 合流：两条不同消息 → s_in1
+    { out:'s_out2', in:'i_in2' }, { out:'s_out2', in:'r_in5' },   // 广播：一条消息扇出
+    { out:'i_out3', in:'r_in3' }, { out:'r_out6', in:'i_in6' }, { out:'i_out7', in:'r_in7' }
+  ];
+  function edgeColor(e) { return MSG_COLOR[e.out] || C.channel; }
+
+  var CLUSTERS = {
+    i_in2: [ {k:'op',t:'checksign(ms,pkS) → pkX, =hostX'}, {k:'op',t:'new Na'}, {k:'op',t:'encrypt((Na,xA),pkX) → m3'} ],
+    i_in6: [ {k:'op',t:'decrypt(m,skA) → =Na, NX2, =hostX'}, {k:'evt',t:'termI'}, {k:'op',t:'encrypt(...) → m7'} ],
+    r_in3: [ {k:'op',t:'decrypt(m,skB) → NY, hostY'} ],
+    r_in5: [ {k:'op',t:'checksign(ms,pkR) → pkY, =hostY'}, {k:'op',t:'new Nb'}, {k:'op',t:'encrypt((NY,Nb),pkY) → m6'} ],
+    r_in7: [ {k:'evt',t:'termR'} ],
+    s_in1: [ {k:'op',t:'get keys(=b, sb) → sb'} ]
+  };
+
+  /* ---------- helpers ---------- */
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function tw(s) { return s.length * 6.2 + 16; }
+  function dot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + color + '"/>'; }
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x - 9*dir) + ' ' + (y - s) + ' L ' + (x - 9*dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+  function hSeg(x1, x2, y, color, bumps, width) {
+    var lo = Math.min(x1,x2), hi = Math.max(x1,x2);
+    var xs = (bumps || []).filter(function (bx) { return bx > lo + 8 && bx < hi - 8; }).sort(function (a,b){return a-b;});
+    var d = 'M ' + lo + ' ' + y;
+    xs.forEach(function (bx) { d += ' L ' + (bx - 7) + ' ' + y + ' Q ' + bx + ' ' + (y - 12) + ' ' + (bx + 7) + ' ' + y; });
+    d += ' L ' + hi + ' ' + y;
+    return '<path d="' + d + '" stroke="' + color + '" stroke-width="' + (width || 1.6) + '" fill="none"/>';
+  }
+  function bumpsBetween(a, b) {
+    var xa = roleX(a), xb = (typeof b === 'number') ? b : roleX(b);
+    var lo = Math.min(xa,xb), hi = Math.max(xa,xb);
+    return Object.keys(ROLES).filter(function (r) { var x = ROLES[r].x; return x > lo + 2 && x < hi - 2; }).map(function (r) { return ROLES[r].x; });
+  }
+  function cterm(cx, y, term, color, ink) {
+    var w = Math.max(tw(term), 44);
+    return '<rect x="' + (cx - w/2) + '" y="' + (y - 10) + '" width="' + w + '" height="20" rx="4" fill="#f8f7ff" stroke="' + color + '" stroke-width="1.3"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="' + (ink || color) + '" font-weight="600">' + esc(term) + '</text>';
+  }
+  function drawCluster(x, y0, chips) {
+    var out = [], y = y0;
+    chips.forEach(function (it) {
+      var w = tw(it.t), h = 21, fill = '#fff', stroke = C.ink, ink = C.ink;
+      if (it.k === 'evt') { fill = C.eventFill; stroke = C.event; ink = C.eventInk; }
+      out.push('<rect x="' + (x - w/2) + '" y="' + (y - h/2) + '" width="' + w + '" height="' + h + '" rx="4" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.3"/>');
+      out.push('<text x="' + x + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10" font-family="mono" fill="' + ink + '" font-weight="600">' + esc(it.t) + '</text>');
+      y += 27;
+    });
+    return out.join('');
+  }
+
+  /* ---------- 信道分道：按各消息柱的 y 区间贪心分配 ---------- */
+  var LANE_W = 13, LANE_PAD = 9, GAP_MIN = 6;
+  function buildGroups(shift) {
+    var byOut = {};
+    EDGES.forEach(function (e) { (byOut[e.out] = byOut[e.out] || []).push(e); });
+    return Object.keys(byOut).map(function (out) {
+      var es = byOut[out];
+      var ys = [ITEM[out].y + shift].concat(es.map(function (e) { return ITEM[e.in].y + shift; }));
+      return { out: out, edges: es, minY: Math.min.apply(null, ys), maxY: Math.max.apply(null, ys), color: MSG_COLOR[out] };
+    });
+  }
+  function assignLanes(groups) {
+    var sorted = groups.slice().sort(function (a, b) { return a.minY - b.minY || a.maxY - b.maxY; });
+    var laneEnds = [];
+    sorted.forEach(function (g) {
+      var li = 0;
+      while (li < laneEnds.length && laneEnds[li] >= g.minY - GAP_MIN) li++;
+      laneEnds[li] = g.maxY;
+      g.lane = li;
+    });
+    return Math.max.apply(null, laneEnds.map(function (_, i) { return i; })) + 1;
+  }
+
+  /* ---------- 渲染 ---------- */
+  function render(shift) {
+    var groups = buildGroups(shift);
+    var laneCount = assignLanes(groups);
+    var BUS_HALF = LANE_PAD + (laneCount * LANE_W) / 2;
+    function busEdge(r) { return RAIL - BUS_HALF * towardRail(r); }
+    function laneX(i) { return RAIL - BUS_HALF + LANE_PAD + i * LANE_W + LANE_W / 2; }
+
+    var top = TOP - 40, bot = H_MAIN - 30;
+    var out = [];
+    out.push('<rect x="0" y="0" width="' + W + '" height="' + H_MAIN + '" fill="#fff"/>');
+
+    // 信道管
+    out.push('<rect x="' + (RAIL - BUS_HALF) + '" y="' + top + '" width="' + (2*BUS_HALF) + '" height="' + (bot - top) + '" rx="9" fill="' + C.channelFill + '" stroke="' + C.channel + '" stroke-width="1.4"/>');
+    out.push('<text x="' + RAIL + '" y="' + (top - 10) + '" text-anchor="middle" font-size="12" font-weight="700" fill="' + C.channelInk + '" font-family="mono">信道 c（唯一结点）</text>');
+
+    // 生命线 + 角色头
+    Object.keys(ROLES).forEach(function (r) {
+      var x = ROLES[r].x;
+      out.push('<line x1="' + x + '" y1="' + top + '" x2="' + x + '" y2="' + bot + '" stroke="' + C.lifeline + '" stroke-width="1.5" stroke-dasharray="1 5"/>');
+      out.push('<text x="' + x + '" y="' + (top - 34) + '" text-anchor="middle" font-size="14" font-weight="700" fill="' + C.ink + '" font-family="mono">' + r + '</text>');
+      out.push('<text x="' + x + '" y="' + (top - 19) + '" text-anchor="middle" font-size="9.5" fill="' + C.muted + '" font-family="mono">' + esc(ROLES[r].name) + '</text>');
+    });
+
+    // 未配对
+    ['i_in0','r_in0','r_out7b'].forEach(function (id) { out.push(drawUnpaired(id, busEdge)); });
+
+    // 值层 / 事件
+    Object.keys(CLUSTERS).forEach(function (owner) {
+      out.push(drawCluster(roleX(ITEM[owner].role), ITEM[owner].y + shift + 30, CLUSTERS[owner]));
+    });
+
+    // 信道管内的同色消息柱
+    groups.forEach(function (g) {
+      var x = laneX(g.lane);
+      var span = g.maxY - g.minY;
+      var h = Math.max(span, 8);
+      var yTop = g.minY - (h - span) / 2;
+      out.push('<rect x="' + (x - LANE_W/2 + 1.5) + '" y="' + yTop + '" width="' + (LANE_W - 3) + '" height="' + h + '" rx="4" fill="' + g.color + '" opacity="0.9"/>');
+    });
+
+    // 消息端：发送段（进管）+ 接收段（出管）
+    var inCount = {};
+    EDGES.forEach(function (e) { inCount[e.in] = (inCount[e.in] || 0) + 1; });
+    groups.forEach(function (g) {
+      var color = g.color;
+      var o = ITEM[g.out], ot = towardRail(o.role), obe = busEdge(o.role);
+      var oy = o.y + shift;
+      out.push(hSeg(roleX(o.role), obe, oy, color, bumpsBetween(o.role, obe)));
+      out.push(dot(roleX(o.role), oy, color));
+      out.push(arrowHead(obe, oy, ot, color));
+      out.push(cterm(roleX(o.role) + ot*52, oy, o.term, color));
+      g.edges.forEach(function (e) {
+        var it = ITEM[e.in], x = roleX(it.role), t = towardRail(it.role), be = busEdge(it.role), y = it.y + shift;
+        if ((inCount[e.in] || 0) > 1) {
+          // 合流：入口抽头用多色并排 = 多条消息汇入同一步
+          var idx = 0;
+          EDGES.forEach(function (e2) { if (e2.in === e.in && e2 !== e) { if (EDGES.indexOf(e2) < EDGES.indexOf(e)) idx++; } });
+          var off = (idx - (inCount[e.in] - 1) / 2) * 5;
+          out.push(hSeg(be, x, y + off, edgeColor(e), bumpsBetween(it.role, be), 2));
+        } else {
+          out.push(hSeg(be, x, y, color, bumpsBetween(it.role, be)));
+        }
+      });
+      // 接收段箭头（合流处一个中性箭头）
+      g.edges.forEach(function (e) {
+        var it = ITEM[e.in], x = roleX(it.role), t = towardRail(it.role);
+        if ((inCount[e.in] || 0) === 1) out.push(arrowHead(x, it.y + shift, -t, color));
+      });
+      g.edges.forEach(function (e) {
+        var it = ITEM[e.in], x = roleX(it.role), t = towardRail(it.role);
+        if ((inCount[e.in] || 0) > 1) out.push(arrowHead(x, it.y + shift, -t, C.ink));
+      });
+    });
+    // 广播 / 合流角标 + 刚性单元
+    groups.forEach(function (g) {
+      if (g.edges.length < 2) return;
+      var label = '广播 ×' + g.edges.length;
+      var bx = laneX(g.lane);
+      out.push('<rect x="' + (bx - 30) + '" y="' + (g.minY - 28) + '" width="60" height="17" rx="8" fill="#fff" stroke="' + g.color + '" stroke-width="1.1"/>');
+      out.push('<text x="' + bx + '" y="' + (g.minY - 16) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="' + g.color + '" font-weight="700">' + label + '</text>');
+      drawRigid(out, RAIL + BUS_HALF + 26, g.minY, g.maxY);
+    });
+    // 合流（同一个 in 被多条消息收到）
+    var byIn = {};
+    EDGES.forEach(function (e) { (byIn[e.in] = byIn[e.in] || []).push(e); });
+    Object.keys(byIn).forEach(function (inId) {
+      var es = byIn[inId];
+      if (es.length < 2) return;
+      var it = ITEM[inId];
+      var ys = [it.y + shift].concat(es.map(function (e) { return ITEM[e.out].y + shift; }));
+      var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+      out.push('<rect x="' + (RAIL - 30) + '" y="' + (minY - 28) + '" width="60" height="17" rx="8" fill="#fff" stroke="' + C.ink + '" stroke-width="1.1"/>');
+      out.push('<text x="' + RAIL + '" y="' + (minY - 16) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="' + C.ink + '" font-weight="700">合流 ×' + es.length + '</text>');
+      drawRigid(out, RAIL - BUS_HALF - 26, minY, maxY);
+    });
+
+    return out.join('');
+  }
+
+  function drawRigid(out, brX, minY, maxY) {
+    out.push('<path d="M ' + brX + ' ' + (minY - 4) + ' L ' + brX + ' ' + (maxY + 4) + '" stroke="' + C.rigid + '" stroke-width="1.4" stroke-dasharray="5 4"/>');
+    out.push('<line x1="' + (brX - 5) + '" y1="' + (minY - 4) + '" x2="' + (brX + 5) + '" y2="' + (minY - 4) + '" stroke="' + C.rigid + '" stroke-width="1.4"/>');
+    out.push('<line x1="' + (brX - 5) + '" y1="' + (maxY + 4) + '" x2="' + (brX + 5) + '" y2="' + (maxY + 4) + '" stroke="' + C.rigid + '" stroke-width="1.4"/>');
+  }
+
+  function drawUnpaired(id, busEdge) {
+    var it = ITEM[id], x = roleX(it.role), y = it.y;
+    var t = towardRail(it.role), be = busEdge(it.role), out = [];
+    if (it.dir === 'out') {
+      out.push(hSeg(x, be, y, C.unpaired, bumpsBetween(it.role, be)));
+      out.push(dot(x, y, C.unpaired));
+      out.push(arrowHead(be, y, t, C.unpaired));
+    } else {
+      out.push(hSeg(be, x, y, C.unpaired, bumpsBetween(it.role, be)));
+      out.push(arrowHead(x, y, -t, C.unpaired));
+    }
+    out.push(cterm(x + t*52, y, it.term, C.unpaired, C.unpairedInk));
+    out.push('<text x="' + x + '" y="' + (y - 16) + '" text-anchor="middle" font-size="8.5" font-family="mono" fill="' + C.unpairedInk + '">未配对</text>');
+    return out.join('');
+  }
+
+  /* ---------- state ---------- */
+  var state = { shift:0 };
+  function renderAll() {
+    document.getElementById('svg-main').innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H_MAIN + '" width="' + W + '" height="' + H_MAIN + '" role="img" aria-label="信道同色柱">' + render(state.shift) + '</svg>';
+    document.getElementById('legend-inline').innerHTML = EDGES.map(function (e) { return null; }) && Object.keys(MSG_COLOR).map(function (k) {
+      return '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + MSG_COLOR[k] + ';margin:0 3px 0 8px;vertical-align:-1px"></span><span style="font-family:monospace;color:#6b7280">' + MSG_LABEL[k] + '</span>';
+    }).join('');
+    document.querySelectorAll('[data-shift]').forEach(function (b) { b.classList.toggle('active', +b.dataset.shift === state.shift); });
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target; if (!t.closest) return;
+    var s = t.closest('[data-shift]'); if (s) { state.shift = +s.dataset.shift; renderAll(); }
+  });
+  renderAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>值层画法定稿原型 · 派生盒 + 同色复制（v2 规范叙事视图）</title>
+<style>
+  :root {
+    --bg: #f7f7f9; --panel: #fff; --border: #d9d9de; --text: #1f2329; --muted: #6b7280;
+    --accent: #2563eb; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; line-height: 1.6; padding-bottom: 96px; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 1.25rem 1rem; }
+  header.prototype-head h1 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+  header.prototype-head .tag { display: inline-block; font-size: 0.72rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.05rem 0.5rem; }
+  .question { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; margin: 0.9rem 0; font-size: 0.9rem; }
+  .question p { margin: 0 0 0.35rem; }
+  .question p:last-child { margin-bottom: 0; }
+  .question .criteria { color: var(--muted); font-size: 0.85rem; }
+  .controls { position: sticky; top: 0; z-index: 10; background: rgba(247,247,249,0.95); backdrop-filter: blur(4px); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; margin: 0 -1rem 1rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+  .controls .group { display: flex; align-items: center; gap: 0.4rem; }
+  .controls .group-label { font-size: 0.8rem; color: var(--muted); }
+  .chip { font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; margin-bottom: 1rem; overflow: hidden; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.15rem; }
+  .panel .caption { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .panel svg { display: block; width: 100%; height: auto; }
+  .legend { margin-top: 1rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; }
+  .legend h3 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.3rem 1.25rem; }
+  .legend .item { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8rem; }
+  .legend dd { margin: 0; color: var(--muted); }
+  .float-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0.4rem; background: #1f2329; color: #fff; border-radius: 999px; padding: 0.4rem 0.7rem; box-shadow: 0 4px 16px rgba(0,0,0,0.25); font-size: 0.8rem; z-index: 20; flex-wrap: wrap; justify-content: center; }
+  .float-bar button { font: inherit; cursor: pointer; border: none; background: #343a44; color: #fff; border-radius: 999px; padding: 0.2rem 0.6rem; }
+  .float-bar button.active { background: var(--accent); }
+  .float-bar .sep { opacity: 0.35; }
+  .float-bar .lbl { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="prototype-head">
+    <h1>值层画法定稿原型：派生盒 + 同色复制</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 02 · 假数据，未接真实解析器</span>
+  </header>
+
+  <div class="question">
+    <p><b>按反馈定稿</b>：值方块镶嵌在生命线上，一种颜色 = 一个值；方法（<code>adec</code>/<code>checksign</code>/<code>decrypt</code>…）是白底黑字盒，输入方块紧贴上方、输出方块紧贴下方，输入 / 等值输出都直接<b>复制同色方块</b>（同色 = 同一值）；消息词项只在信道紫框内显示一遍；消息三角箭头从信道指向接收端。</p>
+    <p class="criteria"><b>验证</b>：① 顺着同色方块看「收到的 m 怎么变成下一条发出去的 NX / NY」；② ns-mutual-auth 密度下（两个 <code>=</code> 检查）是否可读。</p>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">素材</span>
+      <button class="chip active" data-sample="ns-original">ns-original · 两方核心链</button>
+      <button class="chip" data-sample="ns-mutual-auth">ns-mutual-auth · 发起者密度链</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 id="panel-title"></h2>
+    <p class="caption" id="panel-caption"></p>
+    <div id="svg"></div>
+  </div>
+
+  <div class="legend">
+    <h3>图例</h3>
+    <dl>
+      <div class="item"><span style="display:inline-block;width:18px;height:14px;border-radius:3px;background:#2563eb;vertical-align:-2px"></span><dd>值方块（一种颜色 = 一个值；同色跨处出现 = 同一值 / 引用 / 等值检查）</dd></div>
+      <div class="item"><span style="display:inline-block;width:26px;height:16px;border-radius:4px;background:#fff;border:1.4px solid #111827;vertical-align:-2px"></span><dd>方法盒（白底黑字）：上方 = 输入（同色副本），下方 = 输出</dd></div>
+      <div class="item"><span style="display:inline-block;width:26px;height:16px;border-radius:4px;background:#f5f3ff;border:1.4px solid #7c3aed;vertical-align:-2px"></span><dd>信道紫框：消息词项，只显示一遍</dd></div>
+      <div class="item"><span style="color:#7c3aed;border-top:2px dashed;width:24px;display:inline-block"></span><dd>信道轨（竖直虚线）</dd></div>
+      <div class="item"><span style="color:#9ca3af">●</span><dd>本地步骤（if…）</dd></div>
+      <div class="item"><span style="color:#0d9488">▶</span><dd>事件标记（event）</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="float-bar">
+  <button data-sample="ns-original">ns-original</button>
+  <button data-sample="ns-mutual-auth">ns-mutual-auth</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 640;
+  var PITCH = 20; // 方法盒上下相邻方块的中心间距（贴得紧）
+  var C = { msg: '#2563eb', channel: '#7c3aed', unpaired: '#d97706', lifeline: '#cbd5e1', railLine: '#c4b5fd', local: '#9ca3af', event: '#0d9488' };
+
+  var SCENARIOS = {
+    'ns-original': {
+      id: 'ns-original',
+      title: 'ns-original · 两方（A/B）· 核心链',
+      caption: 'A 侧：new Na → 发 {Na,…} → 收 m → let adec 得 =Na（同色副本）+ NX（新色）→ 发 {NX}。B 侧：收 m → let adec 得 NY + pkY（新色）→ 发 {NY,Nb}。',
+      rail: { cx: 320 },
+      roles: [ { s: 'A', label: 'Alice', x: 150 }, { s: 'B', label: 'Bob', x: 490 } ],
+      rows: [
+        { y: 220, from: 0, to: 1, term: '{Na, pkA}pkB' },
+        { y: 560, from: 1, to: 0, term: '{NY, Nb}pkY' },
+        { y: 800, from: 0, to: 1, term: '{NX}pkB' }
+      ],
+      nodes: {
+        'A.skA': { name: 'skA', color: '#475569' },
+        'A.pkB': { name: 'pkB', color: '#0e7490' },
+        'A.Na':  { name: 'Na',  color: '#2563eb' },
+        'A.m':   { name: 'm',   color: '#059669' },
+        'A.NX':  { name: 'NX',  color: '#7c3aed' },
+        'B.skB': { name: 'skB', color: '#334155' },
+        'B.pkA': { name: 'pkA', color: '#9333ea' },
+        'B.m':   { name: 'm',   color: '#0891b2' },
+        'B.NY':  { name: 'NY',  color: '#db2777' },
+        'B.pkY': { name: 'pkY', color: '#4f46e5' },
+        'B.Nb':  { name: 'Nb',  color: '#ea580c' },
+        'B.m3':  { name: 'm3',  color: '#c026d3' }
+      },
+      standalone: [
+        { role: 0, id: 'A.skA', y: 56, kind: 'known' },
+        { role: 0, id: 'A.pkB', y: 76, kind: 'known' },
+        { role: 0, id: 'A.Na', y: 150, kind: 'new' },
+        { role: 0, id: 'A.m', y: 560, kind: 'recv' },
+        { role: 1, id: 'B.skB', y: 56, kind: 'known' },
+        { role: 1, id: 'B.pkA', y: 76, kind: 'known' },
+        { role: 1, id: 'B.m', y: 220, kind: 'recv' },
+        { role: 1, id: 'B.Nb', y: 450, kind: 'new' },
+        { role: 1, id: 'B.m3', y: 800, kind: 'recv' }
+      ],
+      methods: [
+        { role: 0, op: 'adec', y: 650, inputs: [ 'A.m', 'A.skA' ], outputs: [ { id: 'A.Na', check: true }, { id: 'A.NX' } ] },
+        { role: 1, op: 'adec', y: 310, inputs: [ 'B.m', 'B.skB' ], outputs: [ { id: 'B.NY' }, { id: 'B.pkY' } ] }
+      ],
+      events: [ { role: 1, y: 410, label: 'beginAparam' }, { role: 0, y: 880, label: 'endAparam' } ],
+      locals: [ { role: 0, y: 840, label: 'if pkX = pkB' }, { role: 1, y: 840, label: 'if Nb = adec(m3)' } ]
+    },
+    'ns-mutual-auth': {
+      id: 'ns-mutual-auth',
+      title: 'ns-mutual-auth · 发起者链（密度）',
+      caption: '发起者链：收 ms → let checksign 得 pkX + =hostX（同色副本）→ new Na → 发 {Na,…}；收 m → let decrypt 得 =Na + NX2 + =hostX（同色副本）→ 发 (m7,…)。',
+      rail: { cx: 400 },
+      roles: [ { s: 'I', label: '发起者', x: 150 } ],
+      rows: [
+        { y: 180, role: 0, dir: 'in', term: 'ms' },
+        { y: 470, role: 0, dir: 'out', term: '{Na, xA}pkX' },
+        { y: 600, role: 0, dir: 'in', term: 'm' },
+        { y: 920, role: 0, dir: 'out', term: '(m7, messtermI)' }
+      ],
+      nodes: {
+        'I.pkS':   { name: 'pkS',   color: '#475569' },
+        'I.skA':   { name: 'skA',   color: '#334155' },
+        'I.hostX': { name: 'hostX', color: '#c026d3' },
+        'I.ms':    { name: 'ms',    color: '#059669' },
+        'I.pkX':   { name: 'pkX',   color: '#4f46e5' },
+        'I.Na':    { name: 'Na',    color: '#2563eb' },
+        'I.m':     { name: 'm',     color: '#db2777' },
+        'I.NX2':   { name: 'NX2',   color: '#7c3aed' }
+      },
+      standalone: [
+        { role: 0, id: 'I.pkS', y: 56, kind: 'known' },
+        { role: 0, id: 'I.skA', y: 76, kind: 'known' },
+        { role: 0, id: 'I.hostX', y: 120, kind: 'recv' },
+        { role: 0, id: 'I.ms', y: 180, kind: 'recv' },
+        { role: 0, id: 'I.Na', y: 380, kind: 'new' },
+        { role: 0, id: 'I.m', y: 600, kind: 'recv' }
+      ],
+      methods: [
+        { role: 0, op: 'checksign', y: 260, inputs: [ 'I.ms', 'I.pkS' ], outputs: [ { id: 'I.pkX' }, { id: 'I.hostX', check: true } ] },
+        { role: 0, op: 'decrypt', y: 690, inputs: [ 'I.m', 'I.skA' ], outputs: [ { id: 'I.Na', check: true }, { id: 'I.NX2' }, { id: 'I.hostX', check: true } ] }
+      ],
+      events: [ { role: 0, y: 860, label: 'termI' } ],
+      locals: []
+    }
+  };
+
+  var state = { sample: 'ns-original' };
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  function block(x, y, name, color) {
+    var w = 50, h = 16; // 方块宽度保持一致
+    return '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="4" fill="' + color + '" stroke="' + color + '" stroke-width="1"/>' +
+      '<text x="' + x + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="#fff" font-weight="600">' + esc(name) + '</text>';
+  }
+
+  function methodBox(x, y, op) {
+    var w = Math.max(op.length * 6.5 + 16, 44);
+    return '<rect x="' + (x - w / 2) + '" y="' + (y - 11) + '" width="' + w + '" height="22" rx="5" fill="#fff" stroke="#111827" stroke-width="1.4"/>' +
+      '<text x="' + x + '" y="' + (y + 4) + '" text-anchor="middle" font-size="11" font-family="mono" fill="#111827" font-weight="700">' + esc(op) + '</text>';
+  }
+
+  function channelBox(cx, y, term) {
+    var w = Math.max(term.length * 6 + 14, 44);
+    return '<rect x="' + (cx - w / 2) + '" y="' + (y - 10) + '" width="' + w + '" height="20" rx="4" fill="#f5f3ff" stroke="' + C.channel + '" stroke-width="1.4"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="#6d28d9" font-weight="600">' + esc(term) + '</text>';
+  }
+  function channelBoxHalf(cx, y, term) { return Math.max(term.length * 6 + 14, 44) / 2; }
+
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x - 9 * dir) + ' ' + (y - s) + ' L ' + (x - 9 * dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+  function dot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + color + '"/>'; }
+  function seg(x1, y1, x2, y2, color) { return '<path d="M ' + x1 + ' ' + y1 + ' L ' + x2 + ' ' + y2 + '" stroke="' + color + '" stroke-width="1.6" fill="none"/>'; }
+
+  function bounds(sc) {
+    var minY = 1e9, maxY = 0;
+    sc.standalone.forEach(function (s) { minY = Math.min(minY, s.y); maxY = Math.max(maxY, s.y); });
+    sc.rows.forEach(function (r) { minY = Math.min(minY, r.y); maxY = Math.max(maxY, r.y); });
+    sc.methods.forEach(function (m) {
+      minY = Math.min(minY, m.y - PITCH - (m.inputs.length - 1) * PITCH);
+      maxY = Math.max(maxY, m.y + PITCH + (m.outputs.length - 1) * PITCH);
+    });
+    sc.events.forEach(function (e) { minY = Math.min(minY, e.y); maxY = Math.max(maxY, e.y); });
+    sc.locals.forEach(function (l) { minY = Math.min(minY, l.y); maxY = Math.max(maxY, l.y); });
+    return { minY: minY, maxY: maxY };
+  }
+
+  function renderRow(sc, r, out, ctx) {
+    var rail = sc.rail, y = r.y;
+    var half = channelBoxHalf(rail.cx, y, r.term);
+    var boxL = rail.cx - half, boxR = rail.cx + half;
+    out.push(channelBox(rail.cx, y, r.term));
+    if (r.from != null && r.to != null) {
+      var xF = sc.roles[r.from].x, xT = sc.roles[r.to].x;
+      var eF = xF < rail.cx ? boxL : boxR;
+      var eT = xT < rail.cx ? boxL : boxR;
+      out.push(seg(xF, y, eF, y, C.msg));
+      out.push(dot(xF, y, C.msg));
+      out.push(seg(eT, y, xT, y, C.msg));
+      out.push(arrowHead(xT, y, Math.sign(xT - eT), C.msg));
+    } else {
+      var xR = sc.roles[r.role].x;
+      if (r.dir === 'out') {
+        var eO = xR < rail.cx ? boxL : boxR;
+        out.push(seg(xR, y, eO, y, C.unpaired));
+        out.push(dot(xR, y, C.unpaired));
+        out.push(arrowHead(eO, y, Math.sign(eO - xR), C.unpaired));
+      } else {
+        var eI = xR < rail.cx ? boxL : boxR;
+        out.push(seg(eI, y, xR, y, C.unpaired));
+        out.push(arrowHead(xR, y, Math.sign(xR - eI), C.unpaired));
+      }
+    }
+  }
+
+  function renderPanel(sc) {
+    var b = bounds(sc);
+    var H = b.maxY + 60;
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(sc.title) + '">'];
+    out.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fff"/>');
+
+    // 信道轨
+    out.push('<line x1="' + sc.rail.cx + '" y1="' + (b.minY - 24) + '" x2="' + sc.rail.cx + '" y2="' + (b.maxY + 8) + '" stroke="' + C.railLine + '" stroke-width="1.5" stroke-dasharray="6 4"/>');
+    out.push('<text x="' + sc.rail.cx + '" y="' + (b.minY - 32) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#6d28d9" font-family="mono">信道 c</text>');
+
+    // 生命线
+    sc.roles.forEach(function (role) {
+      out.push('<line x1="' + role.x + '" y1="' + (b.minY - 20) + '" x2="' + role.x + '" y2="' + (b.maxY + 8) + '" stroke="' + C.lifeline + '" stroke-width="1.5" stroke-dasharray="3 3"/>');
+      out.push('<text x="' + role.x + '" y="' + (b.minY - 44) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#111827" font-family="mono">' + esc(role.s) + '</text>');
+    });
+
+    // 消息行（含信道框，先画，方块后画覆盖箭头）
+    sc.rows.forEach(function (r) { renderRow(sc, r, out, b); });
+
+    // 值方块：已知 / new / recv
+    sc.standalone.forEach(function (s) {
+      var n = sc.nodes[s.id];
+      out.push(block(sc.roles[s.role].x, s.y, n.name, n.color));
+    });
+
+    // 已知值标注
+    sc.roles.forEach(function (role, ri) {
+      var known = sc.standalone.filter(function (s) { return s.role === ri && s.kind === 'known'; });
+      if (known.length) {
+        var top = Math.min.apply(null, known.map(function (k) { return k.y; }));
+        out.push('<text x="' + (role.x + (role.x < sc.rail.cx ? -8 : 8)) + '" y="' + (top - 14) + '" text-anchor="' + (role.x < sc.rail.cx ? 'end' : 'start') + '" font-size="9" fill="#9ca3af" font-family="mono">参数</text>');
+      }
+    });
+
+    // 方法盒 + 输入/输出方块
+    sc.methods.forEach(function (m) {
+      var x = sc.roles[m.role].x;
+      out.push(methodBox(x, m.y, m.op));
+      m.inputs.forEach(function (id, i) {
+        var n = sc.nodes[id];
+        out.push(block(x, m.y - PITCH - i * PITCH, n.name, n.color));
+      });
+      m.outputs.forEach(function (o, j) {
+        var n = sc.nodes[o.id];
+        out.push(block(x, m.y + PITCH + j * PITCH, n.name, n.color));
+      });
+    });
+
+    // 本地步骤 + 事件
+    sc.locals.forEach(function (l) {
+      var x = sc.roles[l.role].x;
+      out.push(dot(x, l.y, C.local));
+      out.push('<text x="' + (x + (x < sc.rail.cx ? 8 : -8)) + '" y="' + (l.y + 3.5) + '" text-anchor="' + (x < sc.rail.cx ? 'start' : 'end') + '" font-size="10" fill="#6b7280" font-family="mono">' + esc(l.label) + '</text>');
+    });
+    sc.events.forEach(function (e) {
+      var x = sc.roles[e.role].x;
+      out.push('<path d="M ' + (x - 1) + ' ' + (e.y - 8) + ' L ' + (x + 9) + ' ' + (e.y - 4) + ' L ' + (x - 1) + ' ' + e.y + ' Z" fill="' + C.event + '"/>');
+      out.push('<text x="' + (x + (x < sc.rail.cx ? 14 : -14)) + '" y="' + (e.y + 3.5) + '" text-anchor="' + (x < sc.rail.cx ? 'start' : 'end') + '" font-size="10" fill="#0f766e" font-family="mono">' + esc(e.label) + '</text>');
+    });
+
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function render() {
+    var sc = SCENARIOS[state.sample];
+    document.getElementById('panel-title').textContent = sc.title;
+    document.getElementById('panel-caption').textContent = sc.caption;
+    document.getElementById('svg').innerHTML = renderPanel(sc);
+    document.querySelectorAll('[data-sample]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.sample === state.sample);
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var s = e.target.closest ? e.target.closest('[data-sample]') : null;
+    if (s && SCENARIOS[s.dataset.sample]) { state.sample = s.dataset.sample; render(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === '1') { state.sample = 'ns-original'; render(); }
+    else if (e.key === '2') { state.sample = 'ns-mutual-auth'; render(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

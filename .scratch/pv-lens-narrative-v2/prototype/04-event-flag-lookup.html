@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>event 标记与对应性查表 · 内容方块 + 复用 + 总线（v2 规范叙事视图）</title>
+<style>
+  :root {
+    --bg: #f7f7f9; --panel: #fff; --border: #d9d9de; --text: #1f2329; --muted: #6b7280;
+    --accent: #2563eb; --channel: #6d28d9; --event: #0d9488;
+    --true: #059669; --false: #dc2626; --unknown: #d97706;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; line-height: 1.6; padding-bottom: 92px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 1.25rem 1rem; }
+  header.prototype-head h1 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+  header.prototype-head .tag { display: inline-block; font-size: 0.72rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.05rem 0.5rem; }
+  .question { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; margin: 0.9rem 0; font-size: 0.9rem; }
+  .question p { margin: 0 0 0.35rem; }
+  .question p:last-child { margin-bottom: 0; }
+  .question .criteria { color: var(--muted); font-size: 0.85rem; }
+  .controls { position: sticky; top: 0; z-index: 30; background: rgba(247,247,249,0.95); backdrop-filter: blur(4px); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; margin: 0 -1rem 1rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+  .controls .group { display: flex; align-items: center; gap: 0.4rem; }
+  .controls .group-label { font-size: 0.8rem; color: var(--muted); }
+  .chip { font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 392px; gap: 1rem; align-items: start; }
+  .layout.no-matrix { grid-template-columns: minmax(0, 1fr); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; overflow: hidden; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.15rem; }
+  .panel .caption { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .stage-wrap { position: relative; }
+  .stage-wrap svg { display: block; width: 100%; height: auto; }
+  .matrix-panel { position: sticky; top: 78px; max-height: calc(100vh - 110px); overflow: auto; }
+  .status { margin-top: 0.5rem; font-size: 0.85rem; min-height: 1.6em; color: var(--muted); }
+  .status .sel { color: var(--event); font-weight: 600; }
+
+  .mk { cursor: pointer; }
+  .mk-inner { transform-box: fill-box; transform-origin: center; transition: transform 0.12s ease; }
+  .mk:hover .mk-inner { transform: scale(1.22); }
+  .mk-hit { fill: transparent; }
+  .mk-diamond { fill: #fff; stroke: var(--event); stroke-width: 1.6; }
+  .mk-halo { fill: none; stroke: var(--event); stroke-width: 1.6; opacity: 0; }
+  .mk-label { font: 10.5px var(--mono); fill: #0f766e; }
+  .mk.premise .mk-diamond { fill: var(--event); stroke: #0f766e; }
+  .mk.premise .mk-halo { opacity: 0.9; }
+  .mk.premise .mk-label { font-weight: 700; }
+  .mk-concl-dot { fill: var(--event); stroke: #0f766e; stroke-width: 1.4; }
+  .mk-concl-pole { stroke: var(--event); stroke-width: 1.7; }
+  .mk-concl-cloth { fill: var(--event); }
+  .mk.conclusion .mk-label { font-weight: 700; }
+  .mk.stale .mk-diamond { stroke-dasharray: 3 2; }
+  .mk.stale .mk-concl-dot, .mk.stale .mk-concl-pole, .mk.stale .mk-concl-cloth { opacity: 0.55; }
+
+  .popover { position: absolute; z-index: 25; width: 328px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); padding: 0.7rem 0.8rem; font-size: 0.82rem; }
+  .popover.hidden { display: none; }
+  .popover .x { position: absolute; top: 4px; right: 8px; border: none; background: none; cursor: pointer; color: var(--muted); font-size: 1rem; }
+  .popover .arrowup { position: absolute; top: -7px; left: 50%; margin-left: -6px; width: 12px; height: 12px; background: #fff; border-left: 1px solid var(--border); border-top: 1px solid var(--border); transform: rotate(45deg); }
+
+  .badge { display: inline-block; font-size: 0.74rem; font-weight: 600; border-radius: 999px; padding: 0.05rem 0.5rem; border: 1px solid; }
+  .badge.true { color: var(--true); border-color: #a7f3d0; background: #ecfdf5; }
+  .badge.false { color: var(--false); border-color: #fecaca; background: #fef2f2; }
+  .badge.unknown { color: var(--unknown); border-color: #fde68a; background: #fffbeb; }
+  .qmono { font: 11.5px var(--mono); background: #f3f4f6; border-radius: 6px; padding: 0.35rem 0.45rem; display: block; overflow-wrap: anywhere; }
+  .pair-line { font-size: 0.8rem; margin: 0.2rem 0; }
+  .pair-line .ev { font-family: var(--mono); color: #0f766e; }
+  .verdict-note { font-size: 0.78rem; color: var(--muted); margin: 0.35rem 0 0; }
+  .trace-btn { margin-top: 0.45rem; font-size: 0.78rem; }
+  .trace { display: none; margin: 0.4rem 0 0; background: #0f172a; color: #e2e8f0; border-radius: 6px; padding: 0.5rem 0.6rem; font: 10.5px/1.5 var(--mono); white-space: pre-wrap; max-height: 190px; overflow: auto; }
+  .trace.open { display: block; }
+  .trace .ph { color: #94a3b8; }
+
+  .matrix-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+  .matrix { border-collapse: separate; border-spacing: 3px; }
+  .matrix th { font: 10px var(--mono); color: var(--muted); font-weight: 600; }
+  .matrix th.rowh { text-align: right; padding-right: 4px; white-space: nowrap; }
+  .matrix th.colh { writing-mode: vertical-rl; transform: rotate(180deg); height: 76px; padding-bottom: 4px; }
+  .matrix th.on { color: #111827; font-weight: 800; }
+  .matrix td { width: 26px; height: 22px; border-radius: 4px; text-align: center; font-size: 11px; cursor: pointer; border: 1px solid rgba(0,0,0,0.06); user-select: none; }
+  .matrix td:hover { filter: brightness(0.9); box-shadow: 0 0 0 2px #111827; }
+  .matrix td.true { background: #d1fae5; color: var(--true); }
+  .matrix td.false { background: #fee2e2; color: var(--false); }
+  .matrix td.unknown { background: #fef3c7; color: var(--unknown); }
+  .matrix td.diag { opacity: 0.4; }
+  .matrix td.hl { box-shadow: inset 0 0 0 2px var(--c); opacity: 1; }
+  .matrix td.sel { box-shadow: 0 0 0 2px var(--c), inset 0 0 0 2px var(--c); font-weight: 800; font-size: 13px; opacity: 1; }
+  .matrix-legend { font-size: 0.75rem; color: var(--muted); margin-top: 0.45rem; display: flex; gap: 0.8rem; flex-wrap: wrap; }
+  .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 3px; }
+  .empty-hint { color: var(--muted); font-size: 0.8rem; }
+
+  .legend { margin-top: 1rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; }
+  .legend h3 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.3rem 1.25rem; }
+  .legend .item { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8rem; }
+  .legend dd { margin: 0; color: var(--muted); }
+
+  .float-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0.4rem; background: #1f2329; color: #fff; border-radius: 999px; padding: 0.4rem 0.7rem; box-shadow: 0 4px 16px rgba(0,0,0,0.25); font-size: 0.8rem; z-index: 40; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
+  .float-bar button { font: inherit; cursor: pointer; border: none; background: #343a44; color: #fff; border-radius: 999px; padding: 0.25rem 0.65rem; }
+  .float-bar button.active { background: var(--accent); }
+  .float-bar .sep { opacity: 0.35; }
+  .float-bar .lbl { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="prototype-head">
+    <h1>event 标记与对应性查表：内容方块 + 接收复用 + 总线信道</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 03 · 判定表为 ProVerif 实跑 ns-original</span>
+  </header>
+
+  <div class="question">
+    <p><b>本版</b>：① 消息内容装进<b>方块</b>、方块<b>镶嵌在箭杆中间</b>，箭头指向目标（信道总线 / 接收方块）；② 接收段内容 = <b>实际到达的词项</b>（发送方词项），不是接收方的占位变量；③ <b>复用</b>：算子输入若来自上一步接收方块，则直接复用该方块（不再重复画），算子簇挂在其下方；④ 修正算子簇与 event 的碰撞；⑤ 矩阵点击：修掉「点空白取消选中」误清选中项的 bug。</p>
+    <p class="criteria"><b>交互</b>：依次点两支旗（第一支 = 前提、第二支 = 结论；同一支点两次 = 自反对）；矩阵点格与图上点旗双向联动。</p>
+    <p class="criteria"><b>未做</b>：算法化的自适应间距（ticket 08，弹性实现待讨论）；本原型 y 为手写常数，已人工避开碰撞。</p>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">素材</span>
+      <button class="chip active" data-sample="ns-original">ns-original · 4 events（真数据）</button>
+      <button class="chip" data-sample="synthetic-8">synthetic · 8 events（示意）</button>
+    </div>
+    <div class="group"><button class="chip" id="matrix-toggle">隐藏矩阵</button></div>
+    <div class="group"><button class="chip" id="reset">重置选择（Esc）</button></div>
+  </div>
+
+  <div class="layout" id="layout">
+    <div class="panel graph-panel">
+      <h2 id="panel-title"></h2>
+      <p class="caption" id="panel-caption"></p>
+      <div class="stage-wrap" id="stage-wrap">
+        <div id="svg"></div>
+        <div class="popover hidden" id="popover"></div>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+    <aside class="panel matrix-panel" id="matrix-panel"></aside>
+  </div>
+
+  <div class="legend">
+    <h3>图例</h3>
+    <dl>
+      <div class="item"><svg width="30" height="24"><rect x="9" y="1" width="12" height="22" rx="3" fill="#f5f3ff" stroke="#6d28d9" stroke-width="1.4"/></svg><dd><b>信道总线</b>（很高很扁的方块）</dd></div>
+      <div class="item"><svg width="64" height="22"><line x1="2" y1="11" x2="16" y2="11" stroke="#6d28d9" stroke-width="1.6"/><rect x="16" y="2" width="28" height="18" rx="4" fill="#f5f3ff" stroke="#6d28d9" stroke-width="1.2"/><line x1="44" y1="11" x2="55" y2="11" stroke="#6d28d9" stroke-width="1.6"/><path d="M62,11 L54,6.5 L54,15.5 Z" fill="#6d28d9"/></svg><dd>消息箭杆 + <b>内容方块</b>（镶嵌在箭杆中间）；箭头指向目标（总线 / 接收方块）</dd></div>
+      <div class="item"><span style="display:inline-block;width:26px;height:16px;border-radius:4px;background:#2563eb;vertical-align:-2px"></span><dd>值方块（一色一值；<b>接收方块被算子复用时不再重复画</b>）</dd></div>
+      <div class="item"><svg width="36" height="20"><polygon points="7,17 29,17 33,3 3,3" fill="#fff" stroke="#111827" stroke-width="1.4" stroke-linejoin="round"/></svg><dd>算子盒（倒置等腰梯形，短底 = 值方块宽）：上方输入、下方输出</dd></div>
+      <div class="item"><svg width="24" height="20"><path d="M12,3 L21,10 L12,17 L3,10 Z" fill="#fff" stroke="#0d9488" stroke-width="1.6"/></svg><dd>event 标记（菱形，可点）</dd></div>
+      <div class="item"><svg width="24" height="20"><path d="M12,3 L21,10 L12,17 L3,10 Z" fill="#0d9488" stroke="#0f766e" stroke-width="1.6"/></svg><dd>已选<b>前提</b>端（菱形填充强调）</dd></div>
+      <div class="item"><svg width="30" height="30"><circle cx="10" cy="20" r="7" fill="#0d9488" stroke="#0f766e" stroke-width="1.4"/><line x1="11" y1="19" x2="24" y2="3" stroke="#0d9488" stroke-width="1.7"/><path d="M24,3 L11,6 L21,11 Z" fill="#0d9488"/></svg><dd>已选<b>结论</b>端（实心圆点 + 加长旗杆 + 等腰三角旗面）</dd></div>
+      <div class="item"><span class="badge true">证明成立</span> <span class="badge false">找到反例</span> <span class="badge unknown">未证出</span><dd>三种判定（不用「通过 / 失败」）</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="float-bar" id="float-bar">
+  <span class="lbl">素材</span>
+  <button data-sample="ns-original">ns-original</button>
+  <button data-sample="synthetic-8">synthetic-8</button>
+  <span class="sep">|</span>
+  <span class="lbl">点旗查对 · 点矩阵任一格看详情 · Esc 重置</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 640;
+  var PITCH = 20;          // 单元中心距 / 算子簇内节距
+  var BUS_HALF = 13;       // 信道总线半宽
+  var BLOCK_HALF = 25;     // 值方块半宽（w=50）
+  var C = { channel: '#6d28d9', channelInk: '#5b21b6', unpaired: '#d97706', unpairedInk: '#b45309', lifeline: '#cbd5e1', local: '#9ca3af', event: '#0d9488' };
+
+  var NS_ORIGINAL = {
+    id: 'ns-original',
+    title: 'ns-original · 两方（A/B）',
+    caption: '一条消息 = 发送段（发送方实际词项，装在箭杆中间的方块里）+ 总线 + 接收段（实际到达的词项 = 发送方词项）→ 箭头指向接收方块。接收方块 m 被 adec 簇复用（不重复画），算子簇挂在它下方。',
+    note: 'ns-original（4 events）：4×4 全部有序对由 ProVerif 实跑。',
+    rail: { cx: 320 },
+    roles: [ { s: 'A', x: 150 }, { s: 'B', x: 490 } ],
+    rows: [
+      { y: 220, from: 0, to: 1, send: '{Na, pkA}pkB', recv: '{Na, pkA}pkB' },
+      { y: 560, from: 1, to: 0, send: '{NY, Nb}pkY', recv: '{NY, Nb}pkY' },
+      { y: 800, from: 0, to: 1, send: '{NX}pkB',    recv: '{NX}pkB' }
+    ],
+    nodes: {
+      'A.skA': { name: 'skA', color: '#475569' },
+      'A.pkB': { name: 'pkB', color: '#0e7490' },
+      'A.Na':  { name: 'Na',  color: '#2563eb' },
+      'A.m':   { name: 'm',   color: '#059669' },
+      'A.NX':  { name: 'NX',  color: '#7c3aed' },
+      'B.skB': { name: 'skB', color: '#334155' },
+      'B.pkA': { name: 'pkA', color: '#9333ea' },
+      'B.m':   { name: 'm',   color: '#0891b2' },
+      'B.NY':  { name: 'NY',  color: '#db2777' },
+      'B.pkY': { name: 'pkY', color: '#4f46e5' },
+      'B.Nb':  { name: 'Nb',  color: '#ea580c' },
+      'B.m3':  { name: 'm3',  color: '#c026d3' }
+    },
+    standalone: [
+      { role: 0, id: 'A.skA', y: 56, kind: 'known' },
+      { role: 0, id: 'A.pkB', y: 76, kind: 'known' },
+      { role: 0, id: 'A.Na', y: 150, kind: 'new' },
+      { role: 0, id: 'A.m', y: 560, kind: 'recv' },
+      { role: 1, id: 'B.skB', y: 56, kind: 'known' },
+      { role: 1, id: 'B.pkA', y: 76, kind: 'known' },
+      { role: 1, id: 'B.m', y: 220, kind: 'recv' },
+      { role: 1, id: 'B.Nb', y: 450, kind: 'new' },
+      { role: 1, id: 'B.m3', y: 800, kind: 'recv' }
+    ],
+    // 输入顺序 = 从上到下；其中若是接收方块则被复用（不重复画）
+    methods: [
+      { role: 0, y: 0, op: 'adec', inputs: [ 'A.m', 'A.skA' ], outputs: [ { id: 'A.Na' }, { id: 'A.NX' } ] },
+      { role: 1, y: 0, op: 'adec', inputs: [ 'B.m', 'B.skB' ], outputs: [ { id: 'B.NY' }, { id: 'B.pkY' } ] }
+    ],
+    locals: [ { role: 0, y: 840, label: 'if pkX = pkB' }, { role: 1, y: 840, label: 'if Nb = adec(m3)' } ],
+    events: [
+      { key: 'beginBparam', role: 0, y: 120, args: 'pkX' },
+      { key: 'endAparam',   role: 0, y: 880, args: 'pk(skA)' },
+      { key: 'beginAparam', role: 1, y: 410, args: 'pkY' },
+      { key: 'endBparam',   role: 1, y: 880, args: 'pk(skB)' }
+    ],
+    order: ['beginBparam', 'endBparam', 'beginAparam', 'endAparam'],
+    verdicts: [
+      ['true',  'false', 'false', 'false'],
+      ['false', 'true',  'false', 'false'],
+      ['false', 'false', 'true',  'false'],
+      ['false', 'false', 'true',  'true' ]
+    ],
+    paramTypes: { beginBparam: 'pkey', endBparam: 'pkey', beginAparam: 'pkey', endAparam: 'pkey' }
+  };
+
+  var SYNTHETIC = Object.assign({}, NS_ORIGINAL, {
+    id: 'synthetic-8',
+    title: 'synthetic · 8 events（示意，非真实协议）',
+    caption: '与 ns-original 相同的值层 / 信道 / 复用骨架，仅事件换成 8 个示意标记（位置已避开算子簇与方块）。',
+    note: 'synthetic（8 events，示意值）：含 1 个 cannot be proved，仅看 n 稍大的组织。',
+    events: [
+      { key: 'evtA1', role: 0, y: 110, args: 'x' },
+      { key: 'evtA2', role: 0, y: 400, args: 'x' },
+      { key: 'evtA3', role: 0, y: 700, args: 'x' },
+      { key: 'evtA4', role: 0, y: 878, args: 'x' },
+      { key: 'evtB1', role: 1, y: 110, args: 'x' },
+      { key: 'evtB2', role: 1, y: 160, args: 'x' },
+      { key: 'evtB3', role: 1, y: 360, args: 'x' },
+      { key: 'evtB4', role: 1, y: 700, args: 'x' }
+    ],
+    order: ['evtA1','evtA2','evtA3','evtA4','evtB1','evtB2','evtB3','evtB4'],
+    verdicts: [
+      ['true','false','false','false','false','false','false','false'],
+      ['true','true','false','false','false','false','false','false'],
+      ['false','true','true','false','false','false','unknown','false'],
+      ['false','false','false','true','false','false','false','false'],
+      ['false','false','false','false','true','false','false','false'],
+      ['false','false','false','false','true','true','false','false'],
+      ['false','false','false','false','false','true','true','false'],
+      ['false','false','false','false','false','false','true','true']
+    ],
+    paramTypes: Object.fromEntries(['evtA1','evtA2','evtA3','evtA4','evtB1','evtB2','evtB3','evtB4'].map(function (k) { return [k, 'bitstring']; }))
+  });
+
+  var SCENARIOS = { 'ns-original': NS_ORIGINAL, 'synthetic-8': SYNTHETIC };
+  var state = { sample: 'ns-original', showMatrix: true, pending: null, selected: null };
+
+  var BADGE = { true: '证明成立', false: '找到反例', unknown: '未证出' };
+  var VCOLOR = { true: '#059669', false: '#dc2626', unknown: '#d97706' };
+  var VNOTE = {
+    true: '每次前提事件发生，都有一次结论事件与之对应（injective 对应性成立）。',
+    false: '该模型找到反例：规范期望的前后对应并不成立。',
+    unknown: 'ProVerif 未证出，不等于不成立（需要更多信息或更强的近似检查）。'
+  };
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ---------------- 绘制原语 ---------------- */
+  function block(x, y, name, color) {
+    var w = 50, h = 16;
+    return '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="4" fill="' + color + '" stroke="' + color + '" stroke-width="1"/>' +
+      '<text x="' + x + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="#fff" font-weight="600">' + esc(name) + '</text>';
+  }
+  function methodBox(x, y, op) {
+    var shortBase = 50;
+    var topBase = Math.max(shortBase + 16, op.length * 6.2 + 10);
+    var h2 = 11;
+    var pts = (x - shortBase / 2) + ',' + (y + h2) + ' ' + (x + shortBase / 2) + ',' + (y + h2) + ' ' +
+              (x + topBase / 2) + ',' + (y - h2) + ' ' + (x - topBase / 2) + ',' + (y - h2);
+    return '<polygon points="' + pts + '" fill="#fff" stroke="#111827" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<text x="' + x + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="10" font-family="mono" fill="#111827" font-weight="700">' + esc(op) + '</text>';
+  }
+  function contentBox(cx, y, text, stroke, ink) {
+    var w = Math.max(text.length * 6 + 14, 44);
+    return '<rect x="' + (cx - w / 2) + '" y="' + (y - 10) + '" width="' + w + '" height="20" rx="4" fill="#f5f3ff" stroke="' + stroke + '" stroke-width="1.2"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="' + ink + '" font-weight="600">' + esc(text) + '</text>';
+  }
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x - 9 * dir) + ' ' + (y - s) + ' L ' + (x - 9 * dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+  function dot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + color + '"/>'; }
+  function seg(x1, y1, x2, y2, color) { return '<path d="M ' + x1 + ' ' + y1 + ' L ' + x2 + ' ' + y2 + '" stroke="' + color + '" stroke-width="1.6" fill="none"/>'; }
+
+  /* ---------------- 复用：算子输入来自上一步接收方块 ---------------- */
+  function findStandalone(sc, role, id) {
+    for (var i = 0; i < sc.standalone.length; i++) {
+      var s = sc.standalone[i];
+      if (s.role === role && s.id === id) return s;
+    }
+    return null;
+  }
+  function reusedInputIndex(sc, m) {
+    for (var i = 0; i < m.inputs.length; i++) {
+      var s = findStandalone(sc, m.role, m.inputs[i]);
+      if (s && s.kind === 'recv') return i;
+    }
+    return -1;
+  }
+  // 算子簇纵向锚点：若复用接收方块，则让它落在复用方块的 y 上
+  function methodOpY(sc, m) {
+    var n = m.inputs.length;
+    var ri = reusedInputIndex(sc, m);
+    if (ri < 0) return m.y;
+    var s = findStandalone(sc, m.role, m.inputs[ri]);
+    return s.y + PITCH * (n - ri);
+  }
+  function bounds(sc) {
+    var minY = 1e9, maxY = 0;
+    sc.standalone.forEach(function (s) { minY = Math.min(minY, s.y - 9); maxY = Math.max(maxY, s.y + 9); });
+    sc.rows.forEach(function (r) { minY = Math.min(minY, r.y - 11); maxY = Math.max(maxY, r.y + 11); });
+    sc.methods.forEach(function (m) {
+      var oy = methodOpY(sc, m), n = m.inputs.length;
+      minY = Math.min(minY, oy - PITCH * n - 9);
+      maxY = Math.max(maxY, oy + PITCH * m.outputs.length + 9);
+    });
+    sc.events.forEach(function (e) { minY = Math.min(minY, e.y - 18); maxY = Math.max(maxY, e.y + 18); });
+    sc.locals.forEach(function (l) { minY = Math.min(minY, l.y - 6); maxY = Math.max(maxY, l.y + 6); });
+    return { minY: minY, maxY: maxY };
+  }
+
+  /* ---------------- 信道总线 + 消息（内容方块镶嵌箭杆中间） ---------------- */
+  function hasBlockAt(sc, role, y) {
+    for (var i = 0; i < sc.standalone.length; i++) {
+      var s = sc.standalone[i];
+      if (s.role === role && s.y === y) return true;
+    }
+    return false;
+  }
+  function renderMessage(sc, r, out, arrowPass) {
+    var rail = sc.rail.cx, y = r.y;
+    if (r.from != null && r.to != null) {
+      var xF = sc.roles[r.from].x, xT = sc.roles[r.to].x;
+      var travel = xT > xF ? 1 : -1;
+      var xStart = hasBlockAt(sc, r.from, y) ? xF + BLOCK_HALF * travel : xF;
+      var xEnd = hasBlockAt(sc, r.to, y) ? xT - BLOCK_HALF * travel : xT;
+      var senderEdge = travel > 0 ? rail - BUS_HALF : rail + BUS_HALF;
+      var recvEdge = travel > 0 ? rail + BUS_HALF : rail - BUS_HALF;
+      // 发送段：发送方词项 → 箭头指向总线
+      out.push(seg(xStart, y, senderEdge, y, C.channel));
+      out.push(dot(xStart, y, C.channel));
+      out.push(contentBox((xStart + senderEdge) / 2, y, r.send, C.channel, C.channelInk));
+      arrowPass.push({ x: senderEdge, y: y, dir: travel, color: C.channel });
+      // 接收段：实际到达的词项 → 箭头指向接收方块
+      out.push(seg(recvEdge, y, xEnd, y, C.channel));
+      out.push(contentBox((recvEdge + xEnd) / 2, y, r.recv, C.channel, C.channelInk));
+      arrowPass.push({ x: xEnd, y: y, dir: travel, color: C.channel });
+      return;
+    }
+    var xR = sc.roles[r.role].x;
+    if (r.dir === 'out') {
+      var tOut = rail > xR ? 1 : -1;
+      var xs = hasBlockAt(sc, r.role, y) ? xR + BLOCK_HALF * tOut : xR;
+      var xe = tOut > 0 ? rail - BUS_HALF : rail + BUS_HALF;
+      out.push(seg(xs, y, xe, y, C.unpaired));
+      out.push(dot(xs, y, C.unpaired));
+      out.push(contentBox((xs + xe) / 2, y, r.send, C.unpaired, C.unpairedInk));
+      arrowPass.push({ x: xe, y: y, dir: tOut, color: C.unpaired });
+    } else {
+      var tIn = xR > rail ? 1 : -1;
+      var xi = xR - BLOCK_HALF * tIn;
+      var start = xR > rail ? rail + BUS_HALF : rail - BUS_HALF;
+      out.push(seg(start, y, xi, y, C.unpaired));
+      out.push(contentBox((start + xi) / 2, y, r.recv, C.unpaired, C.unpairedInk));
+      arrowPass.push({ x: xi, y: y, dir: tIn, color: C.unpaired });
+    }
+  }
+  function busRect(sc, b) {
+    var rail = sc.rail.cx, top = b.minY - 20, bot = b.maxY + 14;
+    return '<rect x="' + (rail - BUS_HALF) + '" y="' + top + '" width="' + (2 * BUS_HALF) + '" height="' + (bot - top) + '" rx="6" fill="#f5f3ff" stroke="' + C.channel + '" stroke-width="1.4"/>' +
+      '<text x="' + rail + '" y="' + (top - 8) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#6d28d9" font-family="mono">信道 c</text>';
+  }
+
+  /* ---------------- event 标记 ---------------- */
+  function conclusionFlag(flagSide) {
+    var bp = { x: flagSide * 1.5, y: -1.5 }, tp = { x: flagSide * 15, y: -21 };
+    var vx = tp.x - bp.x, vy = tp.y - bp.y, len = Math.sqrt(vx * vx + vy * vy); vx /= len; vy /= len;
+    var baseLen = 13;
+    var b2 = { x: tp.x - vx * baseLen, y: tp.y - vy * baseLen };
+    var nx = vy, ny = -vx;
+    if (nx * flagSide < 0) { nx = -nx; ny = -ny; }
+    var mid = { x: tp.x - vx * baseLen / 2, y: tp.y - vy * baseLen / 2 };
+    var apex = { x: mid.x + nx * 11, y: mid.y + ny * 11 };
+    return {
+      pole: 'M ' + bp.x + ' ' + bp.y + ' L ' + tp.x + ' ' + tp.y,
+      cloth: 'M ' + tp.x + ' ' + tp.y + ' L ' + b2.x + ' ' + b2.y + ' L ' + apex.x + ' ' + apex.y + ' Z'
+    };
+  }
+  function renderEvent(sc, e) {
+    var x = sc.roles[e.role].x;
+    var flagSide = x < sc.rail.cx ? -1 : 1;
+    var labelX = x < sc.rail.cx ? 14 : -14;
+    var labelAnchor = x < sc.rail.cx ? 'start' : 'end';
+    var isPrem = state.pending === e.key || (state.selected && state.selected.from === e.key && state.selected.from !== state.selected.to);
+    var isConcl = state.selected && state.selected.to === e.key;
+    var stale = state.selected && !isPrem && !isConcl;
+    var cls = 'mk' + (isPrem ? ' premise' : '') + (isConcl ? ' conclusion' : '') + (stale ? ' stale' : '');
+    var label = e.key + '(' + e.args + ')';
+    var marker;
+    if (isConcl) {
+      var f = conclusionFlag(flagSide);
+      marker = '<circle class="mk-concl-dot" cx="0" cy="0" r="7.5"/>' +
+        '<path class="mk-concl-pole" d="' + f.pole + '" fill="none"/>' +
+        '<path class="mk-concl-cloth" d="' + f.cloth + '"/>';
+    } else {
+      marker = '<path class="mk-diamond" d="M0,-10 L10,0 L0,10 L-10,0 Z"/>';
+    }
+    return '<g class="' + cls + '" data-key="' + esc(e.key) + '" transform="translate(' + x + ',' + e.y + ')">' +
+      '<g class="mk-inner"><circle class="mk-halo" cx="0" cy="0" r="15"/>' + marker + '</g>' +
+      '<rect class="mk-hit" x="-56" y="-17" width="112" height="34"/>' +
+      '<text class="mk-label" x="' + labelX + '" y="4" text-anchor="' + labelAnchor + '">' + esc(label) + '</text>' +
+      '<title>event ' + esc(label) + ' — 点击设为' + (state.pending ? '结论端（再点同一支 = 自反对）' : '前提端') + '</title>' +
+      '</g>';
+  }
+
+  function renderPanel(sc) {
+    var b = bounds(sc);
+    var H = b.maxY + 60;
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(sc.title) + '">'];
+    out.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fff"/>');
+
+    out.push(busRect(sc, b));
+
+    sc.roles.forEach(function (role) {
+      out.push('<line x1="' + role.x + '" y1="' + (b.minY - 20) + '" x2="' + role.x + '" y2="' + (b.maxY + 8) + '" stroke="' + C.lifeline + '" stroke-width="1.5" stroke-dasharray="3 3"/>');
+      out.push('<text x="' + role.x + '" y="' + (b.minY - 44) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#111827" font-family="mono">' + esc(role.s) + '</text>');
+    });
+
+    var arrowPass = [];
+    sc.rows.forEach(function (r) { renderMessage(sc, r, out, arrowPass); });
+
+    // 独立值方块（含被算子复用的接收方块）
+    sc.standalone.forEach(function (s) {
+      var n = sc.nodes[s.id];
+      out.push(block(sc.roles[s.role].x, s.y, n.name, n.color));
+    });
+
+    sc.roles.forEach(function (role, ri) {
+      var known = sc.standalone.filter(function (s) { return s.role === ri && s.kind === 'known'; });
+      if (known.length) {
+        var top = Math.min.apply(null, known.map(function (k) { return k.y; }));
+        out.push('<text x="' + (role.x + (role.x < sc.rail.cx ? -8 : 8)) + '" y="' + (top - 14) + '" text-anchor="' + (role.x < sc.rail.cx ? 'end' : 'start') + '" font-size="9" fill="#9ca3af" font-family="mono">参数</text>');
+      }
+    });
+
+    // 算子簇：输入从上到下；被复用的接收方块跳过不画
+    sc.methods.forEach(function (m) {
+      var x = sc.roles[m.role].x, oy = methodOpY(sc, m), n = m.inputs.length;
+      var reuse = reusedInputIndex(sc, m);
+      out.push(methodBox(x, oy, m.op));
+      m.inputs.forEach(function (id, i) {
+        if (i === reuse) return;                              // 复用：已作为接收方块画过
+        var node = sc.nodes[id];
+        out.push(block(x, oy - PITCH * (n - i), node.name, node.color));
+      });
+      m.outputs.forEach(function (o, j) {
+        var node = sc.nodes[o.id];
+        out.push(block(x, oy + PITCH * (j + 1), node.name, node.color));
+      });
+    });
+
+    sc.locals.forEach(function (l) {
+      var x = sc.roles[l.role].x;
+      out.push(dot(x, l.y, C.local));
+      out.push('<text x="' + (x + (x < sc.rail.cx ? 8 : -8)) + '" y="' + (l.y + 3.5) + '" text-anchor="' + (x < sc.rail.cx ? 'start' : 'end') + '" font-size="10" fill="#6b7280" font-family="mono">' + esc(l.label) + '</text>');
+    });
+
+    sc.events.forEach(function (e) { out.push(renderEvent(sc, e)); });
+
+    // 箭头最后一趟：在目标边缘显现，不被方块挡住
+    arrowPass.forEach(function (a) { out.push(arrowHead(a.x, a.y, a.dir, a.color)); });
+
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  /* ---------------- 查询与判定 ---------------- */
+  function queryFor(sample, fromKey, toKey) {
+    var sc = SCENARIOS[sample];
+    var tp = sc.paramTypes[fromKey], tq = sc.paramTypes[toKey];
+    var shared = tp === tq && tp != null;
+    return {
+      decl: shared ? ('x: ' + tp) : ('x: ' + tp + ', y: ' + tq),
+      from: 'inj-event(' + fromKey + '(' + (shared ? 'x' : 'x') + '))',
+      to: 'inj-event(' + toKey + '(' + (shared ? 'x' : 'y') + '))',
+      shared: shared
+    };
+  }
+  function verdictOf(sample, fromKey, toKey) {
+    var sc = SCENARIOS[sample];
+    var i = sc.order.indexOf(fromKey), j = sc.order.indexOf(toKey);
+    if (i < 0 || j < 0) return 'unknown';
+    return sc.verdicts[i][j];
+  }
+  function eventDef(sample, key) {
+    var evs = SCENARIOS[sample].events;
+    for (var i = 0; i < evs.length; i++) if (evs[i].key === key) return evs[i];
+    return null;
+  }
+  function resultBlock(fromKey, toKey, sample, withTrace) {
+    var v = verdictOf(sample, fromKey, toKey);
+    var q = queryFor(sample, fromKey, toKey);
+    var eF = eventDef(sample, fromKey), eT = eventDef(sample, toKey);
+    var approx = !q.shared ? '<p class="verdict-note">该对参数不完全对应，变量退化为存在量化，结论弱于全参对应。</p>' : '';
+    var trace = (withTrace && v === 'false')
+      ? '<button class="chip trace-btn" data-trace="1">查看反例 trace</button>' +
+        '<pre class="trace"><span class="ph">（原型占位）真实 trace 来自 parseVerifyStdout 的 counterexampleTrace；\n完整反例 / 执行视图属于独立 effort（本 effort out of scope），此处只保留入口。</span>\n\nDerivation:\n  beginBparam(pkX) ...\n  ...\n  endBparam(pk(skB))  ← 反例路径</pre>'
+      : '';
+    return '<div class="pair-line"><span class="ev">' + esc(fromKey) + '(' + esc(eF.args) + ')</span> <span style="color:var(--muted)">⇒</span> <span class="ev">' + esc(toKey) + '(' + esc(eT.args) + ')</span> <span class="badge ' + v + '">' + BADGE[v] + '</span></div>' +
+      '<code class="qmono">query ' + esc(q.decl) + '; ' + esc(q.from) + ' ==&gt; ' + esc(q.to) + '.</code>' +
+      '<p class="verdict-note">' + VNOTE[v] + '</p>' + approx + trace;
+  }
+
+  function renderPopover() {
+    var pop = document.getElementById('popover');
+    if (!state.selected) { pop.className = 'popover hidden'; return; }
+    var f = state.selected.from, t = state.selected.to;
+    pop.className = 'popover';
+    pop.innerHTML = '<button class="x" title="关闭">×</button><div class="arrowup"></div>' + resultBlock(f, t, state.sample, true);
+    pop.querySelector('.x').addEventListener('click', function () { state.selected = null; render(); });
+    var tb = pop.querySelector('.trace-btn');
+    if (tb) tb.addEventListener('click', function () { pop.querySelector('.trace').classList.toggle('open'); });
+    var el = document.querySelector('g.mk[data-key="' + (window.CSS && CSS.escape ? CSS.escape(t) : t) + '"]');
+    if (el && el.getBoundingClientRect) {
+      var wrap = document.getElementById('stage-wrap');
+      var wr = wrap.getBoundingClientRect(), fr = el.getBoundingClientRect();
+      var left = fr.left - wr.left + fr.width / 2;
+      left = Math.max(168, Math.min(wrap.clientWidth - 168, left));
+      pop.style.left = left + 'px';
+      pop.style.top = (fr.bottom - wr.top + 10) + 'px';
+      pop.style.transform = 'translateX(-50%)';
+    }
+  }
+
+  /* ---------------- 矩阵：inline handler，每格可直接点 ---------------- */
+  window.__pickCell = function (i, j) {
+    var sc = SCENARIOS[state.sample];
+    state.pending = null;
+    state.selected = { from: sc.order[i], to: sc.order[j] };
+    render();
+    var v = verdictOf(state.sample, sc.order[i], sc.order[j]);
+    setStatus('已查询：<span class="sel">' + esc(sc.order[i]) + ' ⇒ ' + esc(sc.order[j]) + '</span> —— ' + BADGE[v] + '。');
+  };
+  function renderMatrix() {
+    var el = document.getElementById('matrix-panel');
+    el.style.display = state.showMatrix ? '' : 'none';
+    if (!state.showMatrix) { el.innerHTML = ''; return; }
+    var sc = SCENARIOS[state.sample];
+    var order = sc.order;
+    var selFrom = state.selected ? state.selected.from : null;
+    var selTo = state.selected ? state.selected.to : null;
+
+    var head = '<tr><th></th>' + order.map(function (k) {
+      return '<th class="colh' + (k === selTo ? ' on' : '') + '">' + esc(k) + '</th>';
+    }).join('') + '</tr>';
+    var rows = order.map(function (rk, i) {
+      var cells = order.map(function (ck, j) {
+        var v = sc.verdicts[i][j];
+        var cls = [v];
+        if (i === j) cls.push('diag');
+        if (selFrom != null && (rk === selFrom || ck === selTo)) cls.push('hl');
+        if (rk === selFrom && ck === selTo) cls.push('sel');
+        var glyph = v === 'true' ? '✓' : v === 'false' ? '✕' : '?';
+        return '<td class="' + cls.join(' ') + '" style="--c:' + VCOLOR[v] + '" data-r="' + i + '" data-c="' + j + '" onclick="__pickCell(' + i + ',' + j + ')" title="' + esc(rk) + ' ⇒ ' + esc(ck) + ' : ' + BADGE[v] + '">' + glyph + '</td>';
+      }).join('');
+      return '<tr><th class="rowh' + (rk === selFrom ? ' on' : '') + '">' + esc(rk) + '</th>' + cells + '</tr>';
+    }).join('');
+    var detail = state.selected
+      ? resultBlock(state.selected.from, state.selected.to, state.sample, true)
+      : '<p class="empty-hint">点矩阵任一格，或点生命线上的两支旗（第一支 = 前提，第二支 = 结论）。</p>';
+
+    el.innerHTML =
+      '<div class="matrix-head"><h2>n×n 对应性矩阵</h2><span class="caption">行 = 前提，列 = 结论</span></div>' +
+      '<p class="caption">每一格都可直接点击查询；选中行 / 列里每个方格用其自身判定色描边。</p>' +
+      '<div id="matrix-scroll" style="overflow:auto"><table class="matrix">' + head + rows + '</table></div>' +
+      '<div class="matrix-legend">' +
+      '<span><span class="swatch" style="background:#d1fae5"></span>证明成立</span>' +
+      '<span><span class="swatch" style="background:#fee2e2"></span>找到反例</span>' +
+      '<span><span class="swatch" style="background:#fef3c7"></span>未证出</span>' +
+      '<span style="opacity:.6">淡色 = 自反对</span></div>' +
+      '<hr style="border:none;border-top:1px solid var(--border);margin:0.7rem 0" />' +
+      '<h3 style="font-size:0.85rem;margin:0 0 0.3rem">选中格详情</h3>' + detail;
+
+    var tb = el.querySelector('.trace-btn');
+    if (tb) tb.addEventListener('click', function () { el.querySelector('.trace').classList.toggle('open'); });
+  }
+
+  function setStatus(html) { document.getElementById('status').innerHTML = html; }
+  function onMarkerClick(key) {
+    if (!state.pending) {
+      state.pending = key; state.selected = null; render();
+      setStatus('已选前提端：<span class="sel">' + esc(key) + '</span> —— 再点一支旗作为<b>结论端</b>（再点它自己 = 自反对查询）。');
+      return;
+    }
+    var from = state.pending;
+    state.pending = null;
+    state.selected = { from: from, to: key };
+    render();
+    var v = verdictOf(state.sample, from, key);
+    setStatus('已查询' + (from === key ? '（自反对）' : '') + '：<span class="sel">' + esc(from) + ' ⇒ ' + esc(key) + '</span> —— ' + BADGE[v] + '。');
+  }
+
+  function render() {
+    var sc = SCENARIOS[state.sample];
+    document.getElementById('panel-title').textContent = sc.title;
+    document.getElementById('panel-caption').textContent = sc.caption;
+    document.getElementById('svg').innerHTML = renderPanel(sc);
+    document.querySelectorAll('[data-sample]').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-sample') === state.sample);
+    });
+    document.getElementById('layout').className = 'layout' + (state.showMatrix ? '' : ' no-matrix');
+    document.getElementById('matrix-toggle').textContent = state.showMatrix ? '隐藏矩阵' : '显示矩阵';
+    document.querySelectorAll('#svg g.mk').forEach(function (g) {
+      var key = g.getAttribute('data-key');
+      g.addEventListener('click', function () { onMarkerClick(key); });
+      g.addEventListener('mouseenter', function () {
+        var d = eventDef(state.sample, key);
+        setStatus('<span class="sel">event ' + esc(key) + '(' + esc(d.args) + ')</span> · ' + (state.pending
+          ? (state.pending === key ? '再点一次 = 查自反对 ' + esc(key) + ' ⇒ ' + esc(key) : '点击设为结论端，形成 ' + esc(state.pending) + ' ⇒ ' + esc(key))
+          : '点击设为前提端'));
+      });
+    });
+    renderPopover();
+    renderMatrix();
+  }
+
+  /* composedPath 在派发时快照，避免 render() 把 target 变 detached 后 closest 失配 */
+  function pathHasClass(e, cls) {
+    var path = e.composedPath ? e.composedPath() : [];
+    for (var i = 0; i < path.length; i++) {
+      var n = path[i];
+      if (n && n.classList && n.classList.contains(cls)) return true;
+    }
+    return false;
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var sp = t.closest ? t.closest('[data-sample]') : null;
+    if (sp) { state.sample = sp.getAttribute('data-sample'); state.pending = null; state.selected = null; render(); return; }
+    if (t.closest && t.closest('#matrix-toggle')) { state.showMatrix = !state.showMatrix; render(); return; }
+    if (t.closest && t.closest('#reset')) { state.pending = null; state.selected = null; render(); setStatus('已重置选择。'); return; }
+    if (state.selected && !pathHasClass(e, 'popover') && !pathHasClass(e, 'mk') && !pathHasClass(e, 'matrix-panel') && !pathHasClass(e, 'trace')) {
+      state.selected = null; render();
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === 'Escape') { state.pending = null; state.selected = null; render(); setStatus('已重置选择。'); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

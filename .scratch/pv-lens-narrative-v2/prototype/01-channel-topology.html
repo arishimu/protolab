@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>信道拓扑对比原型 · T2 vs T1（v2 规范叙事视图）</title>
+<style>
+  :root {
+    --bg: #f7f7f9;
+    --panel: #ffffff;
+    --border: #d9d9de;
+    --text: #1f2329;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --msg: #2563eb;
+    --unpaired: #d97706;
+    --channel: #7c3aed;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.6;
+    padding-bottom: 96px;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 1.25rem 1rem; }
+  header.prototype-head h1 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+  header.prototype-head .tag {
+    display: inline-block; font-size: 0.72rem; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: 0.05rem 0.5rem;
+  }
+  .question {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.9rem 1rem; margin: 0.9rem 0; font-size: 0.9rem;
+  }
+  .question p { margin: 0 0 0.35rem; }
+  .question p:last-child { margin-bottom: 0; }
+  .question .criteria { color: var(--muted); font-size: 0.85rem; }
+  .question b { color: var(--text); }
+
+  .controls {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(247,247,249,0.95); backdrop-filter: blur(4px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.6rem 1rem; margin: 0 -1rem 1rem;
+    display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+  }
+  .controls .group { display: flex; align-items: center; gap: 0.4rem; }
+  .controls .group-label { font-size: 0.8rem; color: var(--muted); }
+  .chip {
+    font: inherit; font-size: 0.82rem; cursor: pointer;
+    padding: 0.3rem 0.7rem; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip:hover { filter: brightness(0.98); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+    gap: 1rem;
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.75rem 0.75rem 0.5rem; overflow: hidden;
+  }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.15rem; }
+  .panel .caption { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .panel .roles { font-size: 0.78rem; color: var(--muted); margin: 0 0 0.4rem; }
+  .panel svg { display: block; width: 100%; height: auto; }
+
+  /* SVG 元素样式 */
+  .panel-bg { fill: #ffffff; }
+  .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .role-name { font-size: 14px; font-weight: 700; fill: #111827; font-family: var(--mono); }
+  .rail-bg { fill: #f5f3ff; stroke: #c4b5fd; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .rail-label { font-size: 12px; font-weight: 700; fill: #6d28d9; font-family: var(--mono); }
+  .bus-line { fill: #7c3aed; }
+  .channel-seg { stroke: #7c3aed; stroke-width: 3; stroke-dasharray: 5 3; }
+  .lane-line { stroke: #c4b5fd; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .lane-label { font-size: 11px; fill: #6d28d9; font-family: var(--mono); }
+  .local-dot { fill: #9ca3af; }
+  .local-text { font-size: 11px; fill: #6b7280; font-family: var(--mono); }
+  .event-flag { fill: #0d9488; }
+  .event-text { font-size: 11px; fill: #0f766e; font-family: var(--mono); }
+  .msg-term { font-size: 11px; fill: #1d4ed8; font-family: var(--mono); font-weight: 600; }
+  .unpaired-term { font-size: 11px; fill: #b45309; font-family: var(--mono); }
+  .bus-marker-term { font-size: 11px; fill: #1d4ed8; font-family: var(--mono); }
+  .bus-marker-term.unpaired { fill: #b45309; }
+
+  .legend {
+    margin-top: 1rem; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.75rem 1rem;
+  }
+  .legend h3 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .legend dl {
+    margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.3rem 1.25rem;
+  }
+  .legend .item { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8rem; }
+  .legend .swatch {
+    display: inline-block; width: 26px; height: 0; border-top: 3px solid; flex: 0 0 26px;
+  }
+  .legend .swatch.dashed { border-top-style: dashed; }
+  .legend .swatch.rail { border-top-style: dashed; }
+  .legend dd { margin: 0; color: var(--muted); }
+
+  .float-bar {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 0.4rem;
+    background: #1f2329; color: #fff; border-radius: 999px; padding: 0.4rem 0.7rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25); font-size: 0.8rem; z-index: 20;
+  }
+  .float-bar button {
+    font: inherit; cursor: pointer; border: none; background: #343a44; color: #fff;
+    border-radius: 999px; padding: 0.2rem 0.6rem;
+  }
+  .float-bar button.active { background: var(--accent); }
+  .float-bar .sep { opacity: 0.35; }
+  .float-bar .lbl { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="prototype-head">
+    <h1>信道拓扑对比原型：T2（横线中段信道段）vs T1（总线式）</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 01 · 假数据，未接真实解析器</span>
+  </header>
+
+  <div class="question">
+    <p><b>问题</b>：v2 的「信道是一等视觉元素」用哪种拓扑落地？</p>
+    <p class="criteria"><b>判据</b>：读者能否一眼分辨——① 同一条消息的两端；② 消息经过哪条信道；③ 哪些是未配对。</p>
+    <p class="criteria"><b>走线</b>：四方协议里跨过中间生命线的线（如 I→R 穿过 S）该怎么画才不误导成「S 中继」——用下方「走线策略」切换。</p>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">素材</span>
+      <button class="chip active" data-sample="ns-original">ns-original（两方）</button>
+      <button class="chip" data-sample="ns-mutual-auth">ns-mutual-auth（四方）</button>
+    </div>
+    <div class="group">
+      <span class="group-label">走线策略（跨中间生命线时）</span>
+      <button class="chip active" data-strategy="direct">直接</button>
+      <button class="chip" data-strategy="hop">跨线弧</button>
+      <button class="chip" data-strategy="via">沿信道绕行</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="panel" id="panel-T2">
+      <h2>T2 · 横线中段信道段</h2>
+      <p class="caption">一条消息 = 发送段 + 中段信道段（紫色）+ 接收段，是连续的横线；未配对只画一半，空心圆端点落在信道轨上。</p>
+      <p class="roles" id="roles-T2"></p>
+      <div id="svg-T2"></div>
+    </section>
+    <section class="panel" id="panel-T1">
+      <h2>T1 · 总线式</h2>
+      <p class="caption">角色生命线在左、信道总线在右；发送者连线入总线，接收者用总线上的回指标记（不拉线回角色）。</p>
+      <p class="roles" id="roles-T1"></p>
+      <div id="svg-T1"></div>
+    </section>
+  </div>
+
+  <div class="legend">
+    <h3>图例（两种拓扑共用）</h3>
+    <dl>
+      <div class="item"><span class="swatch" style="border-color:var(--msg)"></span><dd>发送段 / 接收段（同一条消息，蓝）——两端共享同一行 y，即「同一条消息的两端」</dd></div>
+      <div class="item"><span class="swatch dashed" style="border-color:var(--channel)"></span><dd>信道段 / 信道轨 / 总线（紫）——消息经过的信道 c</dd></div>
+      <div class="item"><span class="swatch" style="border-color:var(--unpaired)"></span><dd>未配对（橙 + 空心圆）——无法可靠推断收发关系的步骤</dd></div>
+      <div class="item"><span class="swatch" style="border-color:#cbd5e1;border-top-style:dashed"></span><dd>角色生命线（竖直虚线）</dd></div>
+      <div class="item"><span style="color:#9ca3af">●</span><dd>本地步骤（new / let / if…）</dd></div>
+      <div class="item"><span style="color:#0d9488">▶</span><dd>事件标记（event）</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="float-bar">
+  <span class="lbl">素材</span>
+  <button id="sample-prev">◀</button>
+  <span id="sample-label" style="min-width:9em;text-align:center"></span>
+  <button id="sample-next">▶</button>
+  <span class="sep">|</span>
+  <span class="lbl">走线</span>
+  <button data-strategy="direct">直接</button>
+  <button data-strategy="hop">跨线弧</button>
+  <button data-strategy="via">沿信道绕行</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 640;
+  var RAIL_X = W / 2;
+  var RAIL_HALF = 26;
+  var RAIL_L = RAIL_X - RAIL_HALF;
+  var RAIL_R = RAIL_X + RAIL_HALF;
+  var BUS_X = W - 44;
+  var FIRST_Y = 88;
+  var ROW_H = 40;
+  var LANE_GAP = 54;
+  var BOTTOM_PAD = 34;
+
+  var MSG = '#2563eb';
+  var UNPAIRED = '#d97706';
+
+  var SAMPLES = {
+    'ns-original': {
+      title: 'ns-original（两方 · 自动配对）',
+      roles: [
+        { s: 'A', l: 'Alice 发起方' },
+        { s: 'B', l: 'Bob 响应方' }
+      ],
+      rows: [
+        { t: 'local', role: 0, label: 'new Na' },
+        { t: 'event', role: 0, label: 'beginBparam' },
+        { t: 'msg', from: 0, to: 1, term: '{Na, pkA}pkB' },
+        { t: 'local', role: 1, label: 'new Nb' },
+        { t: 'event', role: 1, label: 'beginAparam' },
+        { t: 'msg', from: 1, to: 0, term: '{Na, Nb}pkA' },
+        { t: 'msg', from: 0, to: 1, term: '{Nb}pkB' },
+        { t: 'event', role: 0, label: 'endAparam' },
+        { t: 'event', role: 1, label: 'endBparam' },
+        { t: 'msg', role: 0, dir: 'out', term: '{secretANa}Na' },
+        { t: 'msg', role: 0, dir: 'out', term: '{secretANb}Nb' },
+        { t: 'msg', role: 1, dir: 'out', term: '{secretBNa}Na' },
+        { t: 'msg', role: 1, dir: 'out', term: '{secretBNb}Nb' }
+      ]
+    },
+    'ns-mutual-auth': {
+      title: 'ns-mutual-auth（四方 · ADR-0003 全部未配对）',
+      roles: [
+        { s: 'I', l: '发起者' },
+        { s: 'S', l: '服务器' },
+        { s: 'R', l: '响应者' },
+        { s: 'K', l: '密钥注册' }
+      ],
+      rows: [
+        { t: 'msg', role: 0, dir: 'out', term: '(xA, hostX)' },
+        { t: 'msg', role: 1, dir: 'in', term: '(a, b)' },
+        { t: 'msg', role: 1, dir: 'out', term: 'sign(sb, b)' },
+        { t: 'msg', role: 0, dir: 'in', term: 'ms' },
+        { t: 'local', role: 0, label: 'new Na' },
+        { t: 'msg', role: 0, dir: 'out', term: '{Na, xA}pkX' },
+        { t: 'msg', role: 2, dir: 'in', term: 'm' },
+        { t: 'msg', role: 2, dir: 'out', term: '(xB, hostY)' },
+        { t: 'msg', role: 1, dir: 'in', term: '(a, b)' },
+        { t: 'msg', role: 1, dir: 'out', term: 'sign(...)' },
+        { t: 'msg', role: 2, dir: 'in', term: 'ms' },
+        { t: 'local', role: 2, label: 'new Nb' },
+        { t: 'msg', role: 2, dir: 'out', term: '{NY, Nb, xB}pkY' },
+        { t: 'msg', role: 0, dir: 'in', term: 'm' },
+        { t: 'event', role: 0, label: 'termI' },
+        { t: 'msg', role: 0, dir: 'out', term: '(m7, messtermI)' },
+        { t: 'msg', role: 2, dir: 'in', term: 'm3' },
+        { t: 'msg', role: 2, dir: 'out', term: 'messtermR' },
+        { t: 'msg', role: 3, dir: 'in', term: '(h, k)' }
+      ]
+    }
+  };
+
+  var state = { sample: 'ns-original', strategy: 'direct' };
+
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function roleXs(sample, topology) {
+    var n = sample.roles.length;
+    if (topology === 'T2') {
+      if (n === 2) return [W * 0.22, W * 0.78];
+      if (n === 4) return [W * 0.10, W * 0.32, W * 0.68, W * 0.90];
+    } else {
+      if (n === 2) return [W * 0.30, W * 0.54];
+      if (n === 4) return [W * 0.12, W * 0.28, W * 0.44, W * 0.60];
+    }
+    return sample.roles.map(function (_, i) {
+      return n === 1 ? W / 2 : 60 + (W - 120) * (i / (n - 1));
+    });
+  }
+
+  function geom(sample) {
+    var n = sample.rows.length;
+    var lastY = FIRST_Y + (n - 1) * ROW_H;
+    var laneY = lastY + LANE_GAP;
+    return { lastY: lastY, laneY: laneY, height: laneY + BOTTOM_PAD };
+  }
+
+  function railEdgeFor(x) { return x < RAIL_X ? RAIL_L : RAIL_R; }
+
+  function betweenLifelines(x0, x1, xs) {
+    var lo = Math.min(x0, x1), hi = Math.max(x0, x1);
+    return xs.filter(function (x) { return x > lo + 3 && x < hi - 3; });
+  }
+
+  function hopPath(x0, y, x1, hops) {
+    var r = 7;
+    var dir = x1 >= x0 ? 1 : -1;
+    var sorted = hops.slice().sort(function (a, b) { return dir > 0 ? a - b : b - a; });
+    var d = 'M ' + x0 + ' ' + y;
+    sorted.forEach(function (hx) {
+      var a = hx - dir * r, b = hx + dir * r;
+      d += ' L ' + a + ' ' + y + ' Q ' + hx + ' ' + (y - 2 * r) + ' ' + b + ' ' + y;
+    });
+    d += ' L ' + x1 + ' ' + y;
+    return d;
+  }
+
+  function segPath(x0, y, x1, hops, strategy, laneY) {
+    if (strategy === 'hop' && hops.length) return hopPath(x0, y, x1, hops);
+    if (strategy === 'via' && hops.length) {
+      return 'M ' + x0 + ' ' + y + ' L ' + x0 + ' ' + laneY + ' L ' + x1 + ' ' + laneY + ' L ' + x1 + ' ' + y;
+    }
+    return 'M ' + x0 + ' ' + y + ' L ' + x1 + ' ' + y;
+  }
+
+  function path(x0, y, x1, hops, strategy, laneY, color) {
+    var d = segPath(x0, y, x1, hops, strategy, laneY);
+    return '<path d="' + d + '" stroke="' + color + '" stroke-width="2" fill="none"/>';
+  }
+
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x + 9 * dir) + ' ' + (y - s) + ' L ' + (x + 9 * dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+
+  function openCircle(x, y, color) {
+    return '<circle cx="' + x + '" cy="' + y + '" r="5" fill="#fff" stroke="' + color + '" stroke-width="2"/>';
+  }
+
+  function anchorDot(x, y, color) {
+    return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + color + '"/>';
+  }
+
+  function termLabel(x, y, text, anchor, cls) {
+    return '<text x="' + x + '" y="' + y + '" class="' + cls + '" text-anchor="' + anchor + '">' + esc(text) + '</text>';
+  }
+
+  function renderMsg(row, y, xs, sample, topology, strategy, g, out) {
+    if (topology === 'T2') {
+      if (row.to != null) {
+        var xF = xs[row.from], xT = xs[row.to];
+        var eF = railEdgeFor(xF), eT = railEdgeFor(xT);
+        out.push(path(xF, y, eF, [], strategy, g.laneY, MSG));
+        out.push(anchorDot(xF, y, MSG));
+        out.push('<line x1="' + RAIL_L + '" y1="' + y + '" x2="' + RAIL_R + '" y2="' + y + '" class="channel-seg"/>');
+        out.push(path(eT, y, xT, [], strategy, g.laneY, MSG));
+        out.push(arrowHead(xT, y, Math.sign(xT - eT), MSG));
+        out.push(termLabel(xF + 6, y - 6, row.term, 'start', 'msg-term'));
+        out.push(termLabel(xT - 6, y - 6, row.term, 'end', 'msg-term'));
+      } else {
+        var xR = xs[row.role];
+        var eR = railEdgeFor(xR);
+        var hops = betweenLifelines(xR, eR, xs);
+        out.push(path(xR, y, eR, hops, strategy, g.laneY, UNPAIRED));
+        if (row.dir === 'out') {
+          out.push(arrowHead(eR, y, Math.sign(eR - xR), UNPAIRED));
+          out.push(openCircle(eR, y, UNPAIRED));
+          out.push(termLabel(xR + 6, y - 6, 'out ' + row.term, 'start', 'unpaired-term'));
+        } else {
+          out.push(arrowHead(xR, y, Math.sign(xR - eR), UNPAIRED));
+          out.push(openCircle(eR, y, UNPAIRED));
+          out.push(termLabel(xR - 6, y - 6, 'in ' + row.term, 'end', 'unpaired-term'));
+        }
+      }
+    } else {
+      // T1 总线式
+      if (row.to != null) {
+        var xF1 = xs[row.from];
+        var hops1 = betweenLifelines(xF1, BUS_X, xs);
+        out.push(path(xF1, y, BUS_X, hops1, strategy, g.laneY, MSG));
+        out.push(anchorDot(xF1, y, MSG));
+        out.push(arrowHead(BUS_X - 3, y, 1, MSG));
+        out.push(termLabel(xF1 + 6, y - 6, row.term, 'start', 'msg-term'));
+        out.push('<circle cx="' + BUS_X + '" cy="' + y + '" r="3" fill="' + MSG + '"/>');
+        out.push(termLabel(BUS_X - 12, y - 6, sample.roles[row.to].s + ' 收 ' + row.term, 'end', 'bus-marker-term'));
+      } else {
+        var xR1 = xs[row.role];
+        if (row.dir === 'out') {
+          var hops2 = betweenLifelines(xR1, BUS_X, xs);
+          out.push(path(xR1, y, BUS_X, hops2, strategy, g.laneY, UNPAIRED));
+          out.push(arrowHead(BUS_X - 3, y, 1, UNPAIRED));
+          out.push(openCircle(BUS_X, y, UNPAIRED));
+          out.push(termLabel(xR1 + 6, y - 6, 'out ' + row.term, 'start', 'unpaired-term'));
+        } else {
+          out.push(openCircle(BUS_X, y, UNPAIRED));
+          out.push(termLabel(BUS_X - 12, y - 6, sample.roles[row.role].s + ' 收 ' + row.term, 'end', 'bus-marker-term unpaired'));
+        }
+      }
+    }
+  }
+
+  function renderPanel(sampleKey, topology, strategy) {
+    var sample = SAMPLES[sampleKey];
+    var xs = roleXs(sample, topology);
+    var g = geom(sample);
+    var out = [];
+    out.push('<svg viewBox="0 0 ' + W + ' ' + g.height + '" role="img" aria-label="' + esc(sample.title) + '">');
+    out.push('<rect x="0" y="0" width="' + W + '" height="' + g.height + '" class="panel-bg"/>');
+
+    if (topology === 'T2') {
+      out.push('<rect x="' + RAIL_L + '" y="' + (FIRST_Y - 28) + '" width="' + (RAIL_R - RAIL_L) + '" height="' + (g.lastY - FIRST_Y + 42) + '" class="rail-bg"/>');
+      out.push('<text x="' + RAIL_X + '" y="' + (FIRST_Y - 40) + '" class="rail-label" text-anchor="middle">信道 c</text>');
+    } else {
+      out.push('<rect x="' + (BUS_X - 3) + '" y="' + (FIRST_Y - 28) + '" width="6" height="' + (g.lastY - FIRST_Y + 42) + '" class="bus-line"/>');
+      out.push('<text x="' + BUS_X + '" y="' + (FIRST_Y - 40) + '" class="rail-label" text-anchor="middle">信道 c</text>');
+    }
+
+    if (strategy === 'via') {
+      var laneX0 = Math.min.apply(null, xs);
+      var laneX1 = topology === 'T2' ? Math.max.apply(null, xs) : BUS_X;
+      out.push('<line x1="' + laneX0 + '" y1="' + g.laneY + '" x2="' + laneX1 + '" y2="' + g.laneY + '" class="lane-line"/>');
+      out.push('<text x="' + (laneX1 + 6) + '" y="' + (g.laneY - 6) + '" class="lane-label">信道 c</text>');
+    }
+
+    sample.roles.forEach(function (role, i) {
+      var x = xs[i];
+      out.push('<line x1="' + x + '" y1="' + (FIRST_Y - 24) + '" x2="' + x + '" y2="' + (g.lastY + 4) + '" class="lifeline"/>');
+      out.push('<text x="' + x + '" y="18" class="role-name" text-anchor="middle">' + esc(role.s) + '</text>');
+    });
+
+    sample.rows.forEach(function (row, i) {
+      var y = FIRST_Y + i * ROW_H;
+      if (row.t === 'local') {
+        var lx = xs[row.role];
+        out.push('<circle cx="' + lx + '" cy="' + y + '" r="2.5" class="local-dot"/>');
+        out.push('<text x="' + (lx + 8) + '" y="' + (y + 4) + '" class="local-text">' + esc(row.label) + '</text>');
+      } else if (row.t === 'event') {
+        var ex = xs[row.role];
+        out.push('<path d="M ' + (ex - 1) + ' ' + (y - 8) + ' L ' + (ex + 9) + ' ' + (y - 4) + ' L ' + (ex - 1) + ' ' + y + ' Z" class="event-flag"/>');
+        out.push('<text x="' + (ex + 14) + '" y="' + (y + 4) + '" class="event-text">' + esc(row.label) + '</text>');
+      } else if (row.t === 'msg') {
+        renderMsg(row, y, xs, sample, topology, strategy, g, out);
+      }
+    });
+
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function rolesCaption(sample) {
+    return sample.roles.map(function (r) { return r.s + ' = ' + r.l; }).join('；');
+  }
+
+  function render() {
+    var sample = SAMPLES[state.sample];
+    ['T2', 'T1'].forEach(function (topo) {
+      document.getElementById('svg-' + topo).innerHTML = renderPanel(state.sample, topo, state.strategy);
+      document.getElementById('roles-' + topo).textContent = rolesCaption(sample);
+    });
+    document.getElementById('sample-label').textContent = sample.title;
+    document.querySelectorAll('.controls [data-sample]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.sample === state.sample);
+    });
+    document.querySelectorAll('[data-strategy]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.strategy === state.strategy);
+    });
+  }
+
+  function setSample(key) {
+    if (SAMPLES[key]) { state.sample = key; render(); }
+  }
+  function cycleSample(dir) {
+    var keys = Object.keys(SAMPLES);
+    var idx = keys.indexOf(state.sample);
+    setSample(keys[(idx + dir + keys.length) % keys.length]);
+  }
+  function setStrategy(key) {
+    state.strategy = key; render();
+  }
+
+  document.addEventListener('click', function (e) {
+    var s = e.target.closest ? e.target.closest('[data-sample]') : null;
+    if (s) { setSample(s.dataset.sample); return; }
+    var t = e.target.closest ? e.target.closest('[data-strategy]') : null;
+    if (t) { setStrategy(t.dataset.strategy); return; }
+    if (e.target.id === 'sample-prev') { cycleSample(-1); return; }
+    if (e.target.id === 'sample-next') { cycleSample(1); return; }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === 'ArrowLeft') { cycleSample(-1); }
+    else if (e.key === 'ArrowRight') { cycleSample(1); }
+    else if (e.key === '1') { setStrategy('direct'); }
+    else if (e.key === '2') { setStrategy('hop'); }
+    else if (e.key === '3') { setStrategy('via'); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

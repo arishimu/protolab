@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>if 守卫 / 分支 / 纯构造方法的画法 · 三变体（wayfinder ticket 13）</title>
+<style>
+  :root {
+    --bg: #f7f7f9; --panel: #fff; --border: #d9d9de; --text: #1f2329; --muted: #6b7280;
+    --accent: #2563eb; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; line-height: 1.6; padding-bottom: 110px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem; }
+  header.prototype-head h1 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+  header.prototype-head .tag { display: inline-block; font-size: 0.72rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.05rem 0.5rem; }
+  .question { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; margin: 0.9rem 0; font-size: 0.9rem; }
+  .question p { margin: 0 0 0.35rem; }
+  .question p:last-child { margin-bottom: 0; }
+  .question .criteria { color: var(--muted); font-size: 0.85rem; }
+  .controls { position: sticky; top: 0; z-index: 10; background: rgba(247,247,249,0.96); backdrop-filter: blur(4px); border-bottom: 1px solid var(--border); padding: 0.55rem 1rem; margin: 0 -1rem 1rem; display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: center; }
+  .controls .group { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .controls .group-label { font-size: 0.8rem; color: var(--muted); }
+  .chip { font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0.28rem 0.65rem; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; margin-bottom: 1rem; overflow: hidden; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.15rem; }
+  .panel .caption { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .panel svg { display: block; width: 100%; height: auto; }
+  .legend { margin-top: 1rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; }
+  .legend h3 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.35rem 1.25rem; }
+  .legend .item { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8rem; }
+  .legend dd { margin: 0; color: var(--muted); }
+  .float-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0.4rem; background: #1f2329; color: #fff; border-radius: 999px; padding: 0.4rem 0.7rem; box-shadow: 0 4px 16px rgba(0,0,0,0.25); font-size: 0.8rem; z-index: 20; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
+  .float-bar button { font: inherit; cursor: pointer; border: none; background: #343a44; color: #fff; border-radius: 999px; padding: 0.2rem 0.7rem; }
+  .float-bar .lbl { opacity: 0.85; }
+  .float-bar .sep { opacity: 0.35; }
+  rect.fold { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="prototype-head">
+    <h1>「<code>if</code> 守卫 / 分支边界 / 纯构造方法」画法 · 三变体</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 13 · 假数据，未接真实解析器</span>
+  </header>
+
+  <div class="question">
+    <p><b>要定两件事</b>：① <code>if</code> 守卫（含 <code>if Nb = adec(m3,skB)</code> 这种条件里内嵌解构、以及 <code>x = A || x = B</code> 这种复合条件）在值层怎么画；<code>then</code> / <code>else</code> 分支边界怎么呈现，和镶在生命线上的值方块、08 的竖向栈怎么共存。② 纯构造方法（<code>encrypt</code>/<code>sign</code>/元组）是沿用倒置等腰梯形方法盒，还是与解构盒区分；「构造出新值」与「新绑定」怎么不混。</p>
+    <p class="criteria"><b>判据</b>：ns-original 的两处守卫 + 构造链上不误导「检查的是哪个值」「走的是哪条支路」；ns-mutual-auth 的密度下守卫不把生命线挤爆。底部浮条切变体（A/B/C）；顶部切素材与构造盒画法。</p>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">素材</span>
+      <button class="chip active" data-sample="ns-original">ns-original · 两处守卫 + 构造链</button>
+      <button class="chip" data-sample="ns-mutual-auth">ns-mutual-auth · 发起者密度</button>
+      <button class="chip" data-sample="demo-else">demo-else · 合成 else</button>
+    </div>
+    <div class="group">
+      <span class="group-label">构造盒画法</span>
+      <button class="chip active" data-ctor="axis">方向：横置（首选）</button>
+      <button class="chip" data-ctor="shape">形状：圆角+徽章</button>
+      <button class="chip" data-ctor="tint">仅底色区分</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 id="panel-title"></h2>
+    <p class="caption" id="panel-caption"></p>
+    <div id="svg"></div>
+  </div>
+
+  <div class="legend">
+    <h3>图例（本原型的画法口径）</h3>
+    <dl>
+      <div class="item"><span style="display:inline-block;width:18px;height:14px;border-radius:3px;background:#2563eb;vertical-align:-2px"></span><dd>值方块：一色一值；同色再现 = 同一值 / 等值检查；✓ = 模式等值（<code>let (=Na)</code>）</dd></div>
+      <div class="item"><svg width="30" height="18"><polygon points="4,15 26,15 29,3 1,3" fill="#fff" stroke="#111827" stroke-width="1.3"/></svg><dd>解构盒：倒置等腰梯形（短底 = 值方块宽），输入在上、输出在下，沿生命线<b>竖向</b>展开</dd></div>
+      <div class="item"><svg width="34" height="18"><polygon points="3,3 31,3 26,15 8,15" fill="#fff" stroke="#111827" stroke-width="1.3"/></svg><dd>构造盒：见顶部切换（方向 / 形状 / 底色）</dd></div>
+      <div class="item"><span style="display:inline-block;width:34px;height:14px;border:1.3px dashed #94a3b8;border-radius:4px;vertical-align:-2px"></span><dd>wire 词项芯片：构造结果<b>没有绑定</b>时直接进消息，不是值身份</dd></div>
+      <div class="item"><span style="display:inline-block;width:18px;height:14px;border-radius:3px;background:#2563eb;vertical-align:-2px"></span><span style="display:inline-block;width:18px;height:14px;border-radius:3px;background:#2563eb;vertical-align:-2px;margin-left:-8px;outline:2px solid #111827"></span><dd>等值检查：两个同色方块对齐 = 同一值，不用专用符号</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="float-bar">
+  <button data-step="-1">←</button>
+  <span class="lbl" id="variant-label"></span>
+  <button data-step="1">→</button>
+  <span class="sep">|</span>
+  <span class="lbl">D 定稿组合（默认）· A 闸门 + 臂道 · B 徽章 + 缩进标注流 · C 守卫盒 + 刚性分组</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 1040, TOP = 132, BUS_HALF = 26, PITCH = 22;
+  var C = {
+    ink: '#1f2329', muted: '#6b7280', lifeline: '#cbd5e1',
+    gate: '#0f766e', local: '#9ca3af', event: '#0d9488',
+    panel: '#f8fafc', panelLine: '#cbd5e1', armThen: '#2563eb', armElse: '#d97706'
+  };
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function tw(s) { return Math.max(String(s).length * 6.1 + 14, 30); }
+
+  /* ---------------- 绘制原语 ---------------- */
+  function blockAt(x, y, o) {
+    var w = 50, h = 16;
+    var s = '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="4" fill="' + o.c + '" stroke="' + o.c + '" stroke-width="1"/>' +
+      '<text x="' + x + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="#fff" font-weight="600">' + esc(o.n) + '</text>';
+    if (o.check) s += '<circle cx="' + (x + w / 2 + 6) + '" cy="' + y + '" r="6" fill="#111827"/><text x="' + (x + w / 2 + 6) + '" y="' + (y + 3) + '" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">✓</text>';
+    return s;
+  }
+  function trapezoidV(x, y, op) {
+    var shortBase = 50;
+    var topBase = Math.max(shortBase + 16, op.length * 6.2 + 10);
+    var h2 = 11;
+    var pts = (x - shortBase / 2) + ',' + (y + h2) + ' ' + (x + shortBase / 2) + ',' + (y + h2) + ' ' +
+              (x + topBase / 2) + ',' + (y - h2) + ' ' + (x - topBase / 2) + ',' + (y - h2);
+    return '<polygon points="' + pts + '" fill="#fff" stroke="#111827" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<text x="' + x + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10" font-family="mono" fill="#111827" font-weight="700">' + esc(op) + '</text>';
+  }
+  // 横置梯形：短竖边朝 dir 方向（dir=+1 右 / -1 左）
+  function trapezoidH(x, y, op, dir, style) {
+    var hh = 11, shortH = 22, longH = Math.max(shortH + 16, op.length * 6.2 + 10);
+    var x1 = x - dir * 26, x2 = x + dir * 26;
+    var pts;
+    if (dir > 0) pts = x1 + ',' + (y - longH / 2) + ' ' + x2 + ',' + (y - shortH / 2) + ' ' + x2 + ',' + (y + shortH / 2) + ' ' + x1 + ',' + (y + longH / 2);
+    else pts = x1 + ',' + (y - shortH / 2) + ' ' + x2 + ',' + (y - longH / 2) + ' ' + x2 + ',' + (y + longH / 2) + ' ' + x1 + ',' + (y + shortH / 2);
+    var fill = style === 'tint' ? '#dbeafe' : '#fff';
+    return '<polygon points="' + pts + '" fill="' + fill + '" stroke="#111827" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<text x="' + x + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10" font-family="mono" fill="#111827" font-weight="700">' + esc(op) + '</text>';
+  }
+  function constructionV(x, y, op, style) {
+    // 形状区分：圆角矩形 + 角标
+    var w = Math.max(tw(op), 40), h = 22;
+    var fill = style === 'tint' ? '#dbeafe' : '#fff';
+    var stroke = style === 'tint' ? '#2563eb' : '#111827';
+    var s = '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="7" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.4"/>' +
+      '<text x="' + x + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10" font-family="mono" fill="' + (style === 'tint' ? '#1d4ed8' : '#111827') + '" font-weight="700">' + esc(op) + '</text>';
+    s += '<circle cx="' + (x + w / 2 - 2) + '" cy="' + (y - h / 2 + 2) + '" r="6.5" fill="#0f766e"/><text x="' + (x + w / 2 - 2) + '" y="' + (y - h / 2 + 5.5) + '" text-anchor="middle" font-size="9" fill="#fff" font-weight="700">+</text>';
+    return s;
+  }
+  function wireChip(cx, y, term, color) {
+    var w = tw(term);
+    return '<rect x="' + (cx - w / 2) + '" y="' + (y - 10) + '" width="' + w + '" height="' + 20 + '" rx="4" fill="#fff" stroke="' + color + '" stroke-width="1.2" stroke-dasharray="4 3"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.6) + '" text-anchor="middle" font-size="10.5" font-family="mono" fill="' + color + '" font-weight="600">' + esc(term) + '</text>';
+  }
+  function argChip(cx, y, text) {
+    var w = tw(text);
+    return '<rect x="' + (cx - w / 2) + '" y="' + (y - 8) + '" width="' + w + '" height="16" rx="4" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.2) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="#475569">' + esc(text) + '</text>';
+  }
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x - 9 * dir) + ' ' + (y - s) + ' L ' + (x - 9 * dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+  function dot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + color + '"/>'; }
+  function seg(x1, y1, x2, y2, color, dash) { return '<path d="M ' + x1 + ' ' + y1 + ' L ' + x2 + ' ' + y2 + '" stroke="' + color + '" stroke-width="1.6" fill="none"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>'; }
+
+  /* ---------------- 素材 ---------------- */
+  var SCENES = {
+    'ns-original': {
+      id: 'ns-original',
+      title: 'ns-original · A/B 两方 · 两处守卫 + 完整构造链',
+      caption: 'A：let (=Na, NX) = adec(m,skA) → 发 {NX}pkX → if pkX = pkB then event + 两条 senc。B：let (NY,pkY)=adec(m,skB) → 发 {NY,Nb}pkY → 收 m3 → if Nb = adec(m3,skB) then if pkY = pkA then event + 两条 senc。注意 B 侧守卫条件里内嵌了一次 adec 解构。',
+      busX: 520,
+      roles: [
+        { id: 'A', label: 'Alice', x: 180, items: [
+          { k: 'param', names: [{ n: 'pkB', c: '#0e7490' }, { n: 'skA', c: '#475569' }] },
+          { k: 'recv', msg: 'M1', term: 'pkX', mc: '#0d9488', names: [{ n: 'pkX', c: '#4f46e5' }] },
+          { k: 'event', name: 'beginBparam(pkX)' },
+          { k: 'new', names: [{ n: 'Na', c: '#2563eb' }] },
+          { k: 'send', msg: 'M2', term: '{Na, pk(skA)}pkX', mc: '#2563eb', chain: [{ op: 'pk', args: ['skA'] }, { op: 'aenc', args: ['Na', 'pk(skA)'] }], bind: false },
+          { k: 'recv', msg: 'M3', term: 'm', mc: '#db2777', names: [{ n: 'm', c: '#059669' }] },
+          { k: 'method', op: 'adec', in: ['m', 'skA'], outs: [{ n: 'Na', c: '#2563eb', check: true }, { n: 'NX', c: '#7c3aed' }] },
+          { k: 'send', msg: 'M4', term: '{NX}pkX', mc: '#7c3aed', chain: [{ op: 'aenc', args: ['NX'] }], bind: false },
+          { k: 'branch', id: 'A1', guard: { clauses: [{ l: { n: 'pkX', c: '#4f46e5' }, op: '=', r: { n: 'pkB', c: '#0e7490' } }], join: null, text: 'if pkX = pkB' } },
+          { k: 'event', name: 'endAparam(pk(skA))' },
+          { k: 'send', msg: 'M5', term: '{secretANa, Na}', mc: '#059669', chain: [{ op: 'senc', args: ['secretANa', 'Na'] }], bind: false },
+          { k: 'send', msg: 'M6', term: '{secretANb, NX}', mc: '#ea580c', chain: [{ op: 'senc', args: ['secretANb', 'NX'] }], bind: false },
+          { k: 'join', id: 'A1' }
+        ] },
+        { id: 'B', label: 'Bob', x: 800, items: [
+          { k: 'param', names: [{ n: 'pkA', c: '#9333ea' }, { n: 'skB', c: '#334155' }] },
+          { k: 'recv', msg: 'M2', term: '{Na, pk(skA)}pkX', mc: '#2563eb', names: [{ n: 'm', c: '#0891b2' }] },
+          { k: 'method', op: 'adec', in: ['m', 'skB'], outs: [{ n: 'NY', c: '#db2777' }, { n: 'pkY', c: '#4f46e5' }] },
+          { k: 'event', name: 'beginAparam(pkY)' },
+          { k: 'new', names: [{ n: 'Nb', c: '#ea580c' }] },
+          { k: 'send', msg: 'M3', term: '{NY, Nb}pkY', mc: '#db2777', chain: [{ op: 'aenc', args: ['NY', 'Nb'] }], bind: false },
+          { k: 'recv', msg: 'M4', term: '{NX}pkX', mc: '#7c3aed', names: [{ n: 'm3', c: '#c026d3' }] },
+          { k: 'branch', id: 'B1', guard: { clauses: [{ l: { n: 'Nb', c: '#ea580c' }, op: '=', rMethod: { op: 'adec', args: ['m3', 'skB'], out: { n: 'adec(m3,skB)', c: '#c026d3' } } }], join: null, text: 'if Nb = adec(m3, skB)' } },
+          { k: 'branch', id: 'B2', guard: { clauses: [{ l: { n: 'pkY', c: '#4f46e5' }, op: '=', r: { n: 'pkA', c: '#9333ea' } }], join: null, text: 'if pkY = pkA' } },
+          { k: 'event', name: 'endBparam(pk(skB))' },
+          { k: 'send', msg: 'M7', term: '{secretBNa, NY}', mc: '#0891b2', chain: [{ op: 'senc', args: ['secretBNa', 'NY'] }], bind: false },
+          { k: 'send', msg: 'M8', term: '{secretBNb, Nb}', mc: '#9333ea', chain: [{ op: 'senc', args: ['secretBNb', 'Nb'] }], bind: false },
+          { k: 'join', id: 'B2' },
+          { k: 'join', id: 'B1' }
+        ] }
+      ]
+    },
+    'ns-mutual-auth': {
+      id: 'ns-mutual-auth',
+      title: 'ns-mutual-auth · 发起者链（密度）',
+      caption: '发起者：收 (xA,hostX) → if xA = A || xA = B then → let skxA = if xA=A then skA else skB（条件表达式）→ pk(skxA) → 发 (xA,hostX) → 收 ms → checksign → new Na → let m3 = encrypt((Na,xA),pkX) → 收 m → decrypt → let m7 = encrypt(nonce_to_bitstring(NX2),pkX) → 两个 event → 发 (m7,messtermI)。整段都在守卫的 then 臂里。',
+      busX: 600,
+      roles: [
+        { id: 'I', label: '发起者', x: 210, items: [
+          { k: 'param', names: [{ n: 'pkS', c: '#475569' }, { n: 'skA', c: '#334155' }, { n: 'skB', c: '#334155' }] },
+          { k: 'recv', msg: 'M1', term: '(xA, hostX)', mc: '#0d9488', names: [{ n: 'xA', c: '#c026d3' }, { n: 'hostX', c: '#c026d3' }] },
+          { k: 'branch', id: 'I1', guard: { clauses: [{ l: { n: 'xA', c: '#c026d3' }, op: '=', r: { n: 'A', c: '#6b7280' } }, { l: { n: 'xA', c: '#c026d3' }, op: '=', r: { n: 'B', c: '#6b7280' } }], join: '||', text: 'if xA = A || xA = B' } },
+          { k: 'cond', name: 'skxA', c: '#475569', guard: { l: { n: 'xA', c: '#c026d3' }, op: '=', r: { n: 'A', c: '#6b7280' } }, a: { n: 'skA', c: '#334155' }, b: { n: 'skB', c: '#334155' }, text: 'let skxA = if xA=A then skA else skB' },
+          { k: 'ctor', bind: { n: 'pkxA', c: '#4f46e5' }, chain: [{ op: 'pk', args: ['skxA'] }], mc: '#4f46e5' },
+          { k: 'send', msg: 'M2', term: '(xA, hostX)', mc: '#7c3aed', chain: [], bind: false },
+          { k: 'recv', msg: 'M3', term: 'ms', mc: '#059669', names: [{ n: 'ms', c: '#059669' }] },
+          { k: 'method', op: 'checksign', in: ['ms', 'pkS'], outs: [{ n: 'pkX', c: '#4f46e5' }, { n: 'hostX', c: '#c026d3', check: true }] },
+          { k: 'new', names: [{ n: 'Na', c: '#2563eb' }] },
+          { k: 'ctor', bind: { n: 'm3', c: '#059669' }, chain: [{ op: 'encrypt', args: ['Na', 'xA', 'pkX'] }], mc: '#059669' },
+          { k: 'send', msg: 'M4', term: 'm3', mc: '#2563eb', chain: [], bind: true },
+          { k: 'recv', msg: 'M5', term: 'm', mc: '#db2777', names: [{ n: 'm', c: '#db2777' }] },
+          { k: 'method', op: 'decrypt', in: ['m', 'skA'], outs: [{ n: 'Na', c: '#2563eb', check: true }, { n: 'NX2', c: '#7c3aed' }, { n: 'hostX', c: '#c026d3', check: true }] },
+          { k: 'ctor', bind: { n: 'm7', c: '#ea580c' }, chain: [{ op: 'encrypt', args: ['nonce_to_bitstring(NX2)', 'pkX'] }], mc: '#ea580c' },
+          { k: 'event', name: 'termI(xA, hostX, (m3, m))' },
+          { k: 'event', name: 'acceptsI(xA, hostX, (m3, m, m7))' },
+          { k: 'send', msg: 'M6', term: '(m7, messtermI)', mc: '#ea580c', chain: [], bind: true },
+          { k: 'join', id: 'I1' }
+        ] }
+      ]
+    },
+    'demo-else': {
+      id: 'demo-else',
+      title: 'demo-else · 合成的 else / <> 场景（补两个样例都没出现的 else 臂）',
+      caption: '合成一份最小角色：先 if b <> A && b <> B then（复合否定守卫）→ new k → event；再 get keys(=b, sb) in（表模式守卫）→ sign；else → event keyNotFound。用来判断两臂的排布，以及「表模式守卫」与条件守卫是否同一画法。',
+      busX: 600,
+      roles: [
+        { id: 'P', label: 'Server', x: 250, items: [
+          { k: 'param', names: [{ n: 'skS', c: '#475569' }] },
+          { k: 'recv', msg: 'M1', term: '(a, b)', mc: '#0d9488', names: [{ n: 'a', c: '#0e7490' }, { n: 'b', c: '#0e7490' }] },
+          { k: 'branch', id: 'K1', guard: { clauses: [{ l: { n: 'b', c: '#0e7490' }, op: '<>', r: { n: 'A', c: '#6b7280' } }, { l: { n: 'b', c: '#0e7490' }, op: '<>', r: { n: 'B', c: '#6b7280' } }], join: '&&', text: 'if b <> A && b <> B' } },
+          { k: 'new', names: [{ n: 'k', c: '#4f46e5' }] },
+          { k: 'event', name: 'kRegistered(b, k)' },
+          { k: 'join', id: 'K1' },
+          { k: 'branch', id: 'K2', guard: { clauses: [{ l: { n: '=b', c: '#0e7490' }, op: '∈', r: { n: 'keys', c: '#6b7280' } }], join: null, text: 'get keys(=b, sb) in' } },
+          { k: 'bind', names: [{ n: 'sb', c: '#4f46e5' }] },
+          { k: 'send', msg: 'M2', term: 'sign((sb,b), skS)', mc: '#7c3aed', chain: [{ op: 'sign', args: ['sb', 'b', 'skS'] }], bind: false },
+          { k: 'else', id: 'K2' },
+          { k: 'event', name: 'keyNotFound(b)' },
+          { k: 'join', id: 'K2' }
+        ] }
+      ]
+    }
+  };
+
+  var VARIANTS = {
+    A: { key: 'A', name: '闸门 + 臂道', blurb: '守卫 = 横跨生命线的等值闸门（两个同色方块对齐 + = 闸）；then / else 各自一条并行臂道，用分叉 / 合流括号连到生命线。' },
+    B: { key: 'B', name: '徽章 + 缩进标注流', blurb: '守卫 = 生命线上的小徽章 + 条件芯片；then / else 不并行，改在单列里缩进，靠臂色竖轨与臂标签区分。' },
+    C: { key: 'C', name: '守卫盒 + 刚性分组', blurb: '守卫 = 竖栈里的「等值检查盒」（梯形，无输出）；branch…join 整段 = 一个圆角分组面板（可折叠成一格），点面板标题可折叠。' },
+    D: { key: 'D', name: '定稿组合（C 守卫 + A 臂道 + 横置构造 + 选择盒=梯形）', blurb: '把你已拍板的结论拼在一起：守卫 = 竖栈里的等值检查盒（C）；then/else = 并行臂道（A）；构造盒 = 横置（方向）；let x = if…then…else = 倒置梯形选择盒。此视图用来看这几条结论会不会互相打架。' }
+  };
+
+  var state = { sample: 'ns-original', variant: 'D', ctor: 'axis', collapsed: {} };
+
+  /* ---------------- 颜色表 ---------------- */
+  function collectColors(sc) {
+    var map = {};
+    sc.roles.forEach(function (r) {
+      r.items.forEach(function (it) {
+        (it.names || []).forEach(function (n) { map[n.n] = n.c; });
+        (it.outs || []).forEach(function (n) { map[n.n] = n.c; });
+        if (it.bind) map[it.bind.n] = it.bind.c;
+        if (it.a) map[it.a.n] = it.a.c;
+        if (it.b) map[it.b.n] = it.b.c;
+        if (it.guard) {
+          var cls = it.guard.clauses || [{ l: it.guard.l, r: it.guard.r }];
+          cls.forEach(function (cl) {
+            if (cl.l) map[cl.l.n] = cl.l.c;
+            if (cl.r) map[cl.r.n] = cl.r.c;
+            if (cl.rMethod && cl.rMethod.out) map[cl.rMethod.out.n] = cl.rMethod.out.c;
+          });
+        }
+      });
+    });
+    return map;
+  }
+  function colorOf(map, name) { return map[name] || '#94a3b8'; }
+
+  /* ---------------- 守卫绘制 ---------------- */
+  function guardBoxBounds(g) {
+    // 估算守卫宽度（用于分组面板等）
+    return tw(g.text) + 24;
+  }
+  function derivedChip(cx, y, name, color) {
+    var w = tw(name);
+    return '<rect x="' + (cx - w / 2) + '" y="' + (y - 9) + '" width="' + w + '" height="18" rx="4" fill="#fff" stroke="' + color + '" stroke-width="1.2" stroke-dasharray="4 3"/>' +
+      '<text x="' + cx + '" y="' + (y + 3.4) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="' + color + '" font-weight="600">' + esc(name) + '</text>';
+  }
+  function drawGuard(variant, x, y, g, colors, armColor, outward) {
+    var out = [];
+    outward = outward || 1;
+    if (variant === 'A') {
+      // 横跨生命线的闸门：闸门三角 + 两个同色方块对齐 + op
+      out.push('<path d="M ' + (x - 11) + ' ' + (y - 14) + ' L ' + (x + 11) + ' ' + (y - 14) + ' L ' + x + ' ' + (y + 14) + ' Z" fill="#ccfbf1" stroke="' + C.gate + '" stroke-width="1.4"/>');
+      var cx = x;
+      g.clauses.forEach(function (cl, i) {
+        var yy = y - (g.clauses.length - 1) * 15 + i * 30;
+        var lx = cx - 56, rx = cx + 56;
+        out.push(blockAt(lx, yy, { n: cl.l.n, c: cl.l.c }));
+        if (cl.rMethod) out.push(derivedChip(rx, yy, cl.rMethod.out.n, cl.rMethod.out.c));
+        else out.push(blockAt(rx, yy, { n: cl.r.n, c: cl.r.c }));
+        out.push('<text x="' + (cx + 30) + '" y="' + (yy + 4) + '" text-anchor="middle" font-size="13" font-family="mono" fill="' + C.gate + '" font-weight="700">' + esc(cl.op) + '</text>');
+        if (i < g.clauses.length - 1) out.push('<text x="' + cx + '" y="' + (yy + 22) + '" text-anchor="middle" font-size="11" font-family="mono" fill="' + C.muted + '" font-weight="700">' + esc(g.join || '&&') + '</text>');
+      });
+      return { svg: out.join(''), h: Math.max(56, g.clauses.length * 30 + 12) };
+    }
+    if (variant === 'B') {
+      out.push('<path d="M ' + x + ' ' + (y - 10) + ' L ' + (x + 9) + ' ' + y + ' L ' + x + ' ' + (y + 10) + ' L ' + (x - 9) + ' ' + y + ' Z" fill="#ccfbf1" stroke="' + C.gate + '" stroke-width="1.4"/>');
+      var bx = x + 70;
+      g.clauses.forEach(function (cl, i) {
+        var yy = y - (g.clauses.length - 1) * 10 + i * 20;
+        var lw = 34;
+        out.push('<rect x="' + (bx - 108) + '" y="' + (yy - 9) + '" width="' + lw + '" height="18" rx="4" fill="' + cl.l.c + '"/><text x="' + (bx - 108 + lw / 2) + '" y="' + (yy + 3.2) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="#fff" font-weight="600">' + esc(cl.l.n) + '</text>');
+        out.push('<text x="' + (bx - 64) + '" y="' + (yy + 4) + '" text-anchor="middle" font-size="12" font-family="mono" fill="' + C.gate + '" font-weight="700">' + esc(cl.op) + '</text>');
+        var rn = cl.rMethod ? cl.rMethod.out.n : cl.r.n;
+        var rc = cl.rMethod ? cl.rMethod.out.c : cl.r.c;
+        out.push('<rect x="' + (bx - 44) + '" y="' + (yy - 9) + '" width="' + tw(rn) + '" height="18" rx="4" fill="' + (cl.rMethod ? '#fff' : rc) + '"' + (cl.rMethod ? ' stroke="' + rc + '" stroke-dasharray="4 3"' : '') + '/>' +
+          '<text x="' + (bx - 44 + tw(rn) / 2) + '" y="' + (yy + 3.2) + '" text-anchor="middle" font-size="9.5" font-family="mono" fill="' + (cl.rMethod ? rc : '#fff') + '" font-weight="600">' + esc(rn) + '</text>');
+        if (cl.rMethod) out.push('<text x="' + (bx + 6) + '" y="' + (yy + 4) + '" font-size="9.5" font-family="mono" fill="#c026d3">← ' + esc(cl.rMethod.op) + '(' + esc(cl.rMethod.args.join(',')) + ')</text>');
+        if (i < g.clauses.length - 1) out.push('<text x="' + (bx - 64) + '" y="' + (yy + 20) + '" text-anchor="middle" font-size="11" font-family="mono" fill="' + C.muted + '" font-weight="700">' + esc(g.join || '&&') + '</text>');
+      });
+      return { svg: out.join(''), h: Math.max(40, g.clauses.length * 22 + 6) };
+    }
+    // C：竖栈里的等值检查盒（梯形，无输出）
+    var nIn = g.clauses.length * 2;
+    var boxW = 44;
+    var boxY = y + 16;
+    g.clauses.forEach(function (cl, i) {
+      var yy = y + i * 44;
+      out.push(blockAt(x - 26, yy - 4, { n: cl.l.n, c: cl.l.c }));
+      var rn = cl.rMethod ? cl.rMethod.out.n : cl.r.n;
+      var rc = cl.rMethod ? cl.rMethod.out.c : cl.r.c;
+      if (cl.rMethod) out.push(derivedChip(x + 34, yy - 4, rn, rc)); else out.push(blockAt(x + 26, yy - 4, { n: rn, c: rc }));
+      out.push('<path d="M ' + (x - 11) + ' ' + (yy + 6) + ' L ' + (x + 11) + ' ' + (yy + 6) + ' L ' + (x + 8) + ' ' + (yy + 22) + ' L ' + (x - 8) + ' ' + (yy + 22) + ' Z" fill="#ccfbf1" stroke="' + C.gate + '" stroke-width="1.4"/>');
+      out.push('<text x="' + x + '" y="' + (yy + 18) + '" text-anchor="middle" font-size="11" font-family="mono" fill="' + C.gate + '" font-weight="700">' + esc(cl.op) + '</text>');
+      if (cl.rMethod) out.push('<text x="' + (x + 70) + '" y="' + (yy + 4) + '" font-size="9.5" font-family="mono" fill="#c026d3">' + esc(cl.rMethod.op) + '(' + esc(cl.rMethod.args.join(',')) + ')</text>');
+      if (i < g.clauses.length - 1) out.push('<text x="' + (x + (outward > 0 ? -72 : 72)) + '" y="' + (yy + 30) + '" text-anchor="middle" font-size="11" font-family="mono" fill="' + C.muted + '" font-weight="700">' + esc(g.join || '&&') + '</text>');
+    });
+    return { svg: out.join(''), h: g.clauses.length * 44 + 16 };
+  }
+
+  /* ---------------- 构造链（横置，朝消息方向） ---------------- */
+  function drawChainInward(x0, y, chain, inward, bind, colors, ctorStyle, msgColor, termLabel) {
+    var out = [], x = x0;
+    chain.forEach(function (step, i) {
+      var boxW = 52;
+      x += inward * (56 + boxW / 2);
+      if (ctorStyle === 'axis') out.push(trapezoidH(x, y, step.op, inward, 'axis'));
+      else out.push(constructionV(x, y, step.op, ctorStyle === 'tint' ? 'tint' : 'shape'));
+      out.push('<text x="' + x + '" y="' + (y + 21) + '" text-anchor="middle" font-size="8.5" font-family="mono" fill="#64748b">(' + esc(step.args.join(', ')) + ')</text>');
+    });
+    if (bind) {
+      x += inward * 48;
+      out.push(blockAt(x, y, { n: bind.n, c: bind.c }));
+      return { svg: out.join(''), endX: x, h: 44, termX: x };
+    } else {
+      x += inward * 60;
+      out.push(wireChip(x, y, termLabel || 'wire', msgColor || '#64748b'));
+      return { svg: out.join(''), endX: x, h: 44, termX: x };
+    }
+  }
+
+  /* ---------------- 单角色渲染 ---------------- */
+  function renderRole(sc, role, variant, ctorStyle, colors) {
+    var out = [], y = TOP + 26, stack = [];
+    var outward = role.x < sc.busX ? -1 : 1;
+    var inward = -outward;
+    var busNear = sc.busX - inward * BUS_HALF;
+    var openBranches = {};
+    var laneOfElse = 0; // A 变体：else 让出的臂道数
+    var laneMode = variant === 'A' || variant === 'D';
+    var guardStyle = variant === 'D' ? 'C' : variant;
+
+    function laneX(i) { return role.x + outward * (44 * i); }
+    function indentX() {
+      if (laneMode) return laneX(1 + laneOfElse);
+      if (variant === 'C') return role.x + outward * (stack.length * 7);
+      return role.x + outward * (stack.length * 15);
+    }
+    function isCollapsed(id) { return !!state.collapsed[sc.id + ':' + id]; }
+
+    function drawMsgRow(it, iy) {
+      var x = indentX();
+      var termX = role.x + inward * Math.abs(busNear - role.x) * 0.62;
+      var s = [];
+      if (it.k === 'recv') {
+        s.push(seg(busNear, iy, x, iy, C.lifeline));
+        s.push(arrowHead(x, iy, -inward, it.mc));
+        s.push(wireChip(termX, iy, it.term, it.mc));
+        (it.names || []).forEach(function (n, j) { s.push(blockAt(x, iy + 18 + j * 20, { n: n.n, c: n.c })); });
+        return { svg: s.join(''), h: 26 + (it.names ? it.names.length : 0) * 20 };
+      }
+      // send
+      s.push(dot(x, iy, it.mc));
+      s.push(seg(x, iy, busNear, iy, C.lifeline));
+      s.push(arrowHead(busNear, iy, inward, it.mc));
+      var extra = 0;
+      if (it.chain && it.chain.length && !it.bind) {
+        var ch = drawChainInward(x, iy, it.chain, inward, false, colors, ctorStyle, it.mc, it.term);
+        s.push(ch.svg);
+        extra = 30;
+      } else {
+        s.push(wireChip(termX, iy, it.term, it.mc));
+      }
+      if (it.bind && !it.chain.length) { /* 已由 ctor 画过 */ }
+      return { svg: s.join(''), h: 40 + extra };
+    }
+
+    role.items.forEach(function (it) {
+      if (it.k === 'join') {
+        var rec = openBranches[it.id];
+        if (rec) {
+          if (laneMode) {
+            var lx = laneX(rec.lane);
+            var ex = laneX(rec.elseLane);
+            out.push(seg(role.x, y + 6, lx, y + 6, C.armThen));
+            out.push(seg(lx, rec.y0, lx, y + 6, C.armThen, '4 3'));
+            if (rec.hasElse) {
+              out.push(seg(role.x, y + 6, ex, y + 6, C.armElse));
+              out.push(seg(ex, rec.y0, ex, y + 6, C.armElse, '4 3'));
+            }
+          }
+          if (variant === 'C') {
+            out.push('<rect x="' + Math.min(role.x, indentX()) + '" y="' + rec.y0 + '" width="' + (Math.abs(indentX() - role.x) + 96) + '" height="' + (y - rec.y0) + '" rx="10" fill="none" stroke="' + C.panelLine + '" stroke-width="1.2" stroke-dasharray="6 4"/>');
+            out.push('<text x="' + (role.x + outward * 74) + '" y="' + (rec.y0 + 15) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="9.5" font-family="mono" fill="' + C.gate + '">' + esc(rec.text) + '</text>');
+          }
+          if (variant === 'B') {
+            out.push(seg(role.x + outward * (rec.depth * 15 - 8), rec.y0, role.x + outward * (rec.depth * 15 - 8), y, C.armThen, '4 3'));
+          }
+          if (variant === 'C') out.push('<text x="' + (role.x + outward * 126) + '" y="' + (y + 4) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="9" font-family="mono" fill="' + C.muted + '">join</text>');
+        }
+        delete openBranches[it.id];
+        stack.pop();
+        laneOfElse = stack.filter(function (e) { return e.kind === 'else'; }).length;
+        y += 14;
+        return;
+      }
+      if (it.k === 'else') {
+        var r2 = openBranches[it.id];
+        if (r2) { r2.hasElse = true; r2.elseLane = (r2.lane + 1); }
+        // 切换栈顶
+        if (stack.length) stack[stack.length - 1] = { id: it.id, kind: 'else' };
+        laneOfElse = stack.filter(function (e) { return e.kind === 'else'; }).length;
+        if (variant === 'B') out.push('<rect x="' + (role.x + outward * ((stack.length) * 15 - 20)) + '" y="' + (y - 2) + '" width="34" height="14" rx="7" fill="#fffbeb" stroke="' + C.armElse + '" stroke-width="1"/><text x="' + (role.x + outward * ((stack.length) * 15 - 3)) + '" y="' + (y + 8) + '" text-anchor="middle" font-size="8.5" font-family="mono" fill="' + C.armElse + '">else</text>');
+        if (laneMode) {
+          var ex2 = laneX(1 + laneOfElse);
+          out.push(seg(role.x, y, ex2, y, C.armElse));
+          out.push('<text x="' + (ex2 + outward * 4) + '" y="' + (y - 4) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="8.5" font-family="mono" fill="' + C.armElse + '">else</text>');
+        }
+        y += 18;
+        return;
+      }
+
+      // 折叠（仅 C 变体）：跳过整个分支臂，只留一格
+      if (variant === 'C' && it.k === 'branch' && isCollapsed(it.id)) {
+        out.push('<rect class="fold" data-branch="' + esc(sc.id + ':' + it.id) + '" x="' + (role.x - 60) + '" y="' + (y - 6) + '" width="120" height="22" rx="11" fill="#ecfeff" stroke="' + C.gate + '" stroke-width="1.2"/>');
+        out.push('<text x="' + role.x + '" y="' + (y + 9) + '" text-anchor="middle" font-size="10" font-family="mono" fill="' + C.gate + '" font-weight="700">▸ ' + esc(it.guard.text) + ' · +n</text>');
+        // 吞掉到对应 join
+        var depth = 1; var idx = role.items.indexOf(it);
+        for (var j = idx + 1; j < role.items.length && depth > 0; j++) {
+          if (role.items[j].k === 'branch') depth++;
+          else if (role.items[j].k === 'join') depth--;
+        }
+        // 标记这些 item 已在下面跳过
+        for (var m = idx + 1; m < j; m++) skipped[role.items[m]] = true;
+        y += 26;
+        return;
+      }
+      if (skipped[it]) return;
+
+      if (it.k === 'branch') {
+        if (variant === 'C') out.push('<text x="' + (role.x + outward * 128) + '" y="' + (y + 4) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="9" font-family="mono" fill="' + C.muted + '">branch</text>');
+        var g = drawGuard(guardStyle, indentX(), y, it.guard, colors, C.armThen, outward);
+        out.push(g.svg);
+        var rec = { y0: y + 4, lane: laneOfElse + 1, elseLane: laneOfElse + 2, hasElse: false, depth: stack.length + 1, text: it.guard.text };
+        openBranches[it.id] = rec;
+        stack.push({ id: it.id, kind: 'then' });
+        if (laneMode) {
+          var tx2 = laneX(1 + laneOfElse);
+          out.push(seg(role.x, y + g.h - 2, tx2, y + g.h - 2, C.armThen));
+          out.push('<text x="' + (tx2 + outward * 4) + '" y="' + (y + g.h - 6) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="8.5" font-family="mono" fill="' + C.armThen + '">then</text>');
+        }
+        if (variant === 'C') {
+          out.push('<rect x="' + (role.x + outward * 70) + '" y="' + (y - 20) + '" width="76" height="16" rx="8" fill="#ecfeff" stroke="' + C.gate + '" stroke-width="1"/>');
+          out.push('<text x="' + (role.x + outward * 108) + '" y="' + (y - 8) + '" text-anchor="middle" font-size="9" font-family="mono" fill="' + C.gate + '">then</text>');
+        } else if (variant === 'B') {
+          out.push('<rect x="' + (role.x + outward * 4) + '" y="' + (y - 30) + '" width="36" height="14" rx="7" fill="#eff6ff" stroke="' + C.armThen + '" stroke-width="1"/><text x="' + (role.x + outward * 22) + '" y="' + (y - 20) + '" text-anchor="middle" font-size="8.5" font-family="mono" fill="' + C.armThen + '">then</text>');
+        }
+        y += g.h;
+        return;
+      }
+
+      var ix = indentX();
+      if (it.k === 'param' || it.k === 'new' || it.k === 'bind') {
+        it.names.forEach(function (n, j) { out.push(blockAt(ix, y + 8 + j * 20, { n: n.n, c: n.c })); });
+        if (it.k === 'new') out.push('<text x="' + (ix + 32) + '" y="' + (y + 12) + '" font-size="8.5" font-family="mono" fill="' + C.muted + '">new</text>');
+        y += 12 + it.names.length * 20;
+        return;
+      }
+      if (it.k === 'recv' || it.k === 'send') {
+        var mr = drawMsgRow(it, y + 12);
+        out.push(mr.svg);
+        y += mr.h + 6;
+        return;
+      }
+      if (it.k === 'event') {
+        out.push('<path d="M ' + (ix - 1) + ' ' + (y + 2) + ' L ' + (ix + 11) + ' ' + (y + 6) + ' L ' + (ix - 1) + ' ' + (y + 10) + ' Z" fill="' + C.event + '"/>');
+        out.push('<text x="' + (ix + 18) + '" y="' + (y + 9.5) + '" font-size="10" font-family="mono" fill="#0f766e">' + esc(it.name) + '</text>');
+        y += 30;
+        return;
+      }
+      if (it.k === 'method') {
+        var nIn = it.in.length, nOut = it.outs.length;
+        it.in.forEach(function (nm, j) { out.push(blockAt(ix, y + 8 + j * PITCH, { n: nm, c: colorOf(colors, nm) })); });
+        var boxY = y + 8 + (nIn - 1) * PITCH + PITCH;
+        out.push(trapezoidV(ix, boxY, it.op));
+        it.outs.forEach(function (o, j) { out.push(blockAt(ix, boxY + PITCH + j * PITCH, { n: o.check ? '=' + o.n : o.n, c: o.c, check: o.check })); });
+        y = boxY + PITCH + (nOut - 1) * PITCH + 20;
+        return;
+      }
+      if (it.k === 'cond') {
+        // let x = if cond then a else b —— 按 Q5：沿用倒置等腰梯形方法盒（算子 = ?:）
+        out.push(blockAt(ix, y + 8, { n: it.a.n, c: it.a.c }));
+        out.push(blockAt(ix, y + 8 + PITCH, { n: it.b.n, c: it.b.c }));
+        var cboxY = y + 8 + PITCH + PITCH;
+        out.push(trapezoidV(ix, cboxY, '?:'));
+        out.push(blockAt(ix, cboxY + PITCH, { n: it.name, c: it.c }));
+        out.push('<text x="' + (ix + outward * 60) + '" y="' + (cboxY + 4) + '" text-anchor="' + (outward > 0 ? 'start' : 'end') + '" font-size="9.5" font-family="mono" fill="' + C.armElse + '">' + esc(it.guard.l.n + ' ' + it.guard.op + ' ' + it.guard.r.n) + ' ?</text>');
+        y = cboxY + PITCH + 20;
+        return;
+      }
+      if (it.k === 'ctor') {
+        var ch = drawChainInward(ix, y + 16, it.chain, inward, it.bind, colors, ctorStyle, it.mc);
+        out.push(ch.svg);
+        y += ch.h + 6;
+        return;
+      }
+      // 未识别
+      y += 20;
+    });
+
+    return { svg: out.join(''), bottom: y };
+  }
+
+  /* ---------------- 组装 ---------------- */
+  function renderPanel(sc) {
+    var colors = collectColors(sc);
+    var parts = [], bottoms = [];
+    sc.roles.forEach(function (role) {
+      var r = renderRole(sc, role, state.variant, state.ctor, colors);
+      parts.push(r.svg);
+      bottoms.push(r.bottom);
+    });
+    var H = Math.max.apply(null, bottoms.concat([520])) + 50;
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(sc.title) + '">'];
+    out.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fff"/>');
+    // 信道管
+    out.push('<rect x="' + (sc.busX - BUS_HALF) + '" y="' + (TOP - 26) + '" width="' + (2 * BUS_HALF) + '" height="' + (H - TOP - 4) + '" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>');
+    out.push('<text x="' + sc.busX + '" y="' + (TOP - 36) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#6d28d9" font-family="mono">信道 c（唯一结点）</text>');
+    // 生命线
+    sc.roles.forEach(function (role) {
+      out.push('<line x1="' + role.x + '" y1="' + (TOP - 16) + '" x2="' + role.x + '" y2="' + (H - 20) + '" stroke="' + C.lifeline + '" stroke-width="1.5" stroke-dasharray="2 5"/>');
+      out.push('<text x="' + role.x + '" y="' + (TOP - 40) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#111827" font-family="mono">' + esc(role.id) + '</text>');
+      out.push('<text x="' + role.x + '" y="' + (TOP - 24) + '" text-anchor="middle" font-size="9.5" fill="' + C.muted + '" font-family="mono">' + esc(role.label) + '</text>');
+    });
+    out = out.concat(parts);
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  /* 让 renderRole 能访问 skipped：挂到全局 */
+  var skipped = {};
+
+  function render() {
+    var sc = SCENES[state.sample];
+    var v = VARIANTS[state.variant];
+    document.getElementById('panel-title').textContent = sc.title + '　·　变体 ' + v.key + '：' + v.name;
+    document.getElementById('panel-caption').textContent = v.blurb + '　' + sc.caption;
+    skipped = {};
+    document.getElementById('svg').innerHTML = renderPanel(sc);
+    document.getElementById('variant-label').textContent = v.key + ' (' + v.name + ')';
+    document.querySelectorAll('[data-sample]').forEach(function (b) { b.classList.toggle('active', b.dataset.sample === state.sample); });
+    document.querySelectorAll('[data-ctor]').forEach(function (b) { b.classList.toggle('active', b.dataset.ctor === state.ctor); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var s = t.closest ? t.closest('[data-sample]') : null;
+    if (s) { state.sample = s.dataset.sample; render(); return; }
+    var c = t.closest ? t.closest('[data-ctor]') : null;
+    if (c) { state.ctor = c.dataset.ctor; render(); return; }
+    var f = t.closest ? t.closest('[data-branch]') : null;
+    if (f) { var k = f.dataset.branch; state.collapsed[k] = !state.collapsed[k]; render(); return; }
+    var st = t.closest ? t.closest('[data-step]') : null;
+    if (st) {
+      var keys = ['A', 'B', 'C', 'D'];
+      var i = keys.indexOf(state.variant) + (parseInt(st.dataset.step, 10) > 0 ? 1 : -1);
+      state.variant = keys[(i + keys.length) % keys.length];
+      render();
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      var keys = ['A', 'B', 'C', 'D'];
+      var i = keys.indexOf(state.variant) + (e.key === 'ArrowRight' ? 1 : -1);
+      state.variant = keys[(i + keys.length) % keys.length];
+      render();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

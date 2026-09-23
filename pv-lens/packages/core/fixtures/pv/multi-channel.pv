@@ -1,0 +1,45 @@
+(* multi-channel.pv — wayfinder ticket 14「多信道视觉」样例 *)
+
+(* 三条信道，刻意覆盖三种多信道情形：
+   - c1：A ↔ B 主链（两方、双向，可自动配对的形状）
+   - c2：B ↔ S 服务查询（同一条信道上两方以外的第三方参与 = 一条信道多方）
+   - c3：A → 空（只有一个 out，没有任何 in = 一条信道只有未配对步骤）*)
+
+free c1: channel.
+free c2: channel.
+free c3: channel.
+
+type key.
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+free s: bitstring [private].
+query attacker(s).
+
+event beginA(bitstring).
+event endB(bitstring).
+query n:bitstring; inj-event(endB(n)) ==> inj-event(beginA(n)).
+
+let processA(kA:key, kB:key) =
+	new nA:bitstring;
+	event beginA(nA);
+	out(c1, senc(nA, kB));        (* c1: A→B *)
+	in(c1, r:bitstring);          (* c1: B→A *)
+	out(c3, senc(s, kA)).         (* c3: A→ ，单向，无配对 *)
+
+let processB(kA:key, kB:key, kS:key) =
+	in(c1, m:bitstring);          (* c1: A→B *)
+	let nB = sdec(m, kB) in
+	out(c2, senc(nB, kS));        (* c2: B→S，跨信道 *)
+	in(c2, t:bitstring);          (* c2: S→B *)
+	out(c1, senc(t, kA));         (* c1: B→A *)
+	event endB(nB).
+
+let processS(kS:key) =
+	in(c2, q:bitstring);          (* c2: B→S *)
+	let v = sdec(q, kS) in
+	out(c2, senc(v, kS)).         (* c2: S→B *)
+
+process
+	new kA:key; new kB:key; new kS:key;
+	( processA(kA, kB) | processB(kA, kB, kS) | processS(kS) )

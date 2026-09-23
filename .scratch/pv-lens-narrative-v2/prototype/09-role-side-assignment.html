@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 09 · 生命线与信道的水平序列编排（cut 曲线与三级 tie-break）</title>
+<style>
+  :root{
+    --bg:#f8fafc; --panel:#ffffff; --ink:#1e293b; --muted:#64748b; --line:#e2e8f0;
+    --accent:#2563eb; --accent-soft:#dbeafe; --role:#dbeafe; --role-ink:#1e40af;
+    --bus:#1e293b; --warn:#b45309; --warn-soft:#fef3c7; --good:#047857; --good-soft:#d1fae5;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:26px 32px 22px}
+  header h1{margin:0 0 6px;font-size:21px;letter-spacing:.2px}
+  header .q{max-width:1000px;color:var(--muted);font-size:14px}
+  header .q b{color:var(--ink)}
+  .badge{display:inline-block;font-size:12px;padding:1px 7px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-weight:600}
+  main{max-width:1240px;margin:0 auto;padding:22px 32px 80px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+  h2{font-size:16px;margin:0 0 4px}
+  h2 .no{color:var(--muted);font-weight:600;margin-right:6px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+  .kv{font-size:13px;color:var(--muted)}
+  .kv b{color:var(--ink)}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12.5px;background:#f1f5f9}
+  .pill.real{background:var(--good-soft);border-color:transparent;color:var(--good);font-weight:600}
+  .pill.syn{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:6px 12px;font-size:13.5px}
+  button:hover{border-color:#cbd5e1;background:#f8fafc}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#1d4ed8}
+  button.small{padding:1px 7px;font-size:13px;line-height:1.3}
+  button[disabled]{opacity:.4;cursor:not-allowed}
+  .samples{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px}
+  .sample-btn{text-align:left;padding:10px 12px;line-height:1.4}
+  .sample-btn.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:#f5f8ff}
+  .sample-btn .t{font-weight:600;font-size:13.5px;display:block}
+  .sample-btn .n{color:var(--muted);font-size:12px;display:block;margin-top:2px}
+  .weights{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+  .wrow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}
+  .wrow .rname{width:92px;font-weight:600}
+  .wrow .echan{color:var(--muted);font-family:var(--mono);font-size:12px;width:34px}
+  .wval{font-family:var(--mono);min-width:18px;text-align:center}
+  .strip{display:flex;align-items:stretch;flex-wrap:wrap;gap:0;margin:8px 0 4px;font-size:13.5px}
+  .chip{display:flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:8px;font-weight:600;position:relative}
+  .chip.role{background:var(--role);color:var(--role-ink);min-width:44px}
+  .chip.role.iso{background:#f1f5f9;color:#94a3b8;border:1px dashed #cbd5e1}
+  .chip.channel{background:var(--bus);color:#fff;padding:10px 8px;writing-mode:vertical-rl;letter-spacing:1px;border-radius:6px}
+  .gap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:52px;padding:0 3px;color:var(--muted)}
+  .gap .k{font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  .gap .v{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--ink)}
+  .gap .bar{height:8px;width:3px;background:#e2e8f0;border-radius:2px;margin-top:2px;overflow:hidden;display:flex;align-items:flex-end}
+  .gap .bar i{display:block;width:100%;background:var(--accent)}
+  .gap.peak .v{color:var(--warn)}
+  .gap.peak .bar i{background:var(--warn)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;background:#f8fafc;position:sticky;top:0}
+  td.mono,th.mono{font-family:var(--mono)}
+  tr.sel td{background:#f5f8ff}
+  .ladder{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px;align-items:baseline}
+  .ladder .lvl{font-weight:700;color:var(--accent);white-space:nowrap}
+  .ladder .keep{color:var(--muted)}
+  .ladder .keep b{color:var(--ink);font-family:var(--mono)}
+  .curves{margin-top:10px;font-size:13px}
+  .curves .c{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-family:var(--mono);font-size:12.5px}
+  .curves .c.win{color:var(--good);font-weight:700}
+  .curves .c .tag{font-family:inherit;font-weight:600}
+  .callout{border-left:3px solid var(--accent);background:#f5f8ff;padding:9px 12px;border-radius:0 8px 8px 0;font-size:13px;margin:10px 0 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .tabs button{border:none;background:none;border-radius:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px}
+  .tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .steps{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .step{padding:7px 12px}
+  .step.done{background:var(--good-soft);border-color:transparent;color:var(--good);font-weight:600}
+  .watch{margin-top:12px;font-size:13.5px}
+  .watch .callout{margin-top:8px}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:4px 0}
+  .svgwrap{overflow-x:auto}
+  .ok{color:var(--good);font-weight:700}
+  .no{color:var(--warn);font-weight:700}
+  footer{max-width:1240px;margin:0 auto;padding:0 32px 60px;color:var(--muted);font-size:12.5px}
+  h3{font-size:13.5px;margin:16px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>原型 09 · 生命线与信道的水平序列编排</h1>
+  <p class="q">
+    问题：把 <code>ADR-0009</code> 的算法做成可看的原型，验证它在真实与合成样例上
+    <b>「可预测、确定、cut 曲线符合 min-max 且同级最均匀」</b>。<br>
+    水平轴是生命线（角色）∪ 信道（总线）的一个交错序列 σ；目标
+    <span class="mono">σ* = argmin<sub>σ</sub> max<sub>k</sub> cut(k)</span>，
+    <span class="mono">cut(k) = Σ<sub>(u,v)∈E</sub> w<sub>e</sub>·[σ(u) ≤ k &lt; σ(v)]</span>，
+    E = 每个消息步骤一条边（重边计次）。<span class="badge">原型 · 一次性 · 验证用</span>
+  </p>
+</header>
+
+<main>
+  <section>
+    <h2><span class="no">1</span>当前状态</h2>
+    <p class="sub" id="state-note"></p>
+    <div class="row" style="justify-content:space-between">
+      <div id="result-head" class="kv"></div>
+      <div id="determinism" class="kv"></div>
+    </div>
+    <h3>序列 σ*（左 → 右）</h3>
+    <div class="strip" id="strip"></div>
+    <h3>cut 曲线（每条缝隙的割边权重）</h3>
+    <div class="svgwrap"><svg id="curve" height="150"></svg></div>
+    <div id="curve-note" class="kv" style="margin-top:2px"></div>
+    <h3>输入图 G（角色 ─ 信道多重边，权 = 步数）</h3>
+    <div class="svgwrap"><svg id="graph" height="150"></svg></div>
+  </section>
+
+  <section>
+    <h2><span class="no">2</span>自由操作</h2>
+    <p class="sub">任选样例；合成样例可直接加减步数、加叶子角色，看序列怎么变。全部状态只存在内存里，刷新即重置。</p>
+    <div class="samples" id="samples"></div>
+    <div class="weights" id="weights"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="rerun">同输入重解 ×1（查确定性）</button>
+      <button id="shuffle-run">打乱候选枚举顺序后重解 ×1</button>
+      <span class="kv" id="fp-note" style="align-self:center"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">3</span>引导演练</h2>
+    <p class="sub">每个 tab 一个场景。按顺序点步骤按钮，注意描述里说的「要看的点」。</p>
+    <div class="tabs" id="tabs"></div>
+    <div id="walk"></div>
+  </section>
+
+  <section>
+    <h2><span class="no">4</span>三级 tie-break 阶梯</h2>
+    <p class="sub">规则 1 min-max → 规则 2 降序 cut 曲线字典序最小（最均匀）→ 规则 3 源码序字典序最小。</p>
+    <div class="ladder" id="ladder"></div>
+    <div class="curves" id="curves"></div>
+  </section>
+
+  <section>
+    <h2><span class="no">5</span>全部样例一览（对每个样例打印 max cut 与 cut 曲线）</h2>
+    <p class="sub">含 min-sum（MLA）对照：两者不等价，见 ADR-0009「被否决的选项」。点击行可跳到该样例。</p>
+    <div class="svgwrap"><table id="all"></table></div>
+  </section>
+
+  <section>
+    <h2><span class="no">6</span>口径与来源</h2>
+    <div class="kv">
+      <h3>真实 fixture 的图怎么来的</h3>
+      <p style="margin:4px 0">用 <code>pv-lens/packages/core</code> 的 <code>parsePv</code> + <code>narrativeRoleOrder</code> 实跑导出：<b>每个消息步骤（out / in）一条边</b>，连「角色 ↔ 该步骤点名的信道」；同一角色对同一信道的多个步骤合并为一条边、<span class="mono">w = 步数</span>（重边计次）。角色顺序 = <code>narrativeRoleOrder</code>；信道顺序 = <code>free</code> 声明序。已核实：<br>
+      <span class="mono">hello → main:1|c　handshake-fixed → clientA:3|c, serverB:3|c　ns-original → processA:6|c, processB:5|c　ns-mutual-auth → I:6|c, R:7|c, S:2|c, K:1|c</span></p>
+      <h3>求解</h3>
+      <p style="margin:4px 0">本页用<b>全排列暴力枚举</b>（样例 n ≤ 7，最多 5040 个排列），逐条算 cut 曲线，再按三级 tie-break 选。真实实现按 ADR-0009 用 <code>O(n·2^n)</code> 子集 DP，规模 n ≤ ~10；本原型不验证 DP 的实现，只验证<b>目标函数与三级 tie-break 给出的答案</b>。规则 3 的比较用「项在源码中的下标」，与枚举顺序无关 —— 所以「打乱枚举顺序」不影响结果（见第 2 节的按钮）。</p>
+      <h3>本票只验证水平次序</h3>
+      <p style="margin:4px 0">纵向间距解算（ticket 08 与「y 全局唯一」硬约束）、信道视觉编码（ticket 14）不在本票；序列只决定 x。</p>
+    </div>
+  </section>
+
+  <section id="findings">
+    <h2><span class="no">7</span>已知发现（原型跑出来的、需要规格吸收的）</h2>
+    <div id="findings-body"></div>
+  </section>
+</main>
+
+<footer>
+  原型 09 · <code>.scratch/pv-lens-narrative-v2/prototype/09-role-side-assignment.html</code> · 自包含单文件，双击即开 · 一次性验证用，验证完可弃
+</footer>
+
+<script>
+/* =====================================================================
+   纯逻辑模块：角色–信道多重边图 → 水平序列 σ（ADR-0009）
+   无 DOM 依赖，可整块搬进真实代码。
+   ===================================================================== */
+function cutCurve(seq, edges) {
+  const n = seq.length, cuts = [];
+  const inPrefix = new Set();
+  for (let k = 0; k < n - 1; k++) {
+    inPrefix.add(seq[k]);
+    let c = 0;
+    for (const e of edges) if (inPrefix.has(e.a) !== inPrefix.has(e.b)) c += e.w;
+    cuts.push(c);
+  }
+  return cuts;
+}
+const maxOf = (a) => (a.length ? Math.max.apply(null, a) : 0);
+const sumOf = (a) => a.reduce((x, y) => x + y, 0);
+const sortDesc = (a) => a.slice().sort((x, y) => y - x);
+function cmpCurve(x, y) {
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) { const a = x[i] === undefined ? -1 : x[i], b = y[i] === undefined ? -1 : y[i]; if (a !== b) return a - b; }
+  return 0;
+}
+function cmpSeq(x, y, index) {
+  for (let i = 0; i < x.length; i++) { const a = index.get(x[i]), b = index.get(y[i]); if (a !== b) return a - b; }
+  return 0;
+}
+function permutations(arr) {
+  if (arr.length <= 1) return [arr.slice()];
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+    for (const p of permutations(rest)) out.push([arr[i]].concat(p));
+  }
+  return out;
+}
+function seededShuffle(arr, seed) {
+  let s = seed >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+/** 求解器：返回最优序列、三级 tie-break 的存活数、规则 2 的候选曲线、以及被否决的 min-sum 对照。 */
+function solveSequence(graph, options) {
+  const ids = graph.items.map((i) => i.id);
+  const index = new Map(ids.map((id, i) => [id, i]));
+  let perms = permutations(ids);
+  if (options && options.shuffleSeed !== undefined) perms = seededShuffle(perms, options.shuffleSeed);
+
+  const scored = perms.map((seq) => {
+    const cuts = cutCurve(seq, graph.edges);
+    return { seq: seq, cuts: cuts, max: maxOf(cuts), sum: sumOf(cuts), desc: sortDesc(cuts) };
+  });
+
+  const minMax = Math.min.apply(null, scored.map((s) => s.max));
+  const L1 = scored.filter((s) => s.max === minMax);
+  const bestDesc = L1.reduce((acc, s) => (cmpCurve(s.desc, acc) < 0 ? s.desc : acc), L1[0].desc);
+  const L2 = L1.filter((s) => cmpCurve(s.desc, bestDesc) === 0);
+  const bestSeq = L2.reduce((acc, s) => (cmpSeq(s.seq, acc, index) < 0 ? s.seq : acc), L2[0].seq);
+  const L3 = L2.filter((s) => cmpSeq(s.seq, bestSeq, index) === 0);
+  const best = L3.filter((s) => s.seq.join("\u0000") === bestSeq.join("\u0000"))[0] || L3[0];
+
+  const curveMap = new Map();
+  for (const s of L1) {
+    const key = JSON.stringify(s.desc);
+    if (!curveMap.has(key)) curveMap.set(key, { desc: s.desc, seqs: [] });
+    curveMap.get(key).seqs.push(s.seq);
+  }
+  const curves = Array.from(curveMap.values()).sort((a, b) => cmpCurve(a.desc, b.desc));
+
+  const minSum = Math.min.apply(null, scored.map((s) => s.sum));
+  const minSumPool = scored.filter((s) => s.sum === minSum);
+  const minSumBest = minSumPool.reduce((acc, s) => (cmpSeq(s.seq, acc.seq, index) < 0 ? s : acc), minSumPool[0]);
+
+  return {
+    best: best, minMax: minMax, L0: scored.length, L1: L1, L2: L2, L3: L3,
+    curves: curves, minSum: minSum, minSumBest: minSumBest,
+  };
+}
+
+/* =====================================================================
+   样例数据：真实 fixture 由 core 实跑导出；合成样例手工构造。
+   项顺序 = 源码序（角色按 narrativeRoleOrder，信道按 free 声明序）。
+   ===================================================================== */
+const R = (id, label) => ({ id: id, kind: "role", label: label });
+const C = (id, label) => ({ id: id, kind: "channel", label: label });
+const GRAPHS = [
+  { id:"hello", tag:"真实", title:"hello（1 角色 1 信道）", note:"内联主进程只有 1 个 out(c, RSA)", editable:false, canAdd:false,
+    items:[R("main","main"), C("c","c")], edges:[{a:"main",b:"c",w:1}] },
+  { id:"handshake-fixed", tag:"真实", title:"handshake-fixed（2 角色 1 信道）", note:"clientA 3 步、serverB 3 步，全在 c", editable:false, canAdd:false,
+    items:[R("clientA","clientA"), R("serverB","serverB"), C("c","c")], edges:[{a:"clientA",b:"c",w:3},{a:"serverB",b:"c",w:3}] },
+  { id:"ns-original", tag:"真实", title:"ns-original（2 角色 1 信道）", note:"processA 6 步、processB 5 步", editable:false, canAdd:false,
+    items:[R("processA","processA"), R("processB","processB"), C("c","c")], edges:[{a:"processA",b:"c",w:6},{a:"processB",b:"c",w:5}] },
+  { id:"ns-mutual-auth", tag:"真实", title:"ns-mutual-auth（4 角色 1 信道，含 processK）", note:"I 6 步、R 7 步、S 2 步、K 1 步（K 的 in 是唯一未配对步）", editable:false, canAdd:false,
+    items:[R("processInitiator","I"), R("processResponder","R"), R("processS","S"), R("processK","K"), C("c","c")],
+    edges:[{a:"processInitiator",b:"c",w:6},{a:"processResponder",b:"c",w:7},{a:"processS",b:"c",w:2},{a:"processK",b:"c",w:1}] },
+  { id:"chain", tag:"合成", title:"3 角色链 I–R–S（1 信道）", note:"I→R、R→S 各一条：I 1 步、R 2 步（收+发）、S 1 步", editable:true, canAdd:false,
+    items:[R("I","I"), R("R","R"), R("S","S"), C("c","c")], edges:[{a:"I",b:"c",w:1},{a:"R",b:"c",w:2},{a:"S",b:"c",w:1}] },
+  { id:"triangle", tag:"合成", title:"三角 I/R/S（1 信道）", note:"每对角色一条双向消息 → 每角色 4 步；完全对称，考验规则 3", editable:true, canAdd:false,
+    items:[R("I","I"), R("R","R"), R("S","S"), C("c","c")], edges:[{a:"I",b:"c",w:4},{a:"R",b:"c",w:4},{a:"S",b:"c",w:4}] },
+  { id:"hub", tag:"合成", title:"枢纽星 H + L1..L4（1 信道）", note:"每个叶子与 H 一条消息：H 8 步（4 收+4 发）、叶子各 1 步", editable:true, canAdd:true,
+    items:[R("H","H"), R("L1","L1"), R("L2","L2"), R("L3","L3"), R("L4","L4"), C("c","c")],
+    edges:[{a:"H",b:"c",w:8},{a:"L1",b:"c",w:1},{a:"L2",b:"c",w:1},{a:"L3",b:"c",w:1},{a:"L4",b:"c",w:1}] },
+  { id:"multichannel", tag:"合成", title:"多信道：B 夹在 c1 与 c2 之间", note:"A 用 c1、B 用 c1+c2、C 用 c2 —— 角色可以夹在两条总线之间", editable:true, canAdd:false,
+    items:[R("A","A"), R("B","B"), R("C","C"), C("c1","c1"), C("c2","c2")],
+    edges:[{a:"A",b:"c1",w:2},{a:"B",b:"c1",w:2},{a:"B",b:"c2",w:2},{a:"C",b:"c2",w:2}] },
+  { id:"tie", tag:"合成", title:"同分对照（规则 2 在压曲线）", note:"多条序列 max cut 相同、降序曲线不同 —— 规则 2 选最均匀的那条", editable:true, canAdd:false,
+    items:[R("A","A"), R("B","B"), R("C","C"), R("D","D"), C("c","c")],
+    edges:[{a:"A",b:"c",w:4},{a:"B",b:"c",w:3},{a:"C",b:"c",w:2},{a:"D",b:"c",w:1}] },
+  { id:"isolated", tag:"合成", title:"孤立角色 Z（无步骤）", note:"Z 没有任何消息步骤；规则 3 定它的位置，且不影响 max cut", editable:true, canAdd:false,
+    items:[R("A","A"), R("B","B"), R("Z","Z"), C("c","c")], edges:[{a:"A",b:"c",w:2},{a:"B",b:"c",w:2}] },
+  { id:"witness", tag:"合成", title:"ADR-0009 见证图（min-max ≠ min-sum）", note:"r0–c0 ×1, r0–c2 ×1, r0–c3 ×2, r1–c0 ×1, r2–c2 ×2；ADR 断言 min-max = 2 ⇒ sum ≥ 11，min-sum = 8 ⇒ max = 3", editable:false, canAdd:false,
+    items:[R("r0","r0"), R("r1","r1"), R("r2","r2"), C("c0","c0"), C("c1","c1"), C("c2","c2"), C("c3","c3")],
+    edges:[{a:"r0",b:"c0",w:1},{a:"r0",b:"c2",w:1},{a:"r0",b:"c3",w:2},{a:"r1",b:"c0",w:1},{a:"r2",b:"c2",w:2}] },
+];
+
+/* =====================================================================
+   页面壳（throwaway）：只读上面的纯模块，不反向渗透。
+   ===================================================================== */
+const MAX_N = 8;
+let currentId = "ns-mutual-auth";
+let workGraphs = {};            // id -> 可变图（深拷贝，供自由操作）
+let shuffleSeed = null;
+
+GRAPHS.forEach((g) => { workGraphs[g.id] = JSON.parse(JSON.stringify(g)); });
+const byId = (id) => workGraphs[id];
+const spec = (id) => GRAPHS.filter((g) => g.id === id)[0];
+const isRole = (g, id) => g.items.filter((i) => i.id === id)[0].kind === "role";
+
+function edgesOfRole(g, rid) { return g.edges.filter((e) => e.a === rid || e.b === rid); }
+function otherEnd(e, rid) { return e.a === rid ? e.b : e.a; }
+function labelOf(g, id) { return (g.items.filter((i) => i.id === id)[0] || { label: id }).label; }
+function shortSeq(g, seq) { return seq.map((id) => labelOf(g, id)).join(" · "); }
+function edgesKey(g) { return g.edges.filter((e) => e.w > 0).map((e) => e.a + ">" + e.b + ":" + e.w).sort().join(","); }
+
+/* ---------- 渲染：当前状态 ---------- */
+function renderState() {
+  const g = byId(currentId);
+  const r = solveSequence(g, shuffleSeed === null ? undefined : { shuffleSeed: shuffleSeed });
+  const s = spec(currentId);
+  const n = g.items.length;
+
+  document.getElementById("state-note").textContent = s.note;
+  document.getElementById("result-head").innerHTML =
+    '<span class="pill ' + (s.tag === "真实" ? "real" : "syn") + '">' + s.tag + "</span> " +
+    "<b>" + s.title + "</b>　项数 n = " + n + "　" +
+    'max cut = <b class="mono">' + r.minMax + "</b>　" +
+    'min-sum 对照 = <b class="mono">' + r.minSum + "</b>（其 max = " + r.minSumBest.max + "）";
+
+  // 序列条
+  const peaks = Math.max.apply(null, r.best.cuts.concat([0]));
+  let strip = "";
+  r.best.seq.forEach((id, i) => {
+    const item = g.items.filter((x) => x.id === id)[0];
+    const iso = item.kind === "role" && edgesOfRole(g, id).length === 0;
+    strip += '<div class="chip ' + (item.kind === "role" ? "role" : "channel") + (iso ? " iso" : "") + '" title="' + (item.kind === "role" ? "生命线（角色）" : "信道（总线）") + '">' +
+      item.label + (iso ? "（无步骤）" : "") + "</div>";
+    if (i < r.best.cuts.length) {
+      const v = r.best.cuts[i], peak = v === peaks;
+      strip += '<div class="gap' + (peak ? " peak" : "") + '"><span class="k">k' + (i + 1) + '</span><span class="v">' + v + "</span><span class=\"bar\"><i style=\"height:" + (peaks ? (v / peaks) * 8 : 0) + 'px"></i></span></div>';
+    }
+  });
+  document.getElementById("strip").innerHTML = strip;
+  document.getElementById("curve-note").innerHTML =
+    "cut 曲线 <span class=\"mono\">[" + r.best.cuts.join(", ") + "]</span>　降序 <span class=\"mono\">[" + r.best.desc.join(", ") + "]</span>　" +
+    "最重缝隙已标橙。";
+
+  drawCurve(r);
+  drawGraph(g, r.best.seq);
+  renderLadder(g, r);
+  renderWeights(g, s);
+  renderDeterminism(g, r);
+}
+
+function drawCurve(r) {
+  const svg = document.getElementById("curve");
+  const cuts = r.best.cuts, n = cuts.length;
+  const W = Math.max(560, 60 + n * 86), H = 150, padL = 40, padB = 26, top = 16;
+  const peak = Math.max.apply(null, cuts.concat([1]));
+  const innerH = H - top - padB;
+  let out = "";
+  // 轴
+  out += '<line x1="' + padL + '" y1="' + (H - padB) + '" x2="' + (W - 10) + '" y2="' + (H - padB) + '" stroke="#e2e8f0"/>';
+  out += '<line x1="' + padL + '" y1="' + (H - padB) + '" x2="' + padL + '" y2="' + (top - 4) + '" stroke="#e2e8f0"/>';
+  // max cut 参考线
+  const yMax = H - padB - (peak / peak) * innerH;
+  out += '<line x1="' + padL + '" y1="' + yMax + '" x2="' + (W - 10) + '" y2="' + yMax + '" stroke="#b45309" stroke-dasharray="4 4"/>';
+  out += '<text x="' + (padL - 6) + '" y="' + (yMax + 4) + '" text-anchor="end" font-size="10" fill="#b45309">max</text>';
+  cuts.forEach((v, i) => {
+    const bw = 40, x = padL + 24 + i * 86, h = (v / peak) * innerH;
+    const isPeak = v === peak;
+    out += '<rect x="' + x + '" y="' + (H - padB - h) + '" width="' + bw + '" height="' + h + '" rx="3" fill="' + (isPeak ? "#b45309" : "#2563eb") + '" opacity="' + (isPeak ? "1" : ".85") + '"/>';
+    out += '<text x="' + (x + bw / 2) + '" y="' + (H - padB - h - 5) + '" text-anchor="middle" font-size="11.5" font-family="monospace" fill="#1e293b">' + v + "</text>";
+    out += '<text x="' + (x + bw / 2) + '" y="' + (H - padB + 15) + '" text-anchor="middle" font-size="10.5" fill="#64748b">缝隙 k' + (i + 1) + "</text>";
+  });
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("width", W);
+  svg.innerHTML = out;
+}
+
+function drawGraph(g, seq) {
+  const svg = document.getElementById("graph");
+  const roles = g.items.filter((i) => i.kind === "role");
+  const chans = g.items.filter((i) => i.kind === "channel");
+  const W = Math.max(520, 80 + Math.max(roles.length, chans.length) * 110), H = 150;
+  const pos = {};
+  roles.forEach((it, i) => { pos[it.id] = { x: 70 + i * ((W - 140) / Math.max(1, roles.length - 1 || 1)), y: 34 }; });
+  chans.forEach((it, i) => { pos[it.id] = { x: 70 + i * ((W - 140) / Math.max(1, chans.length - 1 || 1)), y: 116 }; });
+  let out = "";
+  const maxW = Math.max.apply(null, g.edges.map((e) => e.w).concat([1]));
+  for (const e of g.edges) {
+    const a = pos[e.a], b = pos[e.b];
+    if (!a || !b) continue;
+    out += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#93c5fd" stroke-width="' + (1 + (e.w / maxW) * 6) + '" opacity=".75"/>';
+    out += '<text x="' + ((a.x + b.x) / 2) + '" y="' + ((a.y + b.y) / 2 - 3) + '" text-anchor="middle" font-size="10.5" font-family="monospace" fill="#2563eb">' + e.w + "</text>";
+  }
+  for (const it of roles) {
+    const p = pos[it.id], iso = edgesOfRole(g, it.id).length === 0;
+    out += '<circle cx="' + p.x + '" cy="' + p.y + '" r="17" fill="' + (iso ? "#f1f5f9" : "#dbeafe") + '" stroke="' + (iso ? "#cbd5e1" : "#93c5fd") + '"' + (iso ? ' stroke-dasharray="3 3"' : "") + "/>";
+    out += '<text x="' + p.x + '" y="' + (p.y + 4) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">' + it.label + "</text>";
+  }
+  for (const it of chans) {
+    const p = pos[it.id];
+    out += '<rect x="' + (p.x - 19) + '" y="' + (p.y - 15) + '" width="38" height="30" rx="5" fill="#1e293b"/>';
+    out += '<text x="' + p.x + '" y="' + (p.y + 4) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">' + it.label + "</text>";
+  }
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("width", W);
+  svg.innerHTML = out;
+}
+
+function renderLadder(g, r) {
+  const idx = new Map(g.items.map((i, k) => [i.id, k]));
+  const chosen = r.curves.filter((c) => cmpCurve(c.desc, r.best.desc) === 0)[0];
+  document.getElementById("ladder").innerHTML =
+    '<div class="lvl">规则 1 · min-max</div><div class="keep">min max cut = <b>' + r.minMax + "</b>　存活 <b>" + r.L1.length + "</b> / " + r.L0 + " 个排列</div>" +
+    '<div class="lvl">规则 2 · 降序曲线最小</div><div class="keep">降序曲线 <b>[' + r.best.desc.join(", ") + "]</b>　存活 <b>" + r.L2.length + "</b> / " + r.L1.length + "（共 " + r.curves.length + " 种不同降序曲线）</div>" +
+    '<div class="lvl">规则 3 · 源码序最小</div><div class="keep">σ* = <b class="mono">' + shortSeq(g, r.best.seq) + "</b>　存活 <b>1</b></div>";
+  let html = "";
+  r.curves.forEach((c) => {
+    const win = cmpCurve(c.desc, r.best.desc) === 0;
+    html += '<div class="c' + (win ? " win" : "") + '"><span class="tag">' + (win ? "▶ 选中" : "　候选") + '</span><span>desc [' + c.desc.join(", ") + ']</span><span>例 ' + shortSeq(g, c.seqs[0]) + (c.seqs.length > 1 ? "（" + c.seqs.length + " 个）" : "") + "</span></div>";
+  });
+  document.getElementById("curves").innerHTML = r.curves.length > 1
+    ? "<b>规则 2 压曲线：</b>规则 1 的存活里出现 " + r.curves.length + " 种降序曲线，字典序最小的（最均匀）胜出：" + html
+    : "<b>规则 2 无歧义：</b>规则 1 的存活只有一种降序曲线。<div>" + html + "</div>";
+}
+
+function renderWeights(g, s) {
+  const box = document.getElementById("weights");
+  if (!s.editable) {
+    box.innerHTML = '<span class="kv">真实 fixture 的步数由源码决定，只读；要加减步数请切到合成样例。</span>';
+    return;
+  }
+  const roles = g.items.filter((i) => i.kind === "role");
+  let html = '<div class="kv" style="margin-bottom:6px">加减步数（权 = 该角色在该信道上的消息步骤数）：</div>';
+  for (const role of roles) {
+    const es = edgesOfRole(g, role.id);
+    if (!es.length) { html += '<div class="wrow"><span class="rname">' + role.label + '</span><span class="kv">无步骤（孤立角色）</span></div>'; continue; }
+    for (const e of es) {
+      const ch = otherEnd(e, role.id);
+      html += '<div class="wrow"><span class="rname">' + role.label + '</span><span class="echan">' + labelOf(g, ch) + '</span>' +
+        '<button class="small" data-dec="' + role.id + '|' + ch + '"' + (e.w <= 0 ? " disabled" : "") + ">−</button>" +
+        '<span class="wval">' + e.w + "</span>" +
+        '<button class="small" data-inc="' + role.id + '|' + ch + '">＋</button></div>';
+    }
+  }
+  if (s.canAdd && g.items.filter((i) => i.kind === "role").length + g.items.filter((i) => i.kind === "channel").length < MAX_N) {
+    html += '<button id="add-leaf" style="margin-top:8px">＋ 再加一个叶子角色（w=1 到第一条信道）</button>';
+  }
+  box.innerHTML = html;
+  box.querySelectorAll("[data-inc]").forEach((b) => b.addEventListener("click", () => bump(b.getAttribute("data-inc"), +1)));
+  box.querySelectorAll("[data-dec]").forEach((b) => b.addEventListener("click", () => bump(b.getAttribute("data-dec"), -1)));
+  const add = document.getElementById("add-leaf");
+  if (add) add.addEventListener("click", addLeaf);
+}
+function edgeFor(g, rid, cid) {
+  return g.edges.filter((e) => (e.a === rid && e.b === cid) || (e.a === cid && e.b === rid))[0];
+}
+function bump(key, delta) {
+  const parts = key.split("|"); const g = byId(currentId);
+  const e = edgeFor(g, parts[0], parts[1]);
+  if (!e) return;
+  e.w = Math.max(0, e.w + delta);
+  shuffleSeed = null;
+  renderState(); renderSamples(); renderAllTable();
+}
+function addLeaf() {
+  const g = byId(currentId);
+  const roles = g.items.filter((i) => i.kind === "role");
+  const chans = g.items.filter((i) => i.kind === "channel");
+  const id = "leaf" + roles.length;
+  g.items = roles.concat([{ id: id, kind: "role", label: "L" + roles.length }], chans);
+  g.edges.push({ a: id, b: chans[0].id, w: 1 });
+  const hub = roles.filter((r) => r.label === "H")[0] || roles[0];
+  const he = edgeFor(g, hub.id, chans[0].id);
+  if (he) he.w += 1;
+  shuffleSeed = null;
+  renderState(); renderSamples(); renderAllTable();
+}
+
+function renderDeterminism(g, r) {
+  const again = solveSequence(g, shuffleSeed === null ? undefined : { shuffleSeed: shuffleSeed });
+  const shuffled = solveSequence(g, { shuffleSeed: 987654321 });
+  const sameRun = again.best.seq.join("|") === r.best.seq.join("|") && again.best.cuts.join(",") === r.best.cuts.join(",");
+  const sameShuffle = shuffled.best.seq.join("|") === r.best.seq.join("|");
+  document.getElementById("determinism").innerHTML =
+    (sameRun ? '<span class="ok">✓</span>' : '<span class="no">✗</span>') + " 同输入重解一致　" +
+    (sameShuffle ? '<span class="ok">✓</span>' : '<span class="no">✗</span>') + " 打乱候选枚举顺序后一致";
+}
+
+/* ---------- 渲染：样例按钮 ---------- */
+function renderSamples() {
+  const box = document.getElementById("samples");
+  box.innerHTML = GRAPHS.map((s) =>
+    '<button class="sample-btn' + (s.id === currentId ? " active" : "") + '" data-id="' + s.id + '">' +
+    '<span class="t">' + s.title + '</span><span class="n">' + s.note + "</span></button>"
+  ).join("");
+  box.querySelectorAll("[data-id]").forEach((b) => b.addEventListener("click", () => select(b.getAttribute("data-id"))));
+}
+function select(id) {
+  currentId = id; shuffleSeed = null;
+  renderState(); renderSamples(); renderAllTable();
+}
+
+/* ---------- 渲染：全部样例一览 ---------- */
+function renderAllTable() {
+  const rows = GRAPHS.map((s) => {
+    const g = byId(s.id);
+    const r = solveSequence(g);
+    const chosen = s.id === currentId ? " class=\"sel\"" : "";
+    return "<tr" + chosen + ' data-id="' + s.id + '"><td><b>' + s.title + "</b><br><span class=\"kv\">" + s.note + "</span></td>" +
+      '<td class="mono">' + g.items.length + "</td>" +
+      '<td class="mono">' + shortSeq(g, r.best.seq) + "</td>" +
+      '<td class="mono"><b>' + r.minMax + "</b></td>" +
+      '<td class="mono">[' + r.best.cuts.join(", ") + "]</td>" +
+      '<td class="mono">[' + r.best.desc.join(", ") + "]</td>" +
+      '<td class="mono">' + r.L1.length + " → " + r.L2.length + " → " + r.L3.length + "</td>" +
+      '<td class="mono">' + r.minSum + "（max " + r.minSumBest.max + "）</td></tr>";
+  }).join("");
+  document.getElementById("all").innerHTML =
+    "<thead><tr><th>样例</th><th>n</th><th>σ*（左→右）</th><th>max cut</th><th>cut 曲线</th><th>降序曲线</th><th>tie-break 存活</th><th>min-sum（被否决）</th></tr></thead><tbody>" + rows + "</tbody>";
+  document.querySelectorAll("#all tbody tr").forEach((tr) => tr.addEventListener("click", () => select(tr.getAttribute("data-id"))));
+}
+
+/* ---------- 渲染：引导演练 ---------- */
+const SCENARIOS = [
+  { id:"k", title:"ns-mutual-auth：K 不是孤立点", sample:"ns-mutual-auth",
+    desc:"旧口径把 processK 当「只有一条未配对步的边缘角色」，靠特例摆位。ADR-0009 说它有 in(c,…) ⇒ 一条 K–c 边，会被自动摆到总线附近。",
+    watch:"看完整序列里 K 的位置：它不应该被甩到最外端；同时看 max cut 是否由最重的 R/I 两边配平决定。",
+    steps:["选中 ns-mutual-auth", "看序列里 K 落在哪", "对一眼 max cut 与降序曲线"] },
+  { id:"hub", title:"枢纽星：最忙角色自然贴总线", sample:"hub",
+    desc:"H 有 8 步、四个叶子各 1 步。规则 1 应该把 H 单独放一侧（4/4 配平），max cut = 8。",
+    watch:"切到 hub，再点「＋ 再加一个叶子角色」几次：H 的步数跟着涨，看它是否一直单独贴总线。",
+    steps:["选中 hub", "点两次「＋ 再加一个叶子角色」", "看 max cut 怎么随 H 的步数变"] },
+  { id:"mc", title:"多信道：B 夹在两条总线之间", sample:"multichannel",
+    desc:"有两条信道时，全局 left/right 不再有意义。",
+    watch:"序列应该是 A · c1 · B · c2 · C —— B 被两条总线夹住。这就是 ADR-0009 用「序列」取代「左右二分」的原因。",
+    steps:["选中多信道样例", "读序列，确认 B 夹在 c1 与 c2 之间", "看 cut 曲线是否四条缝隙都是 2"] },
+  { id:"tie", title:"同分：规则 2 在压曲线", sample:"tie",
+    desc:"规则 1 会留下多条 max cut 相同的序列，它们的降序 cut 曲线不一样。",
+    watch:"看第 4 节列出的候选曲线：选中那条的降序曲线在字典序上最小（数值更早变小），也就是分布更均匀。",
+    steps:["选中同分对照样例", "看第 4 节的候选曲线列表", "确认「选中」那条的降序曲线最小"] },
+  { id:"sym", title:"完全对称：规则 3 兜底", sample:"triangle",
+    desc:"三角样例三个角色权重全相等，规则 1 和规则 2 都留下大量同分排列。",
+    watch:"结果必须确定：规则 3 按源码序取字典序最小的 σ。连点两次「同输入重解」应完全一样。",
+    steps:["选中三角样例", "点「同输入重解 ×1」", "再点「打乱候选枚举顺序后重解 ×1」，确认结果不变"] },
+  { id:"witness", title:"见证图：min-max ≠ min-sum", sample:"witness",
+    desc:"ADR-0009 否决 min-sum（MLA）时给了一个加权见证。",
+    watch:"第 5 节里这张图的 min-sum 最优是 8、但它的 max cut 是 3；而 min-max 最优是 2。两者确实不等价。",
+    steps:["选中见证图", "看当前 max cut = 2", "在第 5 节对照 min-sum 一列（8，max 3）"] },
+];
+let activeScenario = 0, stepDone = {};
+function renderTabs() {
+  const box = document.getElementById("tabs");
+  box.innerHTML = SCENARIOS.map((s, i) => '<button class="' + (i === activeScenario ? "on" : "") + '" data-i="' + i + '">' + s.title + "</button>").join("");
+  box.querySelectorAll("[data-i]").forEach((b) => b.addEventListener("click", () => { activeScenario = +b.getAttribute("data-i"); stepDone = {}; renderTabs(); renderWalk(); }));
+}
+function renderWalk() {
+  const sc = SCENARIOS[activeScenario];
+  const done = stepDone[activeScenario] || 0;
+  document.getElementById("walk").innerHTML =
+    '<div class="kv">' + sc.desc + '</div>' +
+    '<div class="watch"><b>要看的点：</b>' + sc.watch + "</div>" +
+    '<div class="steps">' + sc.steps.map((t, i) =>
+      '<button class="step' + (i < done ? " done" : "") + '" data-step="' + i + '">' + (i + 1) + ". " + t + "</button>").join("") + "</div>";
+  document.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => {
+    const i = +b.getAttribute("data-step");
+    if (i === 0) select(sc.sample);
+    stepDone[activeScenario] = Math.max(stepDone[activeScenario] || 0, i + 1);
+    renderTabs(); renderWalk();
+  }));
+}
+
+/* ---------- 渲染：发现 ---------- */
+function renderFindings() {
+  const g = byId("ns-mutual-auth");
+  const r = solveSequence(g);
+  const g2 = byId("hub"), r2 = solveSequence(g2);
+  const gw = byId("witness"), rw = solveSequence(gw);
+  document.getElementById("findings-body").innerHTML =
+    "<ul>" +
+    "<li><b>K 确实不再需要特例。</b>ns-mutual-auth 的 σ* 含 K：<span class=\"mono\">" + shortSeq(g, r.best.seq) + "</span>；K 与 R 同侧、贴着总线（max cut " + r.minMax + "）。ADR-0009 §5「processK 不是孤立点」得到验证。</li>" +
+    "<li><b>规则 2 自动复现了「最忙角色贴总线」。</b>ns-mutual-auth 的 σ* 是 <span class=\"mono\">S I · c · R K</span>：每侧由总线向外权重递减 —— 左内侧 I(6)、外侧 S(2)，右内侧 R(7)、外侧 K(1)。原因：一侧的缝隙割边由总线向外是 <span class=\"mono\">T, T−a, T−a−b, …</span>（a 为贴总线那个角色的权重）；降序曲线里除两个「侧总和」外就是这些外层前缀和，要压小它们就得让最重的贴总线、最轻的留在最外。<b>ADR-0007 点 5 与 ADR-0009 的目标函数方向一致、无需特例</b>；hub 里 H 单独贴总线是规则 1 直接给的。</li>" +
+    "<li><b>min-max 与 min-sum 实测不等价。</b>见证图（ADR-0009 被否决选项）：min-max = " + rw.minMax + "，而 min-sum 最优 = " + rw.minSum + "、其 max = " + rw.minSumBest.max + "。枢纽星也呈现分歧：min-max = " + r2.minMax + "，min-sum = " + r2.minSum + " 时 max = " + r2.minSumBest.max + "。ADR 的见证数字完全复现。</li>" +
+    "<li><b>完全对称与孤立角色都靠规则 3 落地，且确定。</b>三角样例每角色权重相等，规则 1 存活 12 个排列；孤立角色 Z 不影响 max cut，由规则 3 定位置。</li>" +
+    "<li><b>多信道把「左右二分」打穿。</b>B 夹在 c1 与 c2 之间是唯一最优形状（max cut 2），全局 left/right 在此无意义 —— 印证 ADR-0009 的模型选择。</li>" +
+    "</ul>";
+}
+
+/* ---------- 事件绑定 ---------- */
+document.getElementById("rerun").addEventListener("click", () => {
+  shuffleSeed = null;
+  const g = byId(currentId);
+  const a = solveSequence(g), b = solveSequence(g);
+  const same = a.best.seq.join("|") === b.best.seq.join("|") && a.best.cuts.join(",") === b.best.cuts.join(",");
+  document.getElementById("fp-note").innerHTML = same
+    ? '<span class="ok">✓</span> 同输入两次运行完全一致：' + shortSeq(g, a.best.seq) + "，cut [" + a.best.cuts.join(", ") + "]"
+    : '<span class="no">✗</span> 两次结果不同！';
+});
+document.getElementById("shuffle-run").addEventListener("click", () => {
+  const g = byId(currentId);
+  const base = solveSequence(g);
+  shuffleSeed = (Date.now() % 100000) + 1;
+  const shuffled = solveSequence(g, { shuffleSeed: shuffleSeed });
+  const same = base.best.seq.join("|") === shuffled.best.seq.join("|");
+  document.getElementById("fp-note").innerHTML = same
+    ? '<span class="ok">✓</span> 打乱候选枚举顺序（seed ' + shuffleSeed + "）后结果不变：" + shortSeq(g, base.best.seq)
+    : '<span class="no">✗</span> 结果随枚举顺序变了！';
+});
+
+renderTabs(); renderWalk(); renderSamples(); renderState(); renderAllTable(); renderFindings();
+</script>
+</body>
+</html>

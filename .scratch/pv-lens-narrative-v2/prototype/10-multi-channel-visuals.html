@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>多信道视觉 · 三种信道编码（wayfinder ticket 14）</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --border:#d9d9de; --text:#1f2329; --muted:#6b7280; --accent:#2563eb; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; line-height:1.55; padding-bottom:96px; }
+  .wrap { max-width:1560px; margin:0 auto; padding:1.1rem 1rem; }
+  header h1 { font-size:1.14rem; margin:0 0 .2rem; }
+  header .tag { display:inline-block; font-size:.72rem; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:.05rem .5rem; }
+  .question { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.8rem 1rem; margin:.8rem 0; font-size:.88rem; }
+  .question p { margin:0 0 .35rem; } .question p:last-child { margin-bottom:0; }
+  .question .criteria { color:var(--muted); font-size:.84rem; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.8rem; margin-bottom:1rem; overflow-x:auto; }
+  .panel h2 { font-size:.95rem; margin:0 0 .1rem; }
+  .panel .caption { font-size:.81rem; color:var(--muted); margin:0 0 .5rem; }
+  .panel svg { display:block; }
+  .note { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:.7rem .95rem; margin:0 0 1rem; font-size:.85rem; }
+  .note h2 { font-size:.93rem; margin:0 0 .3rem; } .note ul { margin:.3rem 0 0; padding-left:1.1rem; } .note li { margin:.12rem 0; }
+  .legend { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:.7rem 1rem; margin-bottom:1rem; }
+  .legend h3 { margin:0 0 .45rem; font-size:.88rem; }
+  .legend .row { display:flex; flex-wrap:wrap; gap:.35rem 1.1rem; font-size:.8rem; align-items:center; }
+  .legend .item { display:flex; align-items:center; gap:.4rem; }
+  .swatch { display:inline-block; width:22px; height:12px; border-radius:3px; vertical-align:-1px; }
+  .float-bar { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:.7rem; background:#111827; color:#fff; border-radius:999px; padding:.4rem .85rem; box-shadow:0 6px 20px rgba(0,0,0,.28); font-size:.82rem; z-index:40; }
+  .float-bar button { font:inherit; cursor:pointer; background:transparent; color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:999px; width:30px; height:26px; }
+  .float-bar .key { font-family:var(--mono); color:#93c5fd; }
+  .float-bar .name { min-width:210px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>多信道视觉：三种信道编码</h1>
+    <span class="tag">throwaway prototype · wayfinder ticket 14 · 三信道合成样例 · ?variant=A|B|C</span>
+  </header>
+
+  <div class="question">
+    <p><b>问题</b>：01–10 的信道规则只在<b>一条</b>信道（全部样例都是 <code>c</code>）下验证过。多信道（2–3 条）下，<b>信道身份怎么编码</b>、<b>三套颜色语义</b>（消息身份色 / 值身份色 / 信道色）怎么共存，以及跨线弧 / 未配对挂轨 / 同信道配对怎么改。</p>
+    <p class="criteria"><b>判据</b>：读者能一眼分辨「这条消息走哪条信道」「哪些端点是同一信道上的对端」，且单信道样例的观感不变。</p>
+    <p><b>定稿（2026-09-23）：变体 A</b> —— 信道不占颜色（身份 = 位置 + 序号 + 边框线型），颜色留给消息身份色与值身份色（见 <code>docs/adr/0010</code>）。B / C 保留作 primary source。</p>
+    <p class="criteria">三个变体对<b>颜色预算</b>的分配<b>结构性不同</b>：A 把色彩留给消息 + 值；B 把色彩留给信道 + 值、消息退成编号徽标；C 默认无彩、色彩只留给交互高亮。三者都按 ADR-0009 的横向序列摆位。</p>
+  </div>
+
+  <div class="note" id="variant-note"></div>
+
+  <div class="panel">
+    <h2 id="chart-title"></h2>
+    <p class="caption" id="chart-caption"></p>
+    <div id="svg-main"></div>
+  </div>
+
+  <div class="legend">
+    <h3>本变体的图例</h3>
+    <div class="row" id="legend-row"></div>
+  </div>
+</div>
+
+<div class="float-bar">
+  <button id="prev" title="上一个变体（←）">‹</button>
+  <span class="name" id="variant-name"></span>
+  <button id="next" title="下一个变体（→）">›</button>
+  <span>← → 切换 · <span class="key">?variant=</span></span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+   * 数据：合成三信道协议（与 core/fixtures/pv/multi-channel.pv 同形）
+   *   c1: A ↔ B（M1 A→B、M2 B→A）
+   *   c2: A→S（M6）、B↔S（M4 B→S、M5 S→B） —— 一条信道多方
+   *   c3: A→（M3 只有 out）—— 一条信道只有未配对步骤
+   * ============================================================ */
+  var ROLES = { A:{ name:'processA' }, B:{ name:'processB' }, S:{ name:'processS' } };
+  var CHANNELS = { c1:{ name:'c1', glyph:'①' }, c2:{ name:'c2', glyph:'②' }, c3:{ name:'c3', glyph:'③' } };
+  var ROLE_IDS = ['A','B','S'];
+  var CHANNEL_IDS = ['c1','c2','c3'];
+
+  var MSG_COLORS = ['#0891b2','#e11d48','#7c3aed','#16a34a','#ea580c','#2563eb'];
+  var CH_COLORS = { c1:'#2563eb', c2:'#0d9488', c3:'#b45309' };
+  var VAL_COLORS = {
+    nA:'#0284c7', kB:'#a16207', kS:'#7c3aed', kA:'#0d9488', m:'#db2777', nB:'#65a30d',
+    r:'#c2410c', t:'#4f46e5', q:'#0891b2', v:'#be123c', s:'#059669', w:'#9333ea'
+  };
+
+  // 消息：out 端 → in 端（in=null = 未配对）
+  var MSGS = [
+    { id:'M1', term:'senc(nA, kB)', out:'aOut1', in:'bIn1', values:['nA','kB'] },
+    { id:'M2', term:'senc(t, kA)',  out:'bOut2', in:'aIn2', values:['t','kA'] },
+    { id:'M6', term:'senc(nA, kS)', out:'aOut6', in:'sIn6', values:['nA','kS'] },
+    { id:'M4', term:'senc(nB, kS)', out:'bOut4', in:'sIn4', values:['nB','kS'] },
+    { id:'M5', term:'senc(v, kS)',  out:'sOut5', in:'bIn5', values:['v','kS'] },
+    { id:'M3', term:'senc(s, kA)',  out:'aOut3', in:null,  values:['s','kA'], unpaired:true }
+  ];
+  MSGS.forEach(function (m, i) { m.color = MSG_COLORS[i % MSG_COLORS.length]; });
+
+  // 本地步骤（生命线上两消息之间的节点）
+  var LOCALS = [
+    { id:'aL1', role:'A', y:100, text:'new nA', values:['nA'] },
+    { id:'aL2', role:'A', y:270, text:'event beginA(nA)', values:['nA'], event:true },
+    { id:'aL3', role:'A', y:390, text:'sdec(r, kA) → t', values:['r','kA','t'] },
+    { id:'bL1', role:'B', y:210, text:'sdec(m, kB) → nB', values:['m','kB','nB'] },
+    { id:'bL2', role:'B', y:450, text:'event endB(nB)', values:['nB'], event:true },
+    { id:'sL1', role:'S', y:330, text:'sdec(q, kS) → v', values:['q','kS','v'] }
+  ];
+
+  // 消息端：itemId → { role, channel, y, dir }
+  var ENDS = {
+    aOut1:{ role:'A', channel:'c1', y:150, dir:'out' },
+    aIn2: { role:'A', channel:'c1', y:330, dir:'in'  },
+    aOut6:{ role:'A', channel:'c2', y:180, dir:'out' },
+    aOut3:{ role:'A', channel:'c3', y:450, dir:'out' },
+    bIn1: { role:'B', channel:'c1', y:150, dir:'in'  },
+    bOut2:{ role:'B', channel:'c1', y:390, dir:'out' },
+    bIn5: { role:'B', channel:'c2', y:330, dir:'in'  },
+    bOut4:{ role:'B', channel:'c2', y:270, dir:'out' },
+    sIn6: { role:'S', channel:'c2', y:180, dir:'in'  },
+    sIn4: { role:'S', channel:'c2', y:270, dir:'in'  },
+    sOut5:{ role:'S', channel:'c2', y:390, dir:'out' }
+  };
+
+  /* 角色–信道多重边（ADR-0009 输入：每个消息步骤一条边） */
+  var MULTIEDGES = [['A','c1',2],['A','c2',1],['A','c3',1],['B','c1',2],['B','c2',2],['S','c2',3]];
+
+  /* ============================================================
+   * ADR-0009：加权 min-max 割边序列（本票只当输入；此处蛮力求出以便摆位诚实）
+   * ============================================================ */
+  function cutCurve(seq, order) {
+    var n = seq.length, cuts = [];
+    for (var k = 0; k < n - 1; k++) {
+      var prefix = {};
+      for (var i = 0; i <= k; i++) prefix[seq[i]] = true;
+      var c = 0;
+      MULTIEDGES.forEach(function (e) {
+        var a = prefix[e[0]] === true, b = prefix[e[1]] === true;
+        if (a !== b) c += e[2];
+      });
+      cuts.push(c);
+    }
+    return cuts;
+  }
+  function majorizationKey(cuts) {
+    return cuts.slice().sort(function (a, b) { return b - a; });
+  }
+  function cmpMajor(a, b) {
+    var ka = majorizationKey(a), kb = majorizationKey(b);
+    for (var i = 0; i < ka.length; i++) { if (ka[i] !== kb[i]) return ka[i] - kb[i]; }
+    return 0;
+  }
+  function permute(arr) {
+    if (arr.length <= 1) return [arr];
+    var out = [];
+    arr.forEach(function (v, i) {
+      var rest = arr.slice(0, i).concat(arr.slice(i + 1));
+      permute(rest).forEach(function (p) { out.push([v].concat(p)); });
+    });
+    return out;
+  }
+  var SOURCE_ORDER = ROLE_IDS.concat(CHANNEL_IDS);
+  function solveSequence() {
+    var best = null, bestCuts = null;
+    permute(SOURCE_ORDER).forEach(function (seq) {
+      var cuts = cutCurve(seq);
+      var max = Math.max.apply(null, cuts.concat([0]));
+      var better = false;
+      if (best === null) better = true;
+      else {
+        var bestMax = Math.max.apply(null, bestCuts.concat([0]));
+        if (max < bestMax) better = true;
+        else if (max === bestMax) {
+          var mc = cmpMajor(cuts, bestCuts);
+          if (mc < 0) better = true;
+          else if (mc === 0) {
+            for (var i = 0; i < seq.length; i++) {
+              if (seq[i] !== best[i]) { if (SOURCE_ORDER.indexOf(seq[i]) < SOURCE_ORDER.indexOf(best[i])) better = true; break; }
+            }
+          }
+        }
+      }
+      if (better) { best = seq; bestCuts = cuts; }
+    });
+    return { seq: best, cuts: bestCuts, max: Math.max.apply(null, bestCuts.concat([0])) };
+  }
+  var SEQUENCE = solveSequence();
+
+  /* ============================================================
+   * 几何
+   * ============================================================ */
+  var BUS_HALF_A = 62, ROLE_COL = 240, CH_COL = 150, X0 = 150, Y_TOP = 132, Y_OFF = 120;
+  var Y_BOT = 640;
+  var WIDTH = 0;
+  var POS = {};
+  (function layoutInterleaved() {
+    var x = X0;
+    SEQUENCE.seq.forEach(function (v) {
+      if (ROLES[v]) { POS[v] = { x: x + 112, kind:'role' }; x += ROLE_COL; }
+      else { POS[v] = { x: x + 70, kind:'channel' }; x += CH_COL; }
+    });
+    WIDTH = x + 60;
+  })();
+  // 变体 C：所有角色在左、单一分组总线在右
+  var POS_C = {};
+  (function layoutGrouped() {
+    var x = X0, busStart;
+    ROLE_IDS.forEach(function (r) { POS_C[r] = x + 112; x += ROLE_COL; });
+    busStart = x + 40;
+    CHANNEL_IDS.forEach(function (c, i) { POS_C[c] = busStart + 40 + i * 96; });
+    WIDTH = Math.max(WIDTH, busStart + 40 + CHANNEL_IDS.length * 96 + 40);
+  })();
+
+  function yOf(itemId) { return ENDS[itemId].y + Y_OFF; }
+  function roleX(r, grouped) { return grouped ? POS_C[r] : POS[r].x; }
+  function chX(c, grouped) { return grouped ? POS_C[c] : POS[c].x; }
+  function roleName(r) { return ROLES[r].name; }
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  /* 消息 → 端点几何 */
+  function msgGeometry(m, grouped) {
+    var out = ENDS[m.out];
+    var inEnd = m.in ? ENDS[m.in] : null;
+    var ch = out.channel;
+    return {
+      msg: m,
+      channel: ch,
+      outRole: out.role,
+      inRole: inEnd ? inEnd.role : null,
+      xOutRole: roleX(out.role, grouped),
+      xInRole: inEnd ? roleX(inEnd.role, grouped) : null,
+      xCh: chX(ch, grouped),
+      yOut: yOf(m.out),
+      yIn: inEnd ? yOf(m.in) : null
+    };
+  }
+
+  /* 跨线弧：严格落在两点之间的生命线与信道总线 x */
+  function crossings(x1, x2, grouped) {
+    var lo = Math.min(x1, x2), hi = Math.max(x1, x2), xs = [];
+    if (!grouped) {
+      ROLE_IDS.forEach(function (r) { var x = POS[r].x; if (x > lo + 6 && x < hi - 6) xs.push(x); });
+      CHANNEL_IDS.forEach(function (c) { var x = POS[c].x; if (x > lo + 6 && x < hi - 6) xs.push(x); });
+    } else {
+      // 分组总线：角色全在总线左侧，wire 仍会跨过中间的角色生命线
+      ROLE_IDS.forEach(function (r) { var x = POS_C[r]; if (x > lo + 6 && x < hi - 6) xs.push(x); });
+    }
+    return xs.sort(function (a, b) { return a - b; });
+  }
+
+  function wirePath(x1, x2, y, color, width, grouped, hopColor) {
+    var lo = Math.min(x1, x2), hi = Math.max(x1, x2);
+    var xs = crossings(x1, x2, grouped);
+    var d = 'M ' + lo + ' ' + y, i = 0;
+    xs.forEach(function (bx) {
+      d += ' L ' + (bx - 7) + ' ' + y;
+      d += ' Q ' + bx + ' ' + (y - 15) + ' ' + (bx + 7) + ' ' + y;
+      i++;
+    });
+    d += ' L ' + hi + ' ' + y;
+    return '<path d="' + d + '" stroke="' + color + '" stroke-width="' + width + '" fill="none" stroke-linecap="round"/>';
+  }
+
+  function arrowHead(x, y, dir, color) {
+    var s = 5;
+    return '<path d="M ' + x + ' ' + y + ' L ' + (x - 10*dir) + ' ' + (y - s) + ' L ' + (x - 10*dir) + ' ' + (y + s) + ' Z" fill="' + color + '"/>';
+  }
+  function openDot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3.6" fill="#fff" stroke="' + color + '" stroke-width="1.8"/>'; }
+  function solidDot(x, y, color) { return '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="' + color + '"/>'; }
+
+  /* ============================================================
+   * 共享 SVG 片段
+   * ============================================================ */
+  function lifelines(grouped) {
+    var out = [];
+    ROLE_IDS.forEach(function (r) {
+      var x = roleX(r, grouped);
+      out.push('<line x1="' + x + '" y1="' + Y_TOP + '" x2="' + x + '" y2="' + Y_BOT + '" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="1 5"/>');
+      out.push('<text x="' + x + '" y="' + (Y_TOP - 34) + '" text-anchor="middle" font-size="14" font-weight="700" fill="#111827" font-family="' + MONO + '">' + r + '</text>');
+      out.push('<text x="' + x + '" y="' + (Y_TOP - 19) + '" text-anchor="middle" font-size="9.5" fill="#6b7280" font-family="' + MONO + '">' + esc(roleName(r)) + '</text>');
+    });
+    return out.join('');
+  }
+  var MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
+
+  function valueSquares(values, achromatic) {
+    if (!values || !values.length) return '';
+    var out = '<g>';
+    values.forEach(function (v, i) {
+      var x = i * 12;
+      if (achromatic) {
+        out += '<rect x="' + x + '" y="-6" width="10" height="10" rx="2" fill="#fff" stroke="#111827" stroke-width="1.1"/>';
+        out += '<text x="' + (x + 5) + '" y="4" text-anchor="middle" font-size="8" font-family="' + MONO + '" fill="#111827" font-weight="700">' + esc(v.charAt(0)) + '</text>';
+      } else {
+        var c = VAL_COLORS[v] || '#64748b';
+        out += '<rect x="' + x + '" y="-6" width="10" height="10" rx="2" fill="' + c + '" opacity="0.9"/>';
+        out += '<text x="' + (x + 5) + '" y="4" text-anchor="middle" font-size="8" font-family="' + MONO + '" fill="#fff" font-weight="700">' + esc(v.charAt(0)) + '</text>';
+      }
+    });
+    return out + '</g>';
+  }
+
+  function localChip(l, achromatic) {
+    var x = roleX(l.role, CURRENT_GROUPED);
+    var y = l.y + Y_OFF;
+    var w = Math.max(l.text.length * 5.6 + 18, valuesWidth(l.values));
+    var stroke = l.event ? '#0d9488' : '#94a3b8';
+    var fill = l.event ? '#f0fdfa' : '#ffffff';
+    var out = [];
+    var sx = x - 14;
+    out.push('<rect x="' + (x - w/2) + '" y="' + (y - 10) + '" width="' + w + '" height="20" rx="5" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.2"/>');
+    out.push('<text x="' + x + '" y="' + (y + 3.4) + '" text-anchor="middle" font-size="9.6" font-family="' + MONO + '" fill="#111827">' + esc(l.text) + '</text>');
+    out.push('<g transform="translate(' + (sx + 16) + ',' + (y - 18) + ')">' + valueSquares(l.values, achromatic) + '</g>');
+    if (l.event) out.push('<text x="' + (x - w/2 - 6) + '" y="' + (y + 3.4) + '" text-anchor="end" font-size="9" fill="#0d9488" font-family="' + MONO + '">旗</text>');
+    return out.join('');
+  }
+  function valuesWidth(values) { return values && values.length ? values.length * 12 + 34 : 0; }
+
+  function messageBadge(x, y, m, achromatic) {
+    var fill = achromatic ? '#fff' : m.color;
+    var ink = achromatic ? '#111827' : '#fff';
+    return '<rect x="' + (x - 15) + '" y="' + (y - 8) + '" width="30" height="16" rx="8" fill="' + fill + '" stroke="' + (achromatic ? '#111827' : 'none') + '" stroke-width="1"/>' +
+      '<text x="' + x + '" y="' + (y + 3.4) + '" text-anchor="middle" font-size="9" font-family="' + MONO + '" font-weight="700" fill="' + ink + '">' + m.id + '</text>';
+  }
+
+  /* 消息词项芯片（镶在箭杆中间 / 落在信道总管内） */
+  function termChip(cx, cy, m, inkColor, achromatic) {
+    var w = Math.max(m.term.length * 5.6 + 22, valuesWidth(m.values) + 26);
+    var out = [];
+    out.push('<rect x="' + (cx - w/2) + '" y="' + (cy - 11) + '" width="' + w + '" height="22" rx="5" fill="#fff" stroke="' + inkColor + '" stroke-width="1.3"/>');
+    out.push('<text x="' + cx + '" y="' + (cy + 3.4) + '" text-anchor="middle" font-size="9.4" font-family="' + MONO + '" fill="#111827">' + esc(m.term) + '</text>');
+    out.push('<g transform="translate(' + (cx - w/2 + 6) + ',' + (cy - 19) + ')">' + valueSquares(m.values, achromatic) + '</g>');
+    return out.join('');
+  }
+
+  /* ============================================================
+   * 变体 A：信道 = 中性几何；色彩留给消息 + 值
+   * ============================================================ */
+  function renderA(busHalf) {
+    var g = false;
+    var out = [];
+    var top = Y_TOP - 8, bot = Y_BOT + 4;
+    // 信道总线（中性）
+    CHANNEL_IDS.forEach(function (c) {
+      var x = chX(c, false);
+      out.push('<rect x="' + (x - busHalf) + '" y="' + top + '" width="' + (2*busHalf) + '" height="' + (bot - top) + '" rx="9" fill="#f8fafc" stroke="#64748b" stroke-width="1.3" stroke-dasharray="' + dashFor(c) + '"/>');
+      out.push('<text x="' + x + '" y="' + (top - 10) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="#334155" font-family="' + MONO + '">' + CHANNELS[c].glyph + ' 信道 ' + c + '</text>');
+      out.push('<text x="' + x + '" y="' + (top - 24) + '" text-anchor="middle" font-size="8.5" fill="#94a3b8" font-family="' + MONO + '">中性几何</text>');
+    });
+    out.push(lifelines(false));
+    LOCALS.forEach(function (l) { out.push(localChip(l, false)); });
+    // 消息柱：按 y 区间分道
+    var byCh = {};
+    MSGS.forEach(function (m) { var e = ENDS[m.out]; (byCh[e.channel] = byCh[e.channel] || []).push(m); });
+    CHANNEL_IDS.forEach(function (c) {
+      var ms = byCh[c] || [];
+      var spans = ms.map(function (m) {
+        var ys = [yOf(m.out)].concat(m.in ? [yOf(m.in)] : []);
+        return { m:m, min:Math.min.apply(null,ys), max:Math.max.apply(null,ys) };
+      }).sort(function (a,b) { return a.min - b.min || a.max - b.max; });
+      var laneEnds = [];
+      spans.forEach(function (s) {
+        var li = 0;
+        while (li < laneEnds.length && laneEnds[li] >= s.min - 6) li++;
+        laneEnds[li] = s.max; s.lane = li;
+      });
+      var n = laneEnds.length;
+      var x = chX(c, false);
+      spans.forEach(function (s) {
+        var lx = x - busHalf + 16 + s.lane * 16 + 8;
+        var h = Math.max(s.max - s.min, 8);
+        out.push('<rect x="' + (lx - 6) + '" y="' + (s.min - (h - (s.max-s.min))/2) + '" width="12" height="' + h + '" rx="4" fill="' + s.m.color + '" opacity="0.92"/>');
+      });
+    });
+    // 消息段
+    MSGS.forEach(function (m) {
+      var e = ENDS[m.out], inE = m.in ? ENDS[m.in] : null;
+      var xOut = roleX(e.role, false), xCh = chX(e.channel, false), yOut = yOf(m.out);
+      var edge = xCh + (xOut < xCh ? -busHalf : busHalf) * -1; // 面向角色那侧的管壁
+      var wall = xOut < xCh ? xCh - busHalf : xCh + busHalf;
+      out.push(wirePath(xOut, wall, yOut, m.color, 2, false));
+      out.push(solidDot(xOut, yOut, m.color));
+      out.push(arrowHead(wall, yOut, xOut < xCh ? 1 : -1, m.color));
+      out.push('<g transform="translate(' + (xOut + (xOut < xCh ? -1 : 1) * 58) + ',' + (yOut - 16) + ')">' + messageBadge(0, 0, m, false) + '</g>');
+      out.push(termChip(xCh, yOut, m, m.color, false));
+      if (inE) {
+        var xIn = roleX(inE.role, false), yIn = yOf(m.in);
+        var wallIn = xIn < xCh ? xCh - busHalf : xCh + busHalf;
+        out.push(wirePath(wallIn, xIn, yIn, m.color, 2, false));
+        out.push(arrowHead(xIn, yIn, xIn < xCh ? 1 : -1, m.color));
+      } else {
+        var openX = xOut < xCh ? xCh - busHalf : xCh + busHalf;
+        out.push(openDot(openX, yOut, '#d97706'));
+        out.push('<text x="' + (openX + (xOut < xCh ? -6 : 6)) + '" y="' + (yOut - 14) + '" text-anchor="' + (xOut < xCh ? 'end' : 'start') + '" font-size="8.5" fill="#b45309" font-family="' + MONO + '">未配对</text>');
+      }
+    });
+    return out.join('');
+  }
+  function dashFor(c) { return c === 'c1' ? 'none' : c === 'c2' ? '9 5' : '2 4'; }
+
+  /* ============================================================
+   * 变体 B：信道 = 低饱和色带；消息退成编号徽标；值保留色
+   * ============================================================ */
+  function renderB(busHalf) {
+    var out = [];
+    var top = Y_TOP - 8, bot = Y_BOT + 4;
+    CHANNEL_IDS.forEach(function (c) {
+      var x = chX(c, false), col = CH_COLORS[c];
+      out.push('<rect x="' + (x - busHalf - 8) + '" y="' + (top - 30) + '" width="' + (2*busHalf + 16) + '" height="' + (bot - top + 36) + '" rx="14" fill="' + col + '" opacity="0.07"/>');
+      out.push('<rect x="' + (x - busHalf) + '" y="' + top + '" width="' + (2*busHalf) + '" height="' + (bot - top) + '" rx="9" fill="#ffffff" stroke="' + col + '" stroke-width="1.6"/>');
+      out.push('<rect x="' + (x - 26) + '" y="' + (top - 30) + '" width="52" height="20" rx="10" fill="' + col + '"/>');
+      out.push('<text x="' + x + '" y="' + (top - 16) + '" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" font-family="' + MONO + '">' + CHANNELS[c].glyph + ' ' + c + '</text>');
+    });
+    out.push(lifelines(false));
+    LOCALS.forEach(function (l) { out.push(localChip(l, false)); });
+    var byCh = {};
+    MSGS.forEach(function (m) { (byCh[ENDS[m.out].channel] = byCh[ENDS[m.out].channel] || []).push(m); });
+    CHANNEL_IDS.forEach(function (c) {
+      var spans = (byCh[c] || []).map(function (m) {
+        var ys = [yOf(m.out)].concat(m.in ? [yOf(m.in)] : []);
+        return { m:m, min:Math.min.apply(null,ys), max:Math.max.apply(null,ys) };
+      }).sort(function (a,b) { return a.min - b.min || a.max - b.max; });
+      var laneEnds = [];
+      spans.forEach(function (s) {
+        var li = 0;
+        while (li < laneEnds.length && laneEnds[li] >= s.min - 6) li++;
+        laneEnds[li] = s.max; s.lane = li;
+      });
+      var x = chX(c, false);
+      spans.forEach(function (s) {
+        var lx = x - busHalf + 16 + s.lane * 16 + 8;
+        var h = Math.max(s.max - s.min, 8);
+        out.push('<rect x="' + (lx - 6) + '" y="' + (s.min - (h - (s.max-s.min))/2) + '" width="12" height="' + h + '" rx="4" fill="' + CH_COLORS[c] + '" opacity="0.35"/>');
+      });
+    });
+    MSGS.forEach(function (m) {
+      var e = ENDS[m.out], inE = m.in ? ENDS[m.in] : null;
+      var xOut = roleX(e.role, false), xCh = chX(e.channel, false), yOut = yOf(m.out);
+      var wall = xOut < xCh ? xCh - busHalf : xCh + busHalf;
+      out.push(wirePath(xOut, wall, yOut, '#334155', 1.8, false));
+      out.push(solidDot(xOut, yOut, '#334155'));
+      out.push(arrowHead(wall, yOut, xOut < xCh ? 1 : -1, '#334155'));
+      out.push('<g transform="translate(' + (xOut + (xOut < xCh ? -1 : 1) * 58) + ',' + (yOut - 16) + ')">' + messageBadge(0, 0, m, true) + '</g>');
+      out.push(termChip(xCh, yOut, m, CH_COLORS[e.channel], false));
+      if (inE) {
+        var xIn = roleX(inE.role, false), yIn = yOf(m.in);
+        var wallIn = xIn < xCh ? xCh - busHalf : xCh + busHalf;
+        out.push(wirePath(wallIn, xIn, yIn, '#334155', 1.8, false));
+        out.push(arrowHead(xIn, yIn, xIn < xCh ? 1 : -1, '#334155'));
+      } else {
+        var openX = xOut < xCh ? xCh - busHalf : xCh + busHalf;
+        out.push(openDot(openX, yOut, '#d97706'));
+        out.push('<text x="' + (openX + (xOut < xCh ? -6 : 6)) + '" y="' + (yOut - 14) + '" text-anchor="' + (xOut < xCh ? 'end' : 'start') + '" font-size="8.5" fill="#b45309" font-family="' + MONO + '">未配对</text>');
+      }
+    });
+    return out.join('');
+  }
+
+  /* ============================================================
+   * 变体 C：默认无彩；单一分组总线 + 每信道一个子道；色彩只留给交互
+   * ============================================================ */
+  function renderC() {
+    var out = [];
+    var busLeft = POS_C[CHANNEL_IDS[0]] - 40;
+    var busRight = POS_C[CHANNEL_IDS[CHANNEL_IDS.length - 1]] + 40;
+    var top = Y_TOP - 8, bot = Y_BOT + 4;
+    out.push('<rect x="' + (busLeft - 10) + '" y="' + (top - 34) + '" width="' + (busRight - busLeft + 20) + '" height="' + (bot - top + 40) + '" rx="12" fill="#f8fafc" stroke="#111827" stroke-width="1.3"/>');
+    out.push('<text x="' + ((busLeft + busRight)/2) + '" y="' + (top - 44) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827" font-family="' + MONO + '">单一分组总线（三个子道）</text>');
+    CHANNEL_IDS.forEach(function (c) {
+      var x = POS_C[c];
+      out.push('<line x1="' + (x - 42) + '" y1="' + (top - 6) + '" x2="' + (x - 42) + '" y2="' + bot + '" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 5"/>');
+      out.push('<text x="' + x + '" y="' + (top - 14) + '" text-anchor="middle" font-size="11" font-weight="700" fill="#111827" font-family="' + MONO + '">' + CHANNELS[c].glyph + ' ' + c + '</text>');
+    });
+    out.push(lifelines(true));
+    LOCALS.forEach(function (l) { out.push(localChip(l, true)); });
+    MSGS.forEach(function (m) {
+      var e = ENDS[m.out], inE = m.in ? ENDS[m.in] : null;
+      var xOut = roleX(e.role, true), xCh = chX(e.channel, true), yOut = yOf(m.out);
+      if (!inE) {
+        out.push(wirePath(xOut, xCh, yOut, '#111827', 1.7, true));
+        out.push(solidDot(xOut, yOut, '#111827'));
+        out.push(arrowHead(xCh, yOut, xOut < xCh ? 1 : -1, '#111827'));
+        out.push(openDot(xCh, yOut, '#111827'));
+        out.push('<text x="' + (xCh + 8) + '" y="' + (yOut - 14) + '" font-size="8.5" fill="#111827" font-family="' + MONO + '">未配对</text>');
+        out.push('<g transform="translate(' + (xOut + 58) + ',' + (yOut - 16) + ')">' + messageBadge(0, 0, m, true) + '</g>');
+        out.push(termChip(xCh, yOut, m, '#111827', true));
+        return;
+      }
+      var xIn = roleX(inE.role, true), yIn = yOf(m.in);
+      // 同一 y 的 1-1 消息：去程 / 回程两条平行线错开，避免叠成一条
+      var same = Math.abs(yOut - yIn) < 8;
+      var yUp = same ? yOut - 5 : yOut, yDown = same ? yIn + 5 : yIn;
+      out.push(wirePath(xOut, xCh, yUp, '#111827', 1.7, true));
+      out.push(solidDot(xOut, yUp, '#111827'));
+      out.push(arrowHead(xCh, yUp, xOut < xCh ? 1 : -1, '#111827'));
+      out.push('<line x1="' + xCh + '" y1="' + yUp + '" x2="' + xCh + '" y2="' + yDown + '" stroke="#111827" stroke-width="1.7"/>');
+      out.push(wirePath(xCh, xIn, yDown, '#111827', 1.7, true));
+      out.push(arrowHead(xIn, yDown, xIn < xCh ? 1 : -1, '#111827'));
+      out.push('<g transform="translate(' + (xOut + 58) + ',' + (yUp - 16) + ')">' + messageBadge(0, 0, m, true) + '</g>');
+      out.push(termChip(xCh, (yUp + yDown) / 2, m, '#111827', true));
+    });
+    return out.join('');
+  }
+
+  /* ============================================================
+   * 变体登记 + 图例
+   * ============================================================ */
+  var MONO_STR = MONO;
+  var CURRENT_GROUPED = false;
+  var VARIANTS = {
+    A: {
+      name: 'A（信道 = 中性几何）',
+      grouped: false,
+      note: '<h2>变体 A · 信道 = 中性几何</h2><ul>' +
+        '<li>信道<b>不占颜色</b>：每条信道是一条中性灰管，靠<b>位置 + 序号 + 边框线型</b>（实线 / 长虚 / 点线）区分。单信道时就是一条灰管，观感与现状一致。</li>' +
+        '<li><b>消息身份色</b>保留在「管内同色柱 + 消息段 + 编号徽标」；<b>值身份色</b>保留在小方块（一色一值）。两套色分别落在「线」与「块」上。</li>' +
+        '<li>跨线弧仍走「上拱」，弧同时跨生命线与其它信道管。</li>' +
+        '<li>风险：消息色与值色都是饱和色，同屏时仍有「两套彩虹」的观感压力；三条信道的管长得一样，必须读标签。</li></ul>',
+      title: '变体 A：三条中性信道管 + 消息色 / 值色',
+      caption: '信道 = 位置 + 线型（①实线 ②长虚 ③点线）；消息 = 管内同色柱（M1–M6）；值 = 小色块。',
+      legend: legendA
+    },
+    B: {
+      name: 'B（信道 = 低饱和色带）',
+      grouped: false,
+      note: '<h2>变体 B · 信道 = 低饱和色带</h2><ul>' +
+        '<li><b>颜色预算给信道</b>：每条信道一条大面积低饱和色带（管 + 外扩底纹）+ 同色标题徽标；单信道时退化成一条同色管，仍可用。</li>' +
+        '<li><b>消息身份色退成编号徽标</b>（M1–M6）+ 中性深灰走线：不再靠颜色，而靠徽标 + 管内分道位置识别同一条消息。</li>' +
+        '<li><b>值身份色保留</b>在方块上。于是三层语义变成「信道 = 大面色带 / 消息 = 徽标 / 值 = 小色块」，每种语义用不同的视觉通道。</li>' +
+        '<li>风险：一条消息的颜色线索被拿掉后，跨多条信道、有跨线弧时「哪些端点是同一条消息」更依赖徽标；同信道同色柱也更难扫读。</li></ul>',
+      title: '变体 B：信道色带 + 消息编号徽标 + 值色块',
+      caption: '信道 = 大面积低饱和色带（c1 蓝 / c2 青 / c3 琥珀）；消息 = 中性走线 + M# 徽标；值 = 小色块。',
+      legend: legendB
+    },
+    C: {
+      name: 'C（默认无彩 · 单一分组总线）',
+      grouped: true,
+      note: '<h2>变体 C · 默认无彩 + 单一分组总线</h2><ul>' +
+        '<li>把所有信道<b>收拢成右侧一条宽总线</b>，内部每个信道一个<b>子道</b>（位置 + 序号 ①②③）。单信道时就是现状那条总线，观感最不变。</li>' +
+        '<li><b>默认全部无彩</b>：信道 = 子道位置，消息 = M# 徽标，值 = 带首字母的条纹小方块。颜色只留给 hover / 选中高亮，用来回答「这条消息走哪条信道」。</li>' +
+        '<li>跨线只需穿过子道边界，用白底断口即可，不再需要跨线弧。</li>' +
+        '<li>风险：违背 ADR-0009 把信道与角色交错排列的初衷——「角色夹在两条信道之间」在这里被压平；且角色全在总线一侧后，<b>同一侧两条消息要绕到总线再折回，出现平行双线（T1 式绕行）</b>——T2 当初正是为此淘汰 T1（ADR-0004）。跨线区分度也随之下下降。</li></ul>',
+      title: '变体 C：单一分组总线（子道）+ 默认无彩',
+      caption: '信道 = 子道位置（①②③）；消息 = M# 徽标；值 = 首字母方块；颜色仅交互高亮。',
+      legend: legendC
+    }
+  };
+
+  function legendItem(swatch, text) {
+    return '<div class="item">' + swatch + '<span>' + text + '</span></div>';
+  }
+  function sw(color, w) { return '<span class="swatch" style="background:' + color + ';width:' + (w||22) + 'px"></span>'; }
+  function legendA() {
+    var out = '';
+    out += legendItem('<span style="font-family:' + MONO + ';font-weight:700">① ② ③</span>', '信道身份 = 位置 + 序号 + 边框线型（不占颜色）');
+    MSGS.forEach(function (m) { out += legendItem(sw(m.color, 16), m.id + ' · 消息身份色'); });
+    Object.keys(VAL_COLORS).slice(0, 6).forEach(function (v) { out += legendItem(sw(VAL_COLORS[v], 12), '值 ' + v + '（一色一值，示意）'); });
+    out += legendItem(openDotSw('#d97706'), '未配对端（橙色开放圆点）');
+    return out;
+  }
+  function legendB() {
+    var out = '';
+    CHANNEL_IDS.forEach(function (c) { out += legendItem(sw(CH_COLORS[c], 26), '信道色带 ' + CHANNELS[c].glyph + ' ' + c); });
+    out += legendItem('<span style="display:inline-block;border:1px solid #111827;border-radius:8px;font-family:' + MONO + ';font-size:10px;padding:0 6px">M#</span>', '消息身份 = 编号徽标（不再是颜色）');
+    Object.keys(VAL_COLORS).slice(0, 6).forEach(function (v) { out += legendItem(sw(VAL_COLORS[v], 12), '值 ' + v + '（一色一值，示意）'); });
+    out += legendItem(openDotSw('#d97706'), '未配对端（橙色开放圆点）');
+    return out;
+  }
+  function legendC() {
+    var out = '';
+    out += legendItem('<span style="font-family:' + MONO + ';font-weight:700">① ② ③</span>', '信道身份 = 子道位置 + 序号');
+    out += legendItem('<span style="display:inline-block;border:1px solid #111827;border-radius:8px;font-family:' + MONO + ';font-size:10px;padding:0 6px">M#</span>', '消息身份 = 编号徽标');
+    out += legendItem('<span style="display:inline-block;width:12px;height:12px;border:1px solid #111827;background:#fff;font-family:' + MONO + ';font-size:9px;text-align:center;line-height:12px">n</span>', '值身份 = 首字母方块（无彩）');
+    out += legendItem(openDotSw('#111827'), '未配对端（开放圆点）');
+    out += legendItem('<span style="display:inline-block;width:26px;height:4px;background:#2563eb;border-radius:2px"></span>', '颜色仅用于 hover / 选中高亮');
+    return out;
+  }
+  function openDotSw(color) { return '<span style="display:inline-block;width:10px;height:10px;border:2px solid ' + color + ';border-radius:50%"></span>'; }
+
+  /* ============================================================
+   * 渲染
+   * ============================================================ */
+  var H_MAIN = Y_BOT + 40;
+  function renderAll(variantKey) {
+    var v = VARIANTS[variantKey];
+    CURRENT_GROUPED = v.grouped;
+    var svg;
+    if (variantKey === 'A') svg = renderA(BUS_HALF_A);
+    else if (variantKey === 'B') svg = renderB(BUS_HALF_A);
+    else svg = renderC();
+    document.getElementById('svg-main').innerHTML =
+      '<svg viewBox="0 0 ' + WIDTH + ' ' + H_MAIN + '" width="' + WIDTH + '" height="' + H_MAIN + '">' + svg + '</svg>';
+    document.getElementById('variant-note').innerHTML = v.note;
+    document.getElementById('chart-title').textContent = v.title;
+    document.getElementById('chart-caption').textContent = v.caption;
+    document.getElementById('legend-row').innerHTML = v.legend();
+    document.getElementById('variant-name').textContent = v.name;
+    document.title = '多信道视觉 · ' + variantKey + '（wayfinder ticket 14）';
+  }
+
+  var ORDER = ['A','B','C'];
+  function currentFromUrl() {
+    var p = new URLSearchParams(location.search).get('variant');
+    return ORDER.indexOf(p) >= 0 ? p : 'A';
+  }
+  function go(key) {
+    try {
+      var url = new URL(location.href);
+      url.searchParams.set('variant', key);
+      history.replaceState(null, '', url);
+    } catch (e) { /* file:// 下 replaceState 可能被拒；不影响渲染 */ }
+    renderAll(key);
+  }
+  document.getElementById('prev').addEventListener('click', function () {
+    var i = ORDER.indexOf(currentFromUrl()); go(ORDER[(i - 1 + ORDER.length) % ORDER.length]);
+  });
+  document.getElementById('next').addEventListener('click', function () {
+    var i = ORDER.indexOf(currentFromUrl()); go(ORDER[(i + 1) % ORDER.length]);
+  });
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'ArrowLeft') { var i = ORDER.indexOf(currentFromUrl()); go(ORDER[(i - 1 + ORDER.length) % ORDER.length]); }
+    if (e.key === 'ArrowRight') { var j = ORDER.indexOf(currentFromUrl()); go(ORDER[(j + 1) % ORDER.length]); }
+  });
+
+  renderAll(currentFromUrl());
+  // 把求解出的序列写进 caption（诚实标出来源）
+  var seqText = '序列（ADR-0009 min-max 蛮力求解，示意）：' + SEQUENCE.seq.join(' │ ') + '，max cut = ' + SEQUENCE.max;
+  var cap = document.getElementById('chart-caption');
+  cap.textContent = cap.textContent + '　' + seqText;
+})();
+</script>
+</body>
+</html>
