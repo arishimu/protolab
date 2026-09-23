@@ -4,7 +4,7 @@
 
 ## 背景
 
-01–09 的信道规则只在**一条**信道下验证过（四个内置样例的信道全是 `c`）。ADR-0008 已把「配对箭头用信道色」改成**消息身份色**，但留下一个未收口的冲突：颜色有三套语义在抢——**消息身份色**（一色一消息，ADR-0008）、值层的**值身份色**（一色一值，ticket 02）、以及**信道色**。ticket 14 用 `.scratch/pv-lens-narrative-v2/prototype/10-multi-channel-visuals.html` 的三个结构性不同的变体（A 中性几何 / B 低饱和色带 / C 单一分组总线 + 无彩）在 2–3 条信道下对比后定稿。
+01–09 的信道规则只在**一条**信道下验证过（四个内置样例的信道全是 `c`）。ADR-0008 已把「配对箭头用信道色」改成**消息身份色**，但留下一个未收口的冲突：颜色有三套语义在抢——**消息身份色**（一色一消息，ADR-0008）、值层的**值身份色**（一色一值，ticket 02）、以及**信道色**。ticket 14 用 `.scratch/pv-lens-v2/prototype/10-multi-channel-visuals.html` 的三个结构性不同的变体（A 中性几何 / B 低饱和色带 / C 单一分组总线 + 无彩）在 2–3 条信道下对比后定稿。
 
 ## 决策
 
@@ -21,5 +21,5 @@
 ## 后果
 
 - 收口 ADR-0008 的遗留：「消息身份色 vs 值身份色 vs 信道色」冲突以**信道退出颜色**解决；`CONTEXT.md` 的**消息身份色**词条同步更新，`信道色` 列为避免用词。
-- ticket 14 定稿 `.scratch/pv-lens-narrative-v2/prototype/10-multi-channel-visuals.html`（变体 A）与 fixture `pv-lens/packages/core/fixtures/pv/multi-channel.pv`。
+- ticket 14 定稿 `.scratch/pv-lens-v2/prototype/10-multi-channel-visuals.html`（变体 A）与 fixture `pv-lens/packages/core/fixtures/pv/multi-channel.pv`。
 - 消息色板与值色板的具体取值、同屏可区分性，属**视觉语法细节层**，交 `/to-spec`（不另立票）。

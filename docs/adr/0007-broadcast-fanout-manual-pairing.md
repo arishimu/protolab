@@ -28,5 +28,5 @@ ADR-0005 给人配对定的是**一对一**：一对多 / 多对一禁止，重�
 ## 后果
 
 - ADR-0005 的「一对一禁止 / 重复占用冲突」被本 ADR 取代；ADR-0005 其余部分（人工声明仍是设计意图、仅未配对、声明式意图边、仅内存）继续有效。
-- ticket 09 定稿：`.scratch/pv-lens-narrative-v2/prototype/06-manual-pairing.html`。
+- ticket 09 定稿：`.scratch/pv-lens-v2/prototype/06-manual-pairing.html`。
 - 残余（交回 map 的 Not yet specified）：广播行内多个接收端的**值层 / 事件对齐**；**通用角色左右分配算法**（当前手工）；「收到 ×N」梁的堆叠上限 / 折叠。

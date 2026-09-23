@@ -60,13 +60,13 @@ _Avoid_: 左右分配（只覆盖单信道特例）、泳道顺序（那是纵�
 _Avoid_: 把 `if` / `get` 称作本地步骤（它们是**分支**）
 
 **分支 (branch)**:
-`if … then … else …` 与 `get … in … else …` 在 item 序列里的结构，由 `branch` / `else` / `join` 三个标记表达：`branch` 载守卫（`if` 的条件或 `get` 的表模式），`else` 起另一臂，`join` 闭合；`join` 恒发（无 `else` 也发）。两臂的 items 是 `branch…join` 之间的**连续区间**（见 `.scratch/pv-lens-narrative-v2/decisions/12-branch-scope-model.md`）。
+`if … then … else …` 与 `get … in … else …` 在 item 序列里的结构，由 `branch` / `else` / `join` 三个标记表达：`branch` 载守卫（`if` 的条件或 `get` 的表模式），`else` 起另一臂，`join` 闭合；`join` 恒发（无 `else` 也发）。两臂的 items 是 `branch…join` 之间的**连续区间**（见 `.scratch/pv-lens-v2/decisions/12-branch-scope-model.md`）。
 
 **分支臂道 (arm lane)**:
-画布上承载一条分支臂的竖直子列。`then` 恒占第 1 道、`else` 占第 2 道，分叉 / 合流用横 tick 接回生命线；道号 = `1 + 外层 else 数`，同层顺序出现的分支共用同一道；**封顶 2 道**，更深的 `else` 嵌套改用道内缩进 + 角标。`branch…join` 整段是一个刚性计算单元（见 `.scratch/pv-lens-narrative-v2/decisions/13-conditional-rendering.md`）。
+画布上承载一条分支臂的竖直子列。`then` 恒占第 1 道、`else` 占第 2 道，分叉 / 合流用横 tick 接回生命线；道号 = `1 + 外层 else 数`，同层顺序出现的分支共用同一道；**封顶 2 道**，更深的 `else` 嵌套改用道内缩进 + 角标。`branch…join` 整段是一个刚性计算单元（见 `.scratch/pv-lens-v2/decisions/13-conditional-rendering.md`）。
 
 **作用域 (scope)**:
-一个绑定的可见范围 = 引入它的**控制路径**（arm 帧栈），不是「线性序列里最近」；引用按帧栈自内向外取最近同名绑定。跨臂同名绑定互不遮蔽（见 `.scratch/pv-lens-narrative-v2/decisions/12-branch-scope-model.md`）。
+一个绑定的可见范围 = 引入它的**控制路径**（arm 帧栈），不是「线性序列里最近」；引用按帧栈自内向外取最近同名绑定。跨臂同名绑定互不遮蔽（见 `.scratch/pv-lens-v2/decisions/12-branch-scope-model.md`）。
 
 **事件标记 (event marker)**:
 `event` 在生命线上的专门标记（区别于本地步骤），供对应性查询引用。
@@ -79,7 +79,7 @@ _Avoid_: 把 `if` / `get` 称作本地步骤（它们是**分支**）
 _Avoid_: 值节点（节点是泛称，画法单元叫值方块）
 
 **方法盒 (method box)**:
-值层里表示一次**算子应用**的倒置等腰梯形盒（短底 = 值方块宽）；输入方块紧贴上方、输出方块紧贴下方，盒内写算子名。**解构**竖向展开（信道 → 生命线），**构造**用同一个盒但**横置**（生命线 → 消息）——只用方向区分，不用形状或底色（见 `.scratch/pv-lens-narrative-v2/decisions/13-conditional-rendering.md`）。
+值层里表示一次**算子应用**的倒置等腰梯形盒（短底 = 值方块宽）；输入方块紧贴上方、输出方块紧贴下方，盒内写算子名。**解构**竖向展开（信道 → 生命线），**构造**用同一个盒但**横置**（生命线 → 消息）——只用方向区分，不用形状或底色（见 `.scratch/pv-lens-v2/decisions/13-conditional-rendering.md`）。
 _Avoid_: 算子节点
 
 **等值检查 (equality check)**:
@@ -87,7 +87,7 @@ _Avoid_: 算子节点
 _Avoid_: 相等断言（那是查询 / 验证结论的语义）
 
 **等值检查盒 (equality-check box)**:
-`if a = b` / `if a <> b` 的守卫与 `get` 表模式在竖栈里的呈现：一个倒置等腰梯形的**无输出**盒，被检查的两个操作数以**同色方块**贴在盒上方，op（`=` / `<>` / `∈`）写在盒内。条件里内嵌解构时，解构自己成一个方法盒、其输出是**派生虚线芯片**（不是值方块）喂进检查盒（见 `.scratch/pv-lens-narrative-v2/decisions/13-conditional-rendering.md`）。
+`if a = b` / `if a <> b` 的守卫与 `get` 表模式在竖栈里的呈现：一个倒置等腰梯形的**无输出**盒，被检查的两个操作数以**同色方块**贴在盒上方，op（`=` / `<>` / `∈`）写在盒内。条件里内嵌解构时，解构自己成一个方法盒、其输出是**派生虚线芯片**（不是值方块）喂进检查盒（见 `.scratch/pv-lens-v2/decisions/13-conditional-rendering.md`）。
 _Avoid_: 方法盒（检查盒无输出、不产生值）
 
 **选择盒 (select box)**:
@@ -95,7 +95,7 @@ _Avoid_: 方法盒（检查盒无输出、不产生值）
 _Avoid_: 分支（选择盒不界定臂）
 
 **wire 词项芯片 (wire-term chip)**:
-未绑定的内联构造结果（直接写在 `out` 里的 `aenc(...)`）在消息上的虚线芯片：它是信道上的**词项**，不是值身份，因此**不发新颜色**；只有被绑定的构造结果才拿值方块（见 `.scratch/pv-lens-narrative-v2/decisions/13-conditional-rendering.md`）。
+未绑定的内联构造结果（直接写在 `out` 里的 `aenc(...)`）在消息上的虚线芯片：它是信道上的**词项**，不是值身份，因此**不发新颜色**；只有被绑定的构造结果才拿值方块（见 `.scratch/pv-lens-v2/decisions/13-conditional-rendering.md`）。
 _Avoid_: 值方块（值方块只给绑定）
 
 **信道轨 (channel rail)**:

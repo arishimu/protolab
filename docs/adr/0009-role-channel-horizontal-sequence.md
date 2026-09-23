@@ -40,4 +40,4 @@ ADR-0007 点 5 要求「角色按通联图二分割、最忙角色贴总线」�
 - ticket 14（多信道视觉）以本 ADR 的序列为输入，继续管信道视觉编码（总线管、分道、配色、图例、跨线弧画法）。
 - 规模 `n ≤ ~10`，全排列或子集 DP `O(n·2^n)` 精确解。
 - **tie-break 2 的已知后果**：单信道时，每一侧由总线向外**权重递减**——最忙的角色贴总线、最轻的在最外。这是「降序 cut 曲线字典序最小」的自然结果（一侧的缝隙割边由总线向外是 `T, T−a, T−a−b, …`；降序曲线里除两个「侧总和」外就是这些外层前缀和，压小它们 ⇒ 重者靠内），因此**不再需要**一条显式的「最忙角色贴总线」规则（ADR-0007 点 5 的旧措辞）；实现时**不要**把它加成独立规则，否则会与 min-max 目标打架。已由 ticket 15 原型在 `ns-mutual-auth`（`S·I·c·R·K`，左内侧 I(6)/外侧 S(2)，右内侧 R(7)/外侧 K(1)）上验证。
-- `CONTEXT.md` 新增「水平序列」；ticket 11 定稿；原型另开子票（`.scratch/pv-lens-narrative-v2/prototype/09-role-side-assignment.html`，ticket 15 已验证）。
+- `CONTEXT.md` 新增「水平序列」；ticket 11 定稿；原型另开子票（`.scratch/pv-lens-v2/prototype/09-role-side-assignment.html`，ticket 15 已验证）。
