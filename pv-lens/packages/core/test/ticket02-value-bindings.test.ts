@@ -166,6 +166,20 @@ describe('ticket #02：值绑定与词项追踪', () => {
     expect(initiator?.items.some((item) => item.kind === 'event' && item.args.length > 0)).toBe(true);
   });
 
+  it('没有消息步骤时本地 item 仍然保留，兼容投影的降级诊断不谎称丢弃', () => {
+    const result = parsePv([
+      'free c: channel.',
+      'let p = new Na: bitstring; event e(Na).',
+      'process p.',
+    ].join('\n'));
+
+    const items = result.roles[0].items;
+    expect(items.map((item) => item.kind === 'event' ? `event ${item.name}` : item.kind)).toEqual(['local', 'event e']);
+    const degraded = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'degraded');
+    expect(degraded).toHaveLength(1);
+    expect(degraded[0].message).not.toContain('已跳过');
+  });
+
   it('无法可靠结构化的 let 右侧与事件参数保留原文并给出降级诊断', () => {
     const result = parsePv([
       'free c: channel.',

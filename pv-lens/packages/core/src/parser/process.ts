@@ -605,7 +605,8 @@ function attachTrailingNotes(cursor: TokenCursor, body: BodyScan): void {
   const last = body.steps[body.steps.length - 1];
   if (last === undefined) {
     const anchor = freshNames[0] ?? events[0] ?? guards[0];
-    cursor.degraded('该进程体没有消息步骤，末尾的 new / event / 守卫标注无处可挂，已跳过', anchor.span);
+    // 标注仍以本地 item 保留（见 facts），这里只说明兼容的消息步骤投影挂不上它们。
+    cursor.degraded('该进程体没有消息步骤：`new` / `event` / 守卫不会挂到兼容的消息步骤投影上，仅以本地 item 保留', anchor.span);
     body.pending = { freshNames: [], events: [], guards: [] };
     return;
   }
