@@ -34,4 +34,5 @@ MVP 的规范叙事视图把每条角色渲染成一条泳道，泳道内按**�
 - `pv-lens/packages/web/src/narrative/layout.ts` 的泳道布局与卡片模型将被 v2 取代；`pv-lens/packages/core` 需要产出「消息对象 / 本地步骤 / 值绑定与引用」的数据（最小形状见 `.scratch/pv-lens-v2/decisions/07-core-value-model.md`）。
 - `CONTEXT.md` 的词条随之更新：**规范叙事视图**不再定义为「泳道呈现」；新增**消息**（一等对象）、**值层**、**信道轨**、**本地步骤**、**事件标记**。
 - 端到端验证（验证结论面板）与事件对应性交互（点两支旗查表）沿用并扩展。
+- **修订（2026-09-24）**：点 2 的**跨线弧**被**直线**取代。用户以 `.scratch/pv-lens-v2/prototype/05-density-folding.html` 为视觉基准指出「连消息都是弧线，严重偏离预期」：消息段一律画水平直线，跨过中间生命线也不上拱（`pv-lens/packages/web/src/narrative/NarrativeView.tsx` 的 `EndpointSvg`）。点 2 其余部分（T2 拓扑、未配对半段、信道轨）不变。
 - 反例 / 执行视图、多会话展开、攻击图导出为 out of scope，另立 effort。

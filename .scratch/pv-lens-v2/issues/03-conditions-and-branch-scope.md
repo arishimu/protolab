@@ -18,7 +18,7 @@
 
 2026-09-24，`/implement`（用户指定参照 `prototype/05-density-folding.html` 与 `prototype/08-conditional-constructors.html`，真浏览器截图对照）。提交 `de4391c`。
 
-**已落地**：连续 `branch → then items → else? → else items → join` 标记流（`join` 恒发、空 else 带 `empty`）；守卫原文与来源进 IR；绑定按**臂帧栈**解析（else 不误引 then 的绑定、合流后臂内绑定出作用域）；等值检查盒（两操作数并排贴在盒上方、op 在盒内、无输出）；复合条件逐子句成行 + 连接词字形；条件内嵌解构的独立解构盒 + 派生虚线芯片；`then`/`else` 两道轨道 + 两端 tick（轨道落在值方块之外）；空臂 `else ∅` 桩；`?:` 选择盒 + 盒外条件芯片（不划臂道）；消息段只在跨中间生命线时上拱。
+**已落地**：连续 `branch → then items → else? → else items → join` 标记流（`join` 恒发、空 else 带 `empty`）；守卫原文与来源进 IR；绑定按**臂帧栈**解析（else 不误引 then 的绑定、合流后臂内绑定出作用域）；等值检查盒（两操作数并排贴在盒上方、op 在盒内、无输出）；复合条件逐子句成行 + 连接词字形；条件内嵌解构的独立解构盒 + 派生虚线芯片；`then`/`else` 两道轨道 + 两端 tick（轨道落在值方块之外）；空臂 `else ∅` 桩；`?:` 选择盒 + 盒外条件芯片（不划臂道）；消息段只在跨中间生命线时上拱（后一轮已改为一律直线，见文末）。
 
 **当时剩余（已在本文件末尾新一轮补齐）**：
 1. 嵌套更深的臂道尚未做「道内缩进 + 嵌套角标」（现在是封顶 2 道 + `then +1` 标签）。
@@ -36,3 +36,7 @@
 3. 顺带修正：复合守卫的多个检查盒此前共用同一个 React key（`${item.id}:check`），现带行号；`branchLabel` 对 `get` 守卫显示 `get …` 而非 `if`。
 
 **验证**：workspace typecheck 通过；全量测试 23 文件 / 251 测试通过；workspace build 通过；`git diff --check` 通过。专项测试新增嵌套封顶（lane/overflow/label/缩进）、折叠默认态与折叠后隐藏、复合守卫单开关 + 独立 key、SSR 折叠开关与文字不越画布右缘。
+
+---
+
+2026-09-24（后续，视觉校正）：用户以 `prototype/05-density-folding.html` 为视觉基准指出「连消息都是弧线，严重偏离预期」。已删除跨线弧：消息段一律画水平直线，跨中间生命线也不上拱；`StructuredEndpoint.crossesIntermediate` 字段、布局里的 `crossesIntermediate()`/`roleLifelines` 一并删除。同步修订 `docs/adr/0004`（点 2）与 `docs/adr/0010`（点 3），并新增渲染断言「四样例端点的 path 不含 `Q`」。

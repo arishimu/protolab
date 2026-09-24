@@ -149,8 +149,6 @@ export interface StructuredEndpoint {
   channelName: string;
   termText: string;
   termPresentation: 'wire' | 'binding-reference' | 'literal';
-  /** 这段线是否跨过中间生命线：只有跨线才上拱（否则画直线，原型口径）。 */
-  crossesIntermediate: boolean;
   unpaired: boolean;
   sourceSpan: SourceSpan;
 }
@@ -282,13 +280,6 @@ export function buildStructuredNarrativeLayout(
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
   const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
   const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
-  const roleLifelines = columns
-    .filter((column) => column.kind === 'role')
-    .map((column) => ({ name: column.name, x: column.x + column.width / 2 }));
-  /** 这段线是否跨过别的角色生命线：只有跨线才上拱。 */
-  const crossesIntermediate = (fromX: number, toX: number, roleName: string): boolean => roleLifelines.some(
-    (role) => role.name !== roleName && role.x > Math.min(fromX, toX) && role.x < Math.max(fromX, toX),
-  );
   let maxBottom = METRICS.margin + METRICS.headerHeight;
   let maxTextRight = 0;
   const usedY = new Set<number>();
@@ -586,7 +577,6 @@ export function buildStructuredNarrativeLayout(
             channelName,
             termText: renderTerm(stepItem.endpoint.term),
             termPresentation: termPresentation(stepItem.endpoint.term),
-            crossesIntermediate: crossesIntermediate(lifelineX, channelCenterX, role.name),
             unpaired: true,
             sourceSpan: item.span,
           });

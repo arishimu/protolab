@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { parsePv } from '@pv-lens/core';
+import { parsePv, coreSamples, pairSteps } from '@pv-lens/core';
 import type { ParseResult, RoleItem } from '@pv-lens/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -183,12 +183,18 @@ describe('ticket #03 视觉合同：等值检查盒与臂道', () => {
     }
   });
 
-  it('只有跨过中间生命线才上拱，否则画直线', () => {
-    // 两方协议：从生命线到信道不会跨过别的生命线。
-    const twoParty = buildStructuredNarrativeLayout(coreFixture('ns-original.pv'));
-    expect(twoParty.endpoints.every((endpoint) => !endpoint.crossesIntermediate)).toBe(true);
-    // 多方：processS 的服务端步骤要跨过别的角色生命线（4 角色 + 1 信道）。
-    const many = buildStructuredNarrativeLayout(coreFixture('ns-mutual-auth.pv'));
-    expect(many.endpoints.some((endpoint) => endpoint.crossesIntermediate)).toBe(true);
+  it('消息一律画直线：跨过中间生命线也不上拱（对齐 prototype 05）', () => {
+    for (const sample of coreSamples) {
+      const fileName = sample.pvFile.split('/').pop() ?? sample.pvFile;
+      const result = coreFixture(fileName);
+      const html = renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
+      const svg = /<svg[\s\S]*<\/svg>/.exec(html)?.[0] ?? '';
+      const groups = svg.match(/class="structured-endpoint[^"]*"[\s\S]*?<path d="[^"]+"/g) ?? [];
+      expect(groups.length).toBeGreaterThan(0);
+      for (const group of groups) {
+        const d = /<path d="([^"]+)"/.exec(group)?.[1] ?? '';
+        expect(d, `${sample.id} 的消息段不是直线：${d}`).not.toContain('Q');
+      }
+    }
   });
 });

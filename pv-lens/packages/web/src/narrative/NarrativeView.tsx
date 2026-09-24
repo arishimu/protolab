@@ -213,12 +213,8 @@ function EndpointSvg({
   const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
   const start = endpoint.direction === 'out' ? endpoint.roleX : endpoint.channelX;
   const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
-  // 只有在跨过中间生命线时才上拱（ADR-0004 的跨线弧）；否则一律直线——原型是一条贯穿线。
-  const bowed = endpoint.crossesIntermediate;
-  const mid = (start + end) / 2;
-  const path = bowed
-    ? `M ${start} ${endpoint.y} Q ${mid} ${endpoint.y - 16} ${end} ${endpoint.y}`
-    : `M ${start} ${endpoint.y} L ${end} ${endpoint.y}`;
+  // 消息一律画直线（对齐 prototype 05）：跨过中间生命线也不上拱，不做跨线弧。
+  const path = `M ${start} ${endpoint.y} L ${end} ${endpoint.y}`;
   // 未配对词项靠近信道轨（T2 的信道段），给中间留出构造盒的位置。
   const chipX = endpoint.roleX + (endpoint.channelX - endpoint.roleX) * 0.72;
   // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
