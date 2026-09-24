@@ -20,9 +20,11 @@ import type {
   FreshName,
   GuardNote,
   MessageStep,
+  PvDiagnostic,
   PvTerm,
   SourceSpan,
 } from './model.js';
+import type { Token } from './lexer.js';
 import { collapseWhitespace } from './lexer.js';
 import {
   TokenCursor,
@@ -45,11 +47,20 @@ type PendingFresh = FreshName;
 type PendingEvent = Omit<EventAnnotation, 'placement'>;
 type PendingGuard = Omit<GuardNote, 'placement'>;
 
-/** 一次进程体扫描的累积结果。 */
+export type ProcessFact =
+  | { kind: 'message'; stepIndex: number }
+  | { kind: 'new'; fresh: FreshName }
+  | { kind: 'let'; span: SourceSpan; text: string; pattern: PvTerm; term: PvTerm; boundNames: readonly string[] }
+  | { kind: 'get'; span: SourceSpan; text: string; pattern: PvTerm; boundNames: readonly string[] }
+  | { kind: 'insert'; span: SourceSpan; text: string }
+  | { kind: 'event'; event: PendingEvent; args: readonly PvTerm[] };
+
+/** 一次扫描的事实流：保留本地语句的源码顺序，供值层 IR 使用。 */
 export interface BodyScan {
   /** 变量作用域：角色参数 + `in` 模式变量 + `let` 绑定名，随扫描顺序增长。 */
   variables: Set<string>;
   steps: MessageStep[];
+  facts: ProcessFact[];
   invocations: InvocationFact[];
   pending: { freshNames: PendingFresh[]; events: PendingEvent[]; guards: PendingGuard[] };
   /** 当前是否处于复制 `!` 作用域内。 */
@@ -63,6 +74,7 @@ export function newBodyScan(parameters: readonly { name: string }[] = []): BodyS
   return {
     variables: new Set(parameters.map((p) => p.name)),
     steps: [],
+    facts: [],
     invocations: [],
     pending: { freshNames: [], events: [], guards: [] },
     replicated: false,
@@ -290,12 +302,16 @@ function scanNew(cursor: TokenCursor, body: BodyScan): void {
   cursor.next();
   const typeName = parseTypeAscription(cursor);
   const span = cursor.span(keyword.span.start);
-  body.pending.freshNames.push({
+  const fresh: FreshName = {
     name: nameToken.text,
     ...(typeName === undefined ? {} : { typeName }),
     text: cursor.slice(span),
     span,
-  });
+  };
+  body.pending.freshNames.push(fresh);
+  body.facts.push({ kind: 'new', fresh });
+  // `new` 的名字从这一语句开始进入后续词项作用域。
+  body.variables.add(fresh.name);
 }
 
 function scanEvent(cursor: TokenCursor, body: BodyScan): void {
@@ -308,18 +324,23 @@ function scanEvent(cursor: TokenCursor, body: BodyScan): void {
   }
   cursor.next();
 
-  if (cursor.match('(')) {
-    const closeIndex = matchCloseIndex(cursor, cursor.position - 1);
+  let args: readonly PvTerm[] = [];
+  if (cursor.atPunct('(')) {
+    const openIndex = cursor.position;
+    const closeIndex = matchCloseIndex(cursor, openIndex);
     if (closeIndex < 0) {
       cursor.error('事件参数缺少结尾的 `)`', cursor.span(keyword.span.start));
       skipToStatementEnd(cursor);
       return;
     }
-    while (cursor.position <= closeIndex) cursor.next();
+    args = parseTermRanges(cursor, openIndex + 1, closeIndex, body.variables, 'event 参数');
+    cursor.position = closeIndex + 1;
   }
 
   const span = cursor.span(nameToken.span.start);
-  body.pending.events.push({ name: nameToken.text, text: cursor.slice(span), span });
+  const event = { name: nameToken.text, text: cursor.slice(span), span };
+  body.pending.events.push(event);
+  body.facts.push({ kind: 'event', event, args });
 }
 
 function scanLet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<string>): void {
@@ -336,6 +357,26 @@ function scanLet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
   // 绑定模式 = `=` 与 `in` 之间的部分；等值约束（`=x`）只看模式，不看被绑定的词项。
   const patternTokens = cursor.tokens.slice(patternStart, equalsIndex);
   const names = collectPatternBinders(patternTokens);
+  const pattern = parseTermRange(
+    cursor,
+    patternStart,
+    equalsIndex,
+    new Set([...body.variables, ...names]),
+    'let 模式',
+  );
+  const term = parseTermRange(cursor, equalsIndex + 1, inIndex, body.variables, 'let 右侧词项');
+  const textSpan: SourceSpan = {
+    start: keyword.span.start,
+    end: cursor.tokens[inIndex - 1].span.end,
+  };
+  body.facts.push({
+    kind: 'let',
+    span: textSpan,
+    text: collapseWhitespace(cursor.slice(textSpan)),
+    pattern,
+    term,
+    boundNames: names,
+  });
   for (const name of names) body.variables.add(name);
 
   if (patternTokens.some((t) => t.kind === 'punct' && t.text === '=')) {
@@ -372,14 +413,28 @@ function scanGet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
 
   const patternTokens = cursor.tokens.slice(patternStart, inIndex);
   const names = collectPatternBinders(patternTokens);
-  for (const name of names) body.variables.add(name);
-
-  const span: SourceSpan = {
+  const patternSpan: SourceSpan = {
     start: patternTokens[0].span.start,
     end: cursor.tokens[inIndex - 1].span.end,
   };
-  const guard: PendingGuard = { kind: 'get', text: collapseWhitespace(cursor.slice(span)), span };
+  const pattern = parseTermRange(
+    cursor,
+    patternStart,
+    inIndex,
+    new Set([...body.variables, ...names]),
+    'get 表模式',
+  );
+  for (const name of names) body.variables.add(name);
+
+  const guard: PendingGuard = { kind: 'get', text: collapseWhitespace(cursor.slice(patternSpan)), span: patternSpan };
   body.pending.guards.push(guard);
+  body.facts.push({
+    kind: 'get',
+    span: patternSpan,
+    text: collapseWhitespace(cursor.slice(patternSpan)),
+    pattern,
+    boundNames: names,
+  });
 
   cursor.position = inIndex + 1;
   scanBranches(cursor, body, terminators, guard);
@@ -396,7 +451,9 @@ function scanInsert(cursor: TokenCursor, body: BodyScan): void {
   }
 
   const span = cursor.span(cursor.tokens[contentStart].span.start);
-  body.pending.guards.push({ kind: 'insert', text: collapseWhitespace(cursor.slice(span)), span });
+  const text = collapseWhitespace(cursor.slice(span));
+  body.pending.guards.push({ kind: 'insert', text, span });
+  body.facts.push({ kind: 'insert', span, text });
 }
 
 function scanIf(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<string>): void {
@@ -480,6 +537,7 @@ function pushStep(
   };
   body.pending = { freshNames: [], events: [], guards: [] };
   body.steps.push(step);
+  body.facts.push({ kind: 'message', stepIndex: body.steps.length - 1 });
 }
 
 function toEvent(event: PendingEvent, placement: 'before' | 'after'): EventAnnotation {
@@ -490,7 +548,56 @@ function toGuard(guard: PendingGuard, placement: 'before' | 'after'): GuardNote 
   return { kind: guard.kind, text: guard.text, placement, span: guard.span };
 }
 
-/** 把进程体结束时仍未消费的标注挂到最后一条消息步骤（placement `after`）。 */
+function parseTermRanges(
+  cursor: TokenCursor,
+  start: number,
+  end: number,
+  scope: ReadonlySet<string>,
+  label: string,
+): PvTerm[] {
+  if (start >= end) return [];
+  const terms: PvTerm[] = [];
+  let segmentStart = start;
+  let depth = 0;
+  for (let index = start; index < end; index++) {
+    const text = cursor.tokens[index].text;
+    if ('([{'.includes(text)) depth += 1;
+    else if (')]}'.includes(text)) depth -= 1;
+    else if (text === ',' && depth === 0) {
+      terms.push(parseTermRange(cursor, segmentStart, index, scope, label));
+      segmentStart = index + 1;
+    }
+  }
+  terms.push(parseTermRange(cursor, segmentStart, end, scope, label));
+  return terms;
+}
+
+function parseTermRange(
+  cursor: TokenCursor,
+  start: number,
+  end: number,
+  scope: ReadonlySet<string>,
+  label: string,
+): PvTerm {
+  const tokens = cursor.tokens.slice(start, end);
+  const span = tokens.length === 0
+    ? cursor.span(cursor.peek().span.start)
+    : { start: tokens[0].span.start, end: tokens[tokens.length - 1].span.end };
+  if (tokens.length === 0) {
+    cursor.degraded(`${label}为空，已保留原文`, span);
+    return { kind: 'unknown', text: '' };
+  }
+
+  const localDiagnostics: PvDiagnostic[] = [];
+  const eof: Token = { kind: 'eof', text: '', span: { start: span.end, end: span.end } };
+  const local = new TokenCursor(cursor.source, [...tokens, eof], localDiagnostics);
+  const term = parseTerm(local, scope);
+  if (term !== null && local.position === tokens.length && localDiagnostics.length === 0) return term;
+
+  cursor.degraded(`${label}无法可靠结构化，已保留原文`, span);
+  return { kind: 'unknown', text: collapseWhitespace(cursor.slice(span)) };
+}
+
 function attachTrailingNotes(cursor: TokenCursor, body: BodyScan): void {
   const { freshNames, events, guards } = body.pending;
   if (freshNames.length === 0 && events.length === 0 && guards.length === 0) return;

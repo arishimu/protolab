@@ -103,7 +103,13 @@ function StructuredNarrativeCanvas({
           {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
         </g>
         <g className="structured-node-layer">
-          {layout.nodes.map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
+          {layout.nodes
+            .filter((node) => node.kind !== 'message' && (node.kind !== 'local' || node.bindingIds.length === 0))
+            .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
+        </g>
+        <g className="structured-value-layer">
+          {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} />)}
+          {layout.valueBlocks.map((block) => <StructuredValueBlockSvg key={block.id} block={block} />)}
         </g>
         {layout.conflicts.map((conflict) => (
           <g key={conflict.id} className="structured-conflict" aria-label={conflict.message}>
@@ -133,7 +139,16 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
             )}
             <text className="structured-column-label" x={column.x + column.width / 2} y="20" textAnchor="middle">{isChannel ? `信道 ${column.name}` : column.name}</text>
             {!isChannel && column.signatureText !== undefined && column.signatureText.length > 0 && (
-              <text className="structured-column-signature" x={column.x + column.width / 2} y="36" textAnchor="middle">{column.signatureText}</text>
+              <text
+                className="structured-column-signature"
+                x={column.x + column.width / 2}
+                y="36"
+                textAnchor="middle"
+                aria-label={column.signatureText}
+              >
+                <title>{column.signatureText}</title>
+                {truncate(column.signatureText, 24)}
+              </text>
             )}
             {!isChannel && (column.replicated || column.parallel) && (
               <text className="structured-column-flags" x={column.x + column.width / 2} y="51" textAnchor="middle">
@@ -173,8 +188,8 @@ function EndpointSvg({
   return (
     <g className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}`} data-identity={endpoint.id} data-channel={endpoint.channelName} aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}`}>
       <path d={path} stroke={color} markerEnd={marker} />
-      <rect className="structured-term-chip" x={(start + end) / 2 - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
-      <text x={(start + end) / 2} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 12)}</text>
+      <rect className={`structured-term-chip structured-term-chip--${endpoint.termPresentation}`} x={(start + end) / 2 - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
+      <text x={(start + end) / 2} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 10)}</text>
       {endpoint.unpaired && <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />}
     </g>
   );
@@ -193,7 +208,65 @@ function StructuredNodeSvg({ node }: { node: StructuredNode }) {
   return (
     <g className={`structured-node structured-node--${node.kind}`} data-source-offset={node.span.start.offset} aria-label={node.label}>
       <rect x={node.x} y={node.y} width={node.width} height={node.height} />
-      <text x={node.x + node.width / 2} y={node.y + node.height / 2 + 4} textAnchor="middle">{truncate(node.label, 22)}</text>
+      <text x={node.x + node.width / 2} y={node.y + node.height / 2 + 4} textAnchor="middle">{truncate(node.label, 8)}</text>
+    </g>
+  );
+}
+
+function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['methods'][number] }) {
+  const halfWidth = method.width / 2;
+  const halfHeight = method.height / 2;
+  const points = method.direction === 'construct'
+    ? [
+        [method.x - halfWidth, method.y - halfHeight + 5],
+        [method.x + halfWidth, method.y - halfHeight],
+        [method.x + halfWidth, method.y + halfHeight],
+        [method.x - halfWidth, method.y + halfHeight - 5],
+      ]
+    : [
+        [method.x - halfWidth, method.y - halfHeight],
+        [method.x + halfWidth, method.y - halfHeight],
+        [method.x + 25, method.y + halfHeight],
+        [method.x - 25, method.y + halfHeight],
+      ];
+  const directionLabel = method.direction === 'construct'
+    ? '构造'
+    : method.direction === 'destruct'
+      ? '解构'
+      : '选择';
+  return (
+    <g
+      className={`structured-method structured-method--${method.direction}`}
+      data-source-offset={method.sourceSpan.start.offset}
+      aria-label={`${directionLabel}方法 ${method.label}`}
+    >
+      <polygon points={points.map(([x, y]) => `${String(x)},${String(y)}`).join(' ')} />
+      <text x={method.x} y={method.y + 4} textAnchor="middle">{truncate(method.label, 10)}</text>
+    </g>
+  );
+}
+
+function StructuredValueBlockSvg({ block }: { block: StructuredNarrativeLayout['valueBlocks'][number] }) {
+  const occurrenceLabel = block.occurrence === 'binding'
+    ? '绑定'
+    : block.occurrence === 'equality'
+      ? '等值复制'
+      : '引用';
+  return (
+    <g
+      className={`structured-value-block structured-value-block--${block.occurrence}`}
+      data-binding-id={block.bindingId}
+      data-source-offset={block.sourceSpan.start.offset}
+      aria-label={`${occurrenceLabel} ${block.label}`}
+    >
+      <rect
+        x={block.x - block.width / 2}
+        y={block.y - block.height / 2}
+        width={block.width}
+        height={block.height}
+        fill={block.color}
+      />
+      <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 8)}</text>
     </g>
   );
 }

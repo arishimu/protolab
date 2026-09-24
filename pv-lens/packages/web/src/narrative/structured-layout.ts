@@ -1,7 +1,10 @@
 import type {
+  Binding,
+  Condition,
   MessagePairing,
   ParseResult,
   PvRole,
+  PvTerm,
   RoleItem,
   SourceSpan,
   StepPairing,
@@ -41,6 +44,34 @@ export interface StructuredNode {
   bindingIds: readonly string[];
 }
 
+export interface StructuredValueBlock {
+  id: string;
+  roleIndex: number;
+  bindingId: string;
+  label: string;
+  color: string;
+  occurrence: 'binding' | 'reference' | 'equality';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sourceSpan: SourceSpan;
+}
+
+export interface StructuredMethod {
+  id: string;
+  roleIndex: number;
+  label: string;
+  direction: 'construct' | 'destruct' | 'select';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  inputBindingIds: readonly string[];
+  outputBindingIds: readonly string[];
+  sourceSpan: SourceSpan;
+}
+
 export interface StructuredEndpoint {
   roleIndex: number;
   stepIndex: number;
@@ -51,6 +82,7 @@ export interface StructuredEndpoint {
   y: number;
   channelName: string;
   termText: string;
+  termPresentation: 'wire' | 'binding-reference' | 'literal';
   unpaired: boolean;
   sourceSpan: SourceSpan;
 }
@@ -76,6 +108,8 @@ export interface StructuredConflict {
 export interface StructuredNarrativeLayout {
   columns: readonly StructuredColumn[];
   nodes: readonly StructuredNode[];
+  valueBlocks: readonly StructuredValueBlock[];
+  methods: readonly StructuredMethod[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
@@ -105,6 +139,10 @@ const METRICS = {
   localHeight: 30,
   eventHeight: 30,
   messageHeight: 30,
+  valueWidth: 50,
+  valueHeight: 18,
+  methodWidth: 66,
+  methodHeight: 24,
 } as const;
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
@@ -135,7 +173,12 @@ export function buildStructuredNarrativeLayout(
   const roleColumns = new Map(roles.map((role) => [role.name, columns.find((column) => column.kind === 'role' && column.name === role.name)]));
   const channelColumns = new Map(columns.filter((column) => column.kind === 'channel').map((column) => [column.name, column]));
   const nodes: StructuredNode[] = [];
+  const valueBlocks: StructuredValueBlock[] = [];
+  const methods: StructuredMethod[] = [];
   const endpoints: StructuredEndpoint[] = [];
+  const bindingColors = assignBindingColors(roles);
+  const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
+  const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
   let maxBottom = METRICS.margin + METRICS.headerHeight;
   const usedY = new Set<number>();
 
@@ -143,6 +186,21 @@ export function buildStructuredNarrativeLayout(
     const column = roleColumns.get(role.name);
     if (column === undefined) return;
     let cursor = METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight;
+    role.bindings
+      .filter((binding) => binding.kind === 'parameter')
+      .forEach((binding, parameterIndex) => {
+        const y = METRICS.headerHeight + 8 + parameterIndex * (METRICS.valueHeight + 3);
+        valueBlocks.push(valueBlockOf(
+          binding,
+          roleIndex,
+          column.x + column.width / 2,
+          y,
+          'binding',
+          bindingColors,
+          valueBlocks.length,
+        ));
+      });
+    cursor += Math.max(0, (role.parameters.length - 1) * (METRICS.valueHeight + 3));
     role.items.forEach((item, itemIndex) => {
       const height = item.kind === 'branch' ? METRICS.branchHeight : item.kind === 'event' ? METRICS.eventHeight : item.kind === 'message' ? METRICS.messageHeight : METRICS.localHeight;
       const proposedY = cursor + height / 2;
@@ -187,11 +245,26 @@ export function buildStructuredNarrativeLayout(
             y,
             channelName,
             termText: renderTerm(stepItem.endpoint.term),
+            termPresentation: termPresentation(stepItem.endpoint.term),
             unpaired: true,
             sourceSpan: item.span,
           });
         }
       }
+      projectValueLayer({
+        item,
+        roleIndex,
+        roleX: column.x + column.width / 2,
+        y,
+        channelX: stepItem === undefined
+          ? undefined
+          : channelColumns.get(renderTerm(stepItem.endpoint.channel))?.x,
+        bindingById,
+        bindingColors,
+        destructorNames,
+        valueBlocks,
+        methods,
+      });
       cursor = y + height / 2 + gapUnit;
       maxBottom = Math.max(maxBottom, cursor);
     });
@@ -236,6 +309,8 @@ export function buildStructuredNarrativeLayout(
   return {
     columns,
     nodes,
+    valueBlocks,
+    methods,
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,
@@ -245,6 +320,210 @@ export function buildStructuredNarrativeLayout(
     hasLanes: roles.length > 0,
     compactness,
     gapUnit,
+  };
+}
+
+interface ValueProjectionContext {
+  item: RoleItem;
+  roleIndex: number;
+  roleX: number;
+  y: number;
+  channelX?: number;
+  bindingById: ReadonlyMap<string, Binding>;
+  bindingColors: ReadonlyMap<string, string>;
+  destructorNames: ReadonlySet<string>;
+  valueBlocks: StructuredValueBlock[];
+  methods: StructuredMethod[];
+}
+
+function projectValueLayer(context: ValueProjectionContext): void {
+  const { item, roleIndex, roleX, y, bindingById, bindingColors, valueBlocks, methods } = context;
+  const pushBlocks = (
+    refs: readonly TermBindingRef[],
+    verticalOffset: number,
+    introduced: ReadonlySet<string> = new Set(),
+  ): void => {
+    refs.forEach((ref, index) => {
+      const binding = bindingById.get(ref.bindingId);
+      if (binding === undefined) return;
+      const occurrence = ref.equality
+        ? 'equality'
+        : introduced.has(ref.bindingId)
+          ? 'binding'
+          : 'reference';
+      const offset = (index - (refs.length - 1) / 2) * (METRICS.valueWidth + 4);
+      valueBlocks.push(valueBlockOf(
+        binding,
+        roleIndex,
+        roleX + offset,
+        y + verticalOffset,
+        occurrence,
+        bindingColors,
+        valueBlocks.length,
+      ));
+    });
+  };
+
+  if (item.kind === 'message') {
+    const refs = termBindingRefs(item.endpoint.term);
+    pushBlocks(refs, 0, new Set(item.endpoint.bindingIds));
+    const method = methodOfTerm(item.endpoint.term, context.destructorNames);
+    if (item.endpoint.direction === 'out' && method !== null) {
+      const direction = Math.sign((context.channelX ?? roleX + 1) - roleX) || 1;
+      methods.push({
+        id: `${item.id}:wire-method`,
+        roleIndex,
+        label: method.label,
+        direction: method.direction,
+        x: roleX + direction * 44,
+        y: y - 24,
+        width: METRICS.methodWidth,
+        height: METRICS.methodHeight,
+        inputBindingIds: refs.map((ref) => ref.bindingId),
+        outputBindingIds: [],
+        sourceSpan: item.span,
+      });
+    }
+    return;
+  }
+
+  if (item.kind === 'local') {
+    if (item.operation === 'new') {
+      const bindingId = item.bindingIds[0];
+      const binding = bindingId === undefined ? undefined : bindingById.get(bindingId);
+      if (binding !== undefined) {
+        valueBlocks.push(valueBlockOf(
+          binding,
+          roleIndex,
+          roleX,
+          y,
+          'binding',
+          bindingColors,
+          valueBlocks.length,
+        ));
+      }
+      return;
+    }
+
+    const inputRefs = item.term === undefined ? [] : termBindingRefs(item.term);
+    const patternRefs = item.pattern === undefined ? [] : termBindingRefs(item.pattern);
+    pushBlocks(inputRefs, -20);
+    pushBlocks(patternRefs, 20, new Set(item.bindingIds));
+    const methodTerm = item.operation === 'get' ? item.pattern : item.term;
+    const method = methodTerm === undefined
+      ? null
+      : item.operation === 'get'
+        ? { label: methodLabel(methodTerm, 'get'), direction: 'destruct' as const }
+        : methodOfTerm(methodTerm, context.destructorNames);
+    if (method !== null) {
+      methods.push({
+        id: `${item.id}:method`,
+        roleIndex,
+        label: method.label,
+        direction: method.direction,
+        x: roleX,
+        y,
+        width: METRICS.methodWidth,
+        height: METRICS.methodHeight,
+        inputBindingIds: inputRefs.map((ref) => ref.bindingId),
+        outputBindingIds: item.bindingIds,
+        sourceSpan: item.span,
+      });
+    }
+    return;
+  }
+
+  if (item.kind === 'event') pushBlocks(item.args.flatMap((arg) => termBindingRefs(arg)), 0);
+}
+
+interface TermBindingRef {
+  bindingId: string;
+  equality: boolean;
+}
+
+function termBindingRefs(term: PvTerm, equality = false): TermBindingRef[] {
+  if (term.kind === 'variable') {
+    return term.bindingId === undefined ? [] : [{ bindingId: term.bindingId, equality }];
+  }
+  if (term.kind === 'application') return term.args.flatMap((arg) => termBindingRefs(arg, equality));
+  if (term.kind === 'tuple') return term.items.flatMap((child) => termBindingRefs(child, equality));
+  if (term.kind === 'conditional') {
+    return [
+      ...conditionBindingRefs(term.condition),
+      ...termBindingRefs(term.thenTerm, equality),
+      ...termBindingRefs(term.elseTerm, equality),
+    ];
+  }
+  if (term.kind === 'equality') return termBindingRefs(term.term, true);
+  return [];
+}
+
+function conditionBindingRefs(condition: Condition): TermBindingRef[] {
+  if (condition.kind === 'comparison') {
+    return [...termBindingRefs(condition.left), ...termBindingRefs(condition.right)];
+  }
+  return condition.kind === 'compound' ? condition.clauses.flatMap(conditionBindingRefs) : [];
+}
+
+function methodOfTerm(
+  term: PvTerm,
+  destructorNames: ReadonlySet<string>,
+): { label: string; direction: StructuredMethod['direction'] } | null {
+  if (term.kind === 'application') {
+    return {
+      label: term.functor,
+      direction: destructorNames.has(term.functor) ? 'destruct' : 'construct',
+    };
+  }
+  if (term.kind === 'tuple') return { label: 'tuple', direction: 'construct' };
+  if (term.kind === 'conditional') return { label: '?:', direction: 'select' };
+  return null;
+}
+
+function methodLabel(term: PvTerm, fallback: string): string {
+  if (term.kind === 'application') return term.functor;
+  if (term.kind === 'tuple') return 'tuple';
+  return fallback;
+}
+
+function termPresentation(term: PvTerm): StructuredEndpoint['termPresentation'] {
+  if (term.kind === 'application' || term.kind === 'tuple' || term.kind === 'conditional') return 'wire';
+  if (term.kind === 'variable' && term.bindingId !== undefined) return 'binding-reference';
+  if (term.kind === 'equality' && termBindingRefs(term).length > 0) return 'binding-reference';
+  return 'literal';
+}
+
+function assignBindingColors(roles: readonly PvRole[]): Map<string, string> {
+  const colors = new Map<string, string>();
+  for (const role of roles) {
+    for (const binding of role.bindings) {
+      if (!colors.has(binding.id)) colors.set(binding.id, VALUE_COLORS[colors.size % VALUE_COLORS.length]);
+    }
+  }
+  return colors;
+}
+
+function valueBlockOf(
+  binding: Binding,
+  roleIndex: number,
+  x: number,
+  y: number,
+  occurrence: StructuredValueBlock['occurrence'],
+  colors: ReadonlyMap<string, string>,
+  index: number,
+): StructuredValueBlock {
+  return {
+    id: `${binding.id}:${occurrence}:${String(index)}`,
+    roleIndex,
+    bindingId: binding.id,
+    label: binding.name,
+    color: colors.get(binding.id) ?? VALUE_COLORS[0],
+    occurrence,
+    x,
+    y,
+    width: METRICS.valueWidth,
+    height: METRICS.valueHeight,
+    sourceSpan: binding.span,
   };
 }
 

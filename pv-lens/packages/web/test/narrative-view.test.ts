@@ -84,6 +84,24 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
     expect(multiChannel).toContain('信道 c3');
     expect(multiChannel).toContain('structured-channel');
   });
+  it('ticket #02：值方块、方法方向和 wire 词项进入可查询的 SVG 语义', () => {
+    const result = parsePv([
+      'type bitstring.',
+      'type key.',
+      'free c: channel.',
+      'fun enc(bitstring, key): bitstring.',
+      'reduc forall x: bitstring, k: key; dec(enc(x,k),k) = x.',
+      'let p(k: key) = new n: bitstring; out(c, enc(n,k)); in(c, m: bitstring); let x = dec(m,k) in out(c, x).',
+      'process p(secret).',
+    ].join('\n'));
+    const html = render(result);
+    expect(html).toContain('structured-value-block');
+    expect(html).toContain('data-binding-id="p:new:');
+    expect(html).toContain('structured-method--construct');
+    expect(html).toContain('structured-method--destruct');
+    expect(html).toContain('structured-term-chip--wire');
+  });
+
   it('完全没有角色结构时给中文提示而非白屏', () => {
     const html = render(parsePv('free c: channel.\n'));
     expect(html).toContain('没有可识别的角色结构');

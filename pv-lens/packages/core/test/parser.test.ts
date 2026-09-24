@@ -152,7 +152,7 @@ describe('Seam A：handshake-fixed.pv 黄金断言（握手级子集）', () => 
         [
           apply(
             'sign',
-            [tuple([variable('pkX'), variable('pkB'), name('k')], '(pkX,pkB,k)'), variable('skB')],
+            [tuple([variable('pkX'), variable('pkB'), variable('k')], '(pkX,pkB,k)'), variable('skB')],
             'sign((pkX,pkB,k),skB)',
           ),
           variable('pkX'),
@@ -416,7 +416,7 @@ describe('Seam A：ns-original.pv 黄金断言（NS 级子集，不回退）', (
     expect(second.term).toEqual(
       apply(
         'aenc',
-        [tuple([name('Na'), apply('pk', [variable('skA')], 'pk(skA)')], '(Na, pk(skA))'), variable('pkX')],
+        [tuple([variable('Na'), apply('pk', [variable('skA')], 'pk(skA)')], '(Na, pk(skA))'), variable('pkX')],
         'aenc((Na, pk(skA)), pkX)',
       ),
     );

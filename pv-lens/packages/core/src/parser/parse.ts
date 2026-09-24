@@ -120,12 +120,14 @@ export function parsePv(source: string): ParseResult {
   // 角色级 `!` / `|` 来自启动处（主进程）的调用形态：`!roleA(...)` 或 `(... | ...)`。
   const invocations = collectInvocationFacts([...definitions, ...(main === null ? [] : [main])]);
   const sorted = [...diagnostics].sort((a, b) => a.span.start.offset - b.span.start.offset);
+  const roles = definitions.map((definition, index) => toPublicRole(definition, invocations, index));
+  const mainProcess = main === null ? null : toPublicRole(main, invocations, 0);
 
   return {
     hasErrors: sorted.some((d) => d.severity === 'error'),
     hasDegraded: sorted.some((d) => d.severity === 'degraded'),
-    roles: definitions.map((definition, index) => toPublicRole(definition, invocations, index)),
-    mainProcess: main === null ? null : toPublicRole(main, invocations, 0),
+    roles,
+    mainProcess,
     queries,
     functions,
     names,
@@ -134,9 +136,7 @@ export function parsePv(source: string): ParseResult {
       typeName: name.typeName,
     })),
     destructors,
-    bindings: [...definitions, ...(main === null ? [] : [main])].flatMap((role) =>
-      toPublicRole(role, invocations).bindings,
-    ),
+    bindings: [...roles, ...(mainProcess === null ? [] : [mainProcess])].flatMap((role) => role.bindings),
     diagnostics: sorted,
   };
 }
@@ -263,11 +263,11 @@ function toPublicRole(
       parallel: step.annotations.parallel || parallel,
     },
   }));
-  const itemsResult = buildRoleItems(role.name, role.parameters, projectedSteps, roleIndex);
+  const itemsResult = buildRoleItems(role.name, role.parameters, projectedSteps, role.body.facts, roleIndex);
   return {
     name: role.name,
     parameters: role.parameters,
-    steps: projectedSteps,
+    steps: itemsResult.steps,
     items: itemsResult.items,
     bindings: itemsResult.bindings,
     replicated,
@@ -294,17 +294,18 @@ function parseReducDeclaration(cursor: TokenCursor): { name: string; span: Sourc
   const stop = findTopLevelToken(cursor, cursor.position, ['.']);
   const end = stop < 0 ? cursor.tokens.length - 1 : stop;
   const result: { name: string; span: SourceSpan }[] = [];
-  let afterSemicolon = false;
+  let expectDestructor = false;
   for (let index = cursor.position; index < end; index++) {
     const token = cursor.tokens[index];
     if (token.text === ';') {
-      afterSemicolon = true;
+      expectDestructor = true;
       continue;
     }
-    if (afterSemicolon && token.kind === 'ident' && cursor.tokens[index + 1]?.text === '(') {
+    if (expectDestructor && token.kind === 'ident' && cursor.tokens[index + 1]?.text === '(') {
       if (!result.some((entry) => entry.name === token.text)) {
         result.push({ name: token.text, span: token.span });
       }
+      expectDestructor = false;
     }
   }
   cursor.position = stop < 0 ? end : stop + 1;

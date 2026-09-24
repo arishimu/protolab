@@ -167,6 +167,8 @@ export interface MessageEndpoint {
   /** 信道上实际承载的词项；接收端则保留接收模式。 */
   wireTerm: PvTerm;
   term: PvTerm;
+  /** 该消息端在接收模式中引入的绑定。发送端为空。 */
+  bindingIds: readonly string[];
   span: SourceSpan;
   sourceStep: MessageStep;
 }
@@ -188,6 +190,7 @@ export interface LocalItem {
   text: string;
   name?: string;
   bindingId?: string;
+  bindingIds: readonly string[];
   term?: PvTerm;
   pattern?: PvTerm;
 }
@@ -196,6 +199,9 @@ export interface EventItem {
   kind: 'event';
   id: string;
   name: string;
+  /** event 的参数词项；参数中的变量引用保留 bindingId。 */
+  args: readonly PvTerm[];
+  /** 兼容旧调用方的首个参数投影。 */
   term?: PvTerm;
   text: string;
   span: SourceSpan;

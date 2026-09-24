@@ -71,20 +71,13 @@ export function composeMessagePairings(
 function endpointMap(result: ParseResult): Map<string, MessageEndpoint> {
   const map = new Map<string, MessageEndpoint>();
   narrativeRoleOrder(result).forEach((role, roleIndex) => {
-    role.steps.forEach((step, stepIndex) => {
-      map.set(refKey({ roleIndex, stepIndex }), {
-        kind: 'message',
-        id: `${role.name}:message:${stepIndex}`,
-        roleName: role.name,
+    role.items.forEach((item) => {
+      if (item.kind !== 'message') return;
+      const endpoint = item.endpoint;
+      map.set(refKey({ roleIndex, stepIndex: endpoint.stepIndex }), {
+        ...endpoint,
         roleIndex,
-        itemIndex: stepIndex,
-        stepIndex,
-        direction: step.direction,
-        channel: step.channel,
-        wireTerm: step.term,
-        term: step.term,
-        span: step.span,
-        sourceStep: step,
+        itemIndex: item.endpoint.itemIndex,
       });
     });
   });

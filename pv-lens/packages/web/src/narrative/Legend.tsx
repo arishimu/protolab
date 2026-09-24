@@ -40,6 +40,24 @@ export function Legend() {
         </div>
         <div className="legend-item">
           <dt>
+            <span className="legend-value-block">值</span>
+          </dt>
+          <dd>值方块：一种颜色对应一个角色本地绑定；同色再现表示同一绑定的引用或等值复制</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
+            <span className="legend-method-box">方法</span>
+          </dt>
+          <dd>方法盒：竖向表示解构，横向表示构造；`?:` 表示产出单个值的条件选择</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
+            <span className="legend-wire-chip">wire term</span>
+          </dt>
+          <dd>虚线 wire 词项：消息上的未绑定内联构造，不产生新的值身份</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
             <span className="legend-chip legend-chip--unpaired">未配对</span>
           </dt>
           <dd>无法可靠推断设计上的收发关系（多方协议不自动连线），图上不画连线（画对优先于画全）</dd>
