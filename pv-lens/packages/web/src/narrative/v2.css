@@ -134,6 +134,70 @@
   stroke-width: 1.4;
 }
 
+/* 等值检查盒：与方法盒同形状族、无输出。 */
+.structured-method--check polygon {
+  stroke: #1d4ed8;
+}
+
+.structured-method--check text {
+  fill: #1d4ed8;
+  font-weight: 700;
+}
+
+.structured-check-connector {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+/* 虚线芯片：派生值 / 条件 / 表模式，都不发值身份色。 */
+.structured-chip rect {
+  fill: #ffffff;
+  stroke: #475569;
+  stroke-width: 1.1;
+  stroke-dasharray: 4 2.5;
+}
+
+.structured-chip text {
+  fill: #334155;
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+/* 分支臂道：生命线旁的虚线竖轨 + then/else 标签 + 两端 tick。 */
+.structured-arm-rail {
+  stroke: #2563eb;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.structured-arm--else .structured-arm-rail {
+  stroke: #0d9488;
+}
+
+.structured-arm-tick {
+  stroke: #2563eb;
+  stroke-width: 1;
+}
+
+.structured-arm--else .structured-arm-tick {
+  stroke: #0d9488;
+}
+
+.structured-arm--empty .structured-arm-rail {
+  stroke: #c2410c;
+}
+
+.structured-arm-label {
+  fill: #2563eb;
+  font-size: 8.5px;
+  font-family: var(--mono);
+}
+
+.structured-arm--else .structured-arm-label {
+  fill: #0d9488;
+}
+
 .structured-method--construct polygon {
   stroke-linejoin: bevel;
 }

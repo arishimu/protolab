@@ -74,9 +74,11 @@ export interface StructuredMethod {
   label: string;
   /** 盒下小字：算子实参元组（原型里的 caption）。 */
   caption?: string;
-  direction: 'construct' | 'destruct' | 'select';
+  direction: 'construct' | 'destruct' | 'select' | 'check';
   /** 横置构造盒的窄底朝向：窄端指向消息（与原型的「短底 = 值方块宽」同口径）。 */
   narrowTowards?: 'left' | 'right';
+  /** 复合条件的连接词字形（放在该子句行旁）。 */
+  connector?: '&&' | '||';
   x: number;
   y: number;
   width: number;
@@ -84,6 +86,34 @@ export interface StructuredMethod {
   inputBindingIds: readonly string[];
   outputBindingIds: readonly string[];
   sourceSpan: SourceSpan;
+}
+
+/** 虚线芯片：派生值（解构输出未绑定）、条件芯片、表模式芯片。不发值身份色。 */
+export interface StructuredChip {
+  id: string;
+  roleIndex: number;
+  text: string;
+  kind: 'derived' | 'condition' | 'pattern';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sourceSpan: SourceSpan;
+}
+
+/** 分支臂道：生命线旁的虚线竖轨 + then/else 标签，两端以横 tick 接回生命线。 */
+export interface StructuredArmRun {
+  id: string;
+  roleIndex: number;
+  arm: 'then' | 'else';
+  lane: number;
+  /** 轨道 x 与它接回的生命线 x（两端横 tick 用）。 */
+  railX: number;
+  lifelineX: number;
+  top: number;
+  bottom: number;
+  empty: boolean;
+  label: string;
 }
 
 export interface StructuredEndpoint {
@@ -97,6 +127,8 @@ export interface StructuredEndpoint {
   channelName: string;
   termText: string;
   termPresentation: 'wire' | 'binding-reference' | 'literal';
+  /** 这段线是否跨过中间生命线：只有跨线才上拱（否则画直线，原型口径）。 */
+  crossesIntermediate: boolean;
   unpaired: boolean;
   sourceSpan: SourceSpan;
 }
@@ -128,6 +160,8 @@ export interface StructuredNarrativeLayout {
   nodes: readonly StructuredNode[];
   valueBlocks: readonly StructuredValueBlock[];
   methods: readonly StructuredMethod[];
+  chips: readonly StructuredChip[];
+  armRuns: readonly StructuredArmRun[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
@@ -163,6 +197,12 @@ const METRICS = {
   /** 值方块槽位（含格间留白）与方法盒槽位（盒 24 + 盒下 caption）。 */
   valuePitch: 20,
   methodPitch: 38,
+  /** 等值检查行：两操作数并排（上方）+ 无输出梯形盒。 */
+  checkPitch: 50,
+  chipWidth: 56,
+  chipHeight: 18,
+  /** 臂道轨道间距。 */
+  laneStep: 22,
   chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
@@ -204,10 +244,19 @@ export function buildStructuredNarrativeLayout(
   const nodes: StructuredNode[] = [];
   const valueBlocks: StructuredValueBlock[] = [];
   const methods: StructuredMethod[] = [];
+  const chips: StructuredChip[] = [];
+  const armRuns: StructuredArmRun[] = [];
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
   const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
   const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
+  const roleLifelines = columns
+    .filter((column) => column.kind === 'role')
+    .map((column) => ({ name: column.name, x: column.x + column.width / 2 }));
+  /** 这段线是否跨过别的角色生命线：只有跨线才上拱。 */
+  const crossesIntermediate = (fromX: number, toX: number, roleName: string): boolean => roleLifelines.some(
+    (role) => role.name !== roleName && role.x > Math.min(fromX, toX) && role.x < Math.max(fromX, toX),
+  );
   let maxBottom = METRICS.margin + METRICS.headerHeight;
   let maxTextRight = 0;
   const usedY = new Set<number>();
@@ -216,6 +265,8 @@ export function buildStructuredNarrativeLayout(
     const column = roleColumns.get(role.name);
     if (column === undefined) return;
     const lifelineX = column.x + column.width / 2;
+    /** 值层链/方法盒当前所在列（臂道轨道只作标记，条目仍贴生命线——与 proto08 一致）。 */
+    const rowX = lifelineX;
     const nextColumn = columns[(columnPosition.get(`role:${role.name}`) ?? 0) + 1];
     // 信道总线又窄又淡，标签可以借过；下一列是角色时则止步于它左缘，避免压到对方生命线。
     const labelLimitX = nextColumn === undefined
@@ -237,6 +288,7 @@ export function buildStructuredNarrativeLayout(
         valueBlocks.length,
       ));
     });
+    const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
     let cursor = parameterBindings.length === 0
       ? METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight
       : parameterTop + parameterBindings.length * METRICS.valuePitch;
@@ -254,6 +306,52 @@ export function buildStructuredNarrativeLayout(
       const rowHeight = Math.max(baseHeight, chainHeightOf(chain) + METRICS.chainPadding);
       const y = uniqueY(cursor + rowHeight / 2, usedY);
       usedY.add(y);
+
+      if (item.kind === 'branch') {
+        if (item.marker === 'branch') {
+          const enclosingElse = armStack.filter((frame) => frame.lane >= 2).length;
+          const lane = Math.min(2, 1 + enclosingElse);
+          armRuns.push({
+            id: item.id,
+            roleIndex,
+            arm: 'then',
+            lane,
+            railX: armRailX(lifelineX, lane),
+            lifelineX,
+            top: y,
+            bottom: y,
+            empty: false,
+            label: enclosingElse === 0 ? 'then' : `then +${String(enclosingElse)}`,
+          });
+          armStack.push({ runIndex: armRuns.length - 1, lane, enclosingElse });
+        } else if (item.marker === 'else') {
+          const frame = armStack[armStack.length - 1];
+          if (frame !== undefined) {
+            const run = armRuns[frame.runIndex];
+            if (run !== undefined) armRuns[frame.runIndex] = { ...run, bottom: y };
+            const lane = Math.min(2, 2 + frame.enclosingElse);
+            armRuns.push({
+              id: item.id,
+              roleIndex,
+              arm: 'else',
+              lane,
+              railX: armRailX(lifelineX, lane),
+              lifelineX,
+              top: y,
+              bottom: y,
+              empty: item.empty === true,
+              label: item.empty === true ? 'else ∅' : 'else',
+            });
+            armStack[armStack.length - 1] = { runIndex: armRuns.length - 1, lane, enclosingElse: frame.enclosingElse };
+          }
+        } else {
+          const frame = armStack.pop();
+          if (frame !== undefined) {
+            const run = armRuns[frame.runIndex];
+            if (run !== undefined) armRuns[frame.runIndex] = { ...run, bottom: y };
+          }
+        }
+      }
 
       const labelX = stepItem === undefined ? lifelineX + METRICS.valueWidth / 2 + 6 : lifelineX;
       const labelAnchor: StructuredNode['labelAnchor'] = stepItem === undefined ? 'start' : 'middle';
@@ -310,6 +408,66 @@ export function buildStructuredNarrativeLayout(
           maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
           return;
         }
+        if (entry.kind === 'check') {
+          const operandY = slotTop + 9;
+          entry.operands.forEach((operand, index) => {
+            const operandX = rowX + (entry.operands.length > 1 ? (index === 0 ? -27 : 27) : 0);
+            if (operand.kind === 'value') {
+              const binding = bindingById.get(operand.bindingId);
+              if (binding === undefined) return;
+              valueBlocks.push(valueBlockOf(binding, roleIndex, operandX, operandY, 'reference', bindingColors, valueBlocks.length));
+              return;
+            }
+            chips.push({
+              id: `${item.id}:operand:${String(index)}`,
+              roleIndex,
+              text: operand.text,
+              kind: 'pattern',
+              x: operandX,
+              y: operandY,
+              width: METRICS.chipWidth,
+              height: METRICS.chipHeight,
+              sourceSpan: item.span,
+            });
+          });
+          const boxY = slotTop + 33;
+          slotTop += METRICS.checkPitch;
+          methods.push({
+            id: `${item.id}:check`,
+            roleIndex,
+            label: entry.op,
+            direction: 'check',
+            ...(entry.connector === undefined ? {} : { connector: entry.connector }),
+            x: rowX,
+            y: boxY,
+            width: METRICS.methodWidth,
+            height: METRICS.methodHeight,
+            inputBindingIds: entry.operands.filter((operand) => operand.kind === 'value').map((operand) => operand.bindingId),
+            outputBindingIds: [],
+            sourceSpan: item.span,
+          });
+          maxTextRight = Math.max(maxTextRight, rowX + 27 + METRICS.chipWidth / 2);
+          return;
+        }
+
+        if (entry.kind === 'derived') {
+          const chipY = slotTop + METRICS.chipHeight / 2;
+          slotTop += METRICS.valuePitch;
+          chips.push({
+            id: `${item.id}:chip:${String(chips.length)}`,
+            roleIndex,
+            text: entry.text,
+            kind: entry.chipKind,
+            x: rowX,
+            y: chipY,
+            width: METRICS.chipWidth,
+            height: METRICS.chipHeight,
+            sourceSpan: item.span,
+          });
+          maxTextRight = Math.max(maxTextRight, rowX + METRICS.chipWidth / 2);
+          return;
+        }
+
         const boxCenterY = slotTop + METRICS.methodHeight / 2;
         slotTop += METRICS.methodPitch;
         methods.push({
@@ -348,6 +506,7 @@ export function buildStructuredNarrativeLayout(
             channelName,
             termText: renderTerm(stepItem.endpoint.term),
             termPresentation: termPresentation(stepItem.endpoint.term),
+            crossesIntermediate: crossesIntermediate(lifelineX, channelCenterX, role.name),
             unpaired: true,
             sourceSpan: item.span,
           });
@@ -428,6 +587,8 @@ export function buildStructuredNarrativeLayout(
     nodes,
     valueBlocks,
     methods,
+    chips,
+    armRuns,
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,
@@ -441,6 +602,10 @@ export function buildStructuredNarrativeLayout(
 }
 
 /** 值层链的一格：值方块，或代算子方法盒。 */
+type CheckOperand =
+  | { kind: 'value'; bindingId: string }
+  | { kind: 'chip'; text: string };
+
 type ChainEntry =
   | { kind: 'value'; bindingId: string; occurrence: StructuredValueBlock['occurrence'] }
   | {
@@ -448,9 +613,12 @@ type ChainEntry =
       label: string;
       direction: StructuredMethod['direction'];
       caption?: string;
+      connector?: '&&' | '||';
       inputBindingIds: readonly string[];
       outputBindingIds: readonly string[];
-    };
+    }
+  | { kind: 'check'; op: string; operands: readonly CheckOperand[]; connector?: '&&' | '||' }
+  | { kind: 'derived'; text: string; chipKind: 'derived' | 'condition' };
 
 /**
  * 一个 item 在值层里的竖向链（自上而下）：
@@ -480,6 +648,10 @@ function valueChainOf(
   }
   if (item.kind === 'event') {
     pushValues(item.args.flatMap((arg) => termBindingRefs(arg)));
+    return entries;
+  }
+  if (item.kind === 'branch') {
+    if (item.marker === 'branch') entries.push(...guardEntries(item.guard, item.guardKind ?? 'if', item.guardText ?? '', destructorNames));
     return entries;
   }
   if (item.kind !== 'local') return entries;
@@ -524,9 +696,83 @@ function valueChainOf(
         outputBindingIds: item.bindingIds,
       });
     }
+    // `let x = if c then a else b`：条件作盒外芯片（决策 13：选择盒不划臂区间）。
+    if (item.term.kind === 'conditional') {
+      entries.push({ kind: 'derived', text: renderCondition(item.term.condition), chipKind: 'condition' });
+    }
   }
   if (item.pattern !== undefined) pushValues(termBindingRefs(item.pattern), introduced);
   return entries;
+}
+
+/**
+ * 守卫 → 检查行（决策 13）：被检查的两个操作数以同色方块并排贴在盒上方、op 在盒内、无输出；
+ * 复合条件逐子句成行并把连接词作字形挂在子句旁；内嵌解构先画自己的盒 + 派生虚线芯片再喂进盒。
+ */
+function guardEntries(
+  condition: Condition | undefined,
+  kind: 'if' | 'get',
+  text: string,
+  destructorNames: ReadonlySet<string>,
+): ChainEntry[] {
+  if (kind === 'get') return [{ kind: 'check', op: '∈', operands: [{ kind: 'chip', text }] }];
+  if (condition === undefined) return [{ kind: 'check', op: '?', operands: [{ kind: 'chip', text }] }];
+  return pushCondition(condition, [], undefined, destructorNames);
+}
+
+function pushCondition(
+  condition: Condition,
+  entries: ChainEntry[],
+  connector: '&&' | '||' | undefined,
+  destructorNames: ReadonlySet<string>,
+): ChainEntry[] {
+  if (condition.kind === 'compound') {
+    let collected = entries;
+    condition.clauses.forEach((clause, index) => {
+      collected = pushCondition(clause, collected, index === 0 ? connector : condition.operator, destructorNames);
+    });
+    return collected;
+  }
+  if (condition.kind === 'unknown') {
+    return [...entries, { kind: 'check', op: '?', operands: [{ kind: 'chip', text: condition.text }], ...(connector === undefined ? {} : { connector }) }];
+  }
+
+  const operands: CheckOperand[] = [];
+  for (const side of [condition.left, condition.right]) {
+    if (side.kind === 'application') {
+      // 条件里内嵌解构：输入方块 → 解构盒 → 派生虚线芯片（不是值方块），芯片再喂进检查盒。
+      const refs = termBindingRefs(side);
+      refs.forEach((ref) => entries.push({
+        kind: 'value',
+        bindingId: ref.bindingId,
+        occurrence: ref.equality ? 'equality' : 'reference',
+      }));
+      const method = methodOfTerm(side, destructorNames, true);
+      if (method !== null) {
+        entries.push({
+          kind: 'method',
+          label: method.label,
+          direction: method.direction,
+          caption: captionOf(side),
+          inputBindingIds: refs.map((ref) => ref.bindingId),
+          outputBindingIds: [],
+        });
+      }
+      entries.push({ kind: 'derived', text: renderTerm(side), chipKind: 'derived' });
+      operands.push({ kind: 'chip', text: method?.label ?? renderTerm(side) });
+      continue;
+    }
+    const refs = termBindingRefs(side);
+    operands.push(refs.length === 1 && refs[0] !== undefined
+      ? { kind: 'value', bindingId: refs[0].bindingId }
+      : { kind: 'chip', text: renderTerm(side) });
+  }
+  return [...entries, {
+    kind: 'check',
+    op: condition.operator,
+    operands,
+    ...(connector === undefined ? {} : { connector }),
+  }];
 }
 
 interface TermBindingRef {
@@ -535,10 +781,11 @@ interface TermBindingRef {
 }
 
 function chainHeightOf(chain: readonly ChainEntry[]): number {
-  return chain.reduce(
-    (total, entry) => total + (entry.kind === 'method' ? METRICS.methodPitch : METRICS.valuePitch),
-    0,
-  );
+  return chain.reduce((total, entry) => {
+    if (entry.kind === 'method') return total + METRICS.methodPitch;
+    if (entry.kind === 'check') return total + METRICS.checkPitch;
+    return total + METRICS.valuePitch;
+  }, 0);
 }
 
 function termBindingRefs(term: PvTerm, equality = false): TermBindingRef[] {
@@ -674,6 +921,11 @@ function renderCondition(condition: Condition): string {
     return condition.clauses.map((clause) => renderCondition(clause)).join(` ${condition.operator} `);
   }
   return condition.text;
+}
+
+/** 臂道轨道 x：从值方块右缘之外起算，避免压住方块。 */
+function armRailX(lifelineX: number, lane: number): number {
+  return lifelineX + METRICS.valueWidth / 2 + 6 + lane * METRICS.laneStep;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -211,6 +211,11 @@ export interface BranchItem {
   kind: 'branch';
   id: string;
   marker: 'branch' | 'else' | 'join';
+  /** 链接同一分支的三个标记（branch / else / join）。 */
+  linkId?: string;
+  /** 守卫原文与来源：`if` 条件或 `get` 表模式。 */
+  guardText?: string;
+  guardKind?: 'if' | 'get';
   guard?: Condition;
   arm: 'then' | 'else' | 'main';
   span: SourceSpan;

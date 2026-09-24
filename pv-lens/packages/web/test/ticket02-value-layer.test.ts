@@ -119,15 +119,22 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
     expect(svg).toContain('event acceptsServer(k,pkX)');
   });
 
-  it('同一角色的值方块不互相重叠（竖向紧密链）', () => {
+  it('同一角色的值方块互不重叠（竖向紧密链；检查盒的两个操作数同 y 但 x 错开）', () => {
     for (const sample of coreSamples) {
       const layout = buildStructuredNarrativeLayout(coreFixture(sample.pvFile));
-      const byRole = new Map<number, number[]>();
+      const byRole = new Map<number, (typeof layout.valueBlocks)[number][]>();
       for (const block of layout.valueBlocks) {
-        byRole.set(block.roleIndex, [...(byRole.get(block.roleIndex) ?? []), block.y]);
+        byRole.set(block.roleIndex, [...(byRole.get(block.roleIndex) ?? []), block]);
       }
-      for (const [roleIndex, ys] of byRole) {
-        expect(new Set(ys).size, `${sample.id} 角色 ${String(roleIndex)} 值方块重叠`).toBe(ys.length);
+      for (const [roleIndex, blocks] of byRole) {
+        for (let i = 0; i < blocks.length; i++) {
+          for (let j = i + 1; j < blocks.length; j++) {
+            const a = blocks[i];
+            const b = blocks[j];
+            const overlaps = Math.abs(a.y - b.y) < a.height && Math.abs(a.x - b.x) < a.width;
+            expect(overlaps, `${sample.id} 角色 ${String(roleIndex)} 的值方块重叠：${a.label}/${b.label}`).toBe(false);
+          }
+        }
       }
     }
   });

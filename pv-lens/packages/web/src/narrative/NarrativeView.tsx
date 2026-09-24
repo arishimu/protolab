@@ -98,17 +98,21 @@ function StructuredNarrativeCanvas({
           ))}
         </defs>
         <StructuredColumns layout={layout} />
+        <g className="structured-arm-layer">
+          {layout.armRuns.map((run) => <ArmRunSvg key={run.id} run={run} />)}
+        </g>
         <g className="structured-message-layer">
           {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
           {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
         </g>
         <g className="structured-node-layer">
           {layout.nodes
-            .filter((node) => node.kind !== 'message' && (node.kind !== 'local' || node.bindingIds.length === 0))
+            .filter((node) => node.kind !== 'message' && node.kind !== 'branch' && (node.kind !== 'local' || node.bindingIds.length === 0))
             .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
         </g>
         <g className="structured-value-layer">
           {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} />)}
+          {layout.chips.map((chip) => <StructuredChipSvg key={chip.id} chip={chip} />)}
           {layout.valueBlocks.map((block) => <StructuredValueBlockSvg key={block.id} block={block} />)}
         </g>
         {layout.conflicts.map((conflict) => (
@@ -192,8 +196,12 @@ function EndpointSvg({
   const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
   const start = endpoint.direction === 'out' ? endpoint.roleX : endpoint.channelX;
   const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
-  const curve = Math.abs(end - start) > 100 ? (start + end) / 2 : start + (end - start) / 2;
-  const path = `M ${start} ${endpoint.y} Q ${curve} ${endpoint.y - 16} ${end} ${endpoint.y}`;
+  // 只有在跨过中间生命线时才上拱（ADR-0004 的跨线弧）；否则一律直线——原型是一条贯穿线。
+  const bowed = endpoint.crossesIntermediate;
+  const mid = (start + end) / 2;
+  const path = bowed
+    ? `M ${start} ${endpoint.y} Q ${mid} ${endpoint.y - 16} ${end} ${endpoint.y}`
+    : `M ${start} ${endpoint.y} L ${end} ${endpoint.y}`;
   // 未配对词项靠近信道轨（T2 的信道段），给中间留出构造盒的位置。
   const chipX = endpoint.roleX + (endpoint.channelX - endpoint.roleX) * 0.72;
   // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
@@ -292,7 +300,9 @@ function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['me
     ? '构造'
     : method.direction === 'destruct'
       ? '解构'
-      : '选择';
+      : method.direction === 'check'
+        ? '检查'
+        : '选择';
   return (
     <g
       className={`structured-method structured-method--${method.direction}`}
@@ -301,6 +311,9 @@ function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['me
     >
       <polygon points={points.map(([x, y]) => `${String(x)},${String(y)}`).join(' ')} />
       <text x={method.x} y={method.y + 4} textAnchor="middle">{truncate(method.label, 10)}</text>
+      {method.connector !== undefined && (
+        <text className="structured-check-connector" x={method.x - halfWidth - 10} y={method.y + 4} textAnchor="end">{method.connector}</text>
+      )}
       {method.caption !== undefined && (
         <text className="structured-method-caption" x={method.x} y={method.y + halfHeight + 9} textAnchor="middle">
           <title>{method.caption}</title>
@@ -332,6 +345,38 @@ function StructuredValueBlockSvg({ block }: { block: StructuredNarrativeLayout['
         fill={block.color}
       />
       <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 8)}</text>
+    </g>
+  );
+}
+
+function ArmRunSvg({ run }: { run: StructuredNarrativeLayout['armRuns'][number] }) {
+  const top = run.top;
+  const bottom = run.empty ? top + 18 : Math.max(run.bottom, top + 18);
+  return (
+    <g
+      className={`structured-arm structured-arm--${run.arm}${run.empty ? ' structured-arm--empty' : ''}`}
+      data-identity={run.id}
+      aria-label={`分支臂道 ${run.label}`}
+    >
+      <line className="structured-arm-rail" x1={run.railX} x2={run.railX} y1={top} y2={bottom} />
+      <line className="structured-arm-tick" x1={run.railX} x2={run.lifelineX} y1={top} y2={top} />
+      <line className="structured-arm-tick" x1={run.railX} x2={run.lifelineX} y1={bottom} y2={bottom} />
+      <text className="structured-arm-label" x={run.railX + 5} y={top + 12} textAnchor="start">{run.label}</text>
+    </g>
+  );
+}
+
+function StructuredChipSvg({ chip }: { chip: StructuredNarrativeLayout['chips'][number] }) {
+  const kindLabel = chip.kind === 'derived'
+    ? '派生芯片'
+    : chip.kind === 'condition'
+      ? '条件芯片'
+      : '模式芯片';
+  return (
+    <g className={`structured-chip structured-chip--${chip.kind}`} data-source-offset={chip.sourceSpan.start.offset} aria-label={`${kindLabel} ${chip.text}`}>
+      <title>{chip.text}</title>
+      <rect x={chip.x - chip.width / 2} y={chip.y - chip.height / 2} width={chip.width} height={chip.height} rx="4" />
+      <text x={chip.x} y={chip.y + 4} textAnchor="middle">{truncate(chip.text, 9)}</text>
     </g>
   );
 }

@@ -2,7 +2,7 @@ import type { ProcessFact } from './process.js';
 import type { MessageStep } from './model.js';
 import type {
   Binding,
-  BranchItem,
+
   Condition,
   MessageItem,
   MessageEndpoint,
@@ -32,7 +32,11 @@ export function buildRoleItems(
     ...(parameter.typeName === undefined ? {} : { typeName: parameter.typeName }),
     span: steps[0]?.span ?? emptySpan(),
   }));
-  const visible = new Map(parameters.map((parameter, index) => [parameter.name, bindings[index].id]));
+  // 作用域 = 帧栈：frames[0] 是角色级，每个分支臂压一帧，引用自内向外取最近同名绑定。
+  const frames: Array<Map<string, string>> = [new Map(parameters.map((parameter, index) => [parameter.name, bindings[index].id]))];
+  const branchParents: number[] = [];
+  const lookup = makeLookup(frames);
+  const visibleNames = (): Set<string> => new Set(frames.flatMap((frame) => [...frame.keys()]));
   const items: RoleItem[] = [];
 
   const addBinding = (
@@ -52,7 +56,7 @@ export function buildRoleItems(
       itemId,
     };
     bindings.push(binding);
-    visible.set(name, binding.id);
+    frames[frames.length - 1].set(name, binding.id);
     return binding;
   };
 
@@ -61,7 +65,7 @@ export function buildRoleItems(
       const step = steps[fact.stepIndex];
       if (step === undefined) continue;
       const messageId = `${roleName}:message:${fact.stepIndex}`;
-      const priorVisible = new Map(visible);
+      const priorLookup = makeLookup(frames.map((frame) => new Map(frame)));
       const bindingIds: string[] = [];
       let term: PvTerm;
       if (step.direction === 'in') {
@@ -73,30 +77,12 @@ export function buildRoleItems(
           patternBindings.set(name, binding);
           bindingIds.push(binding.id);
         }
-        term = resolvePattern(step.term, priorVisible, patternBindings);
+        // 绑定名用新绑定，`=x` 用模式之前的作用域（不会被同名新绑定遮蔽）。
+        term = resolvePattern(step.term, priorLookup, patternBindings);
       } else {
-        term = resolveTerm(step.term, priorVisible);
+        term = resolveTerm(step.term, lookup);
       }
       const sourceStep: MessageStep = { ...step, term };
-      if (step.annotations.guards.length > 0) {
-        for (const guard of step.annotations.guards) {
-          if (guard.kind !== 'if' && guard.kind !== 'get') continue;
-          const condition = resolveCondition(
-            parseConditionText(guard.text, new Set(priorVisible.keys())),
-            priorVisible,
-          );
-          const branch: BranchItem = {
-            kind: 'branch',
-            id: `${roleName}:branch:${guard.span.start.offset}`,
-            marker: 'branch',
-            guard: condition,
-            arm: 'then',
-            span: guard.span,
-            depth: 0,
-          };
-          items.push(branch);
-        }
-      }
       const endpoint: MessageEndpoint = {
         kind: 'message',
         id: messageId,
@@ -124,6 +110,54 @@ export function buildRoleItems(
       continue;
     }
 
+    if (fact.kind === 'branch') {
+      items.push({
+        kind: 'branch',
+        id: `${roleName}:branch:${fact.linkId}`,
+        marker: 'branch',
+        linkId: fact.linkId,
+        guardText: fact.guardText,
+        guardKind: fact.guardKind,
+        guard: resolveCondition(parseConditionText(fact.guardText, visibleNames()), lookup),
+        arm: 'then',
+        span: fact.span,
+        depth: branchParents.length,
+      });
+      branchParents.push(frames.length);
+      frames.push(new Map());
+      continue;
+    }
+
+    if (fact.kind === 'else' || fact.kind === 'join') {
+      const parent = branchParents[branchParents.length - 1] ?? frames.length;
+      frames.length = parent;
+      if (fact.kind === 'else') {
+        frames.push(new Map());
+        items.push({
+          kind: 'branch',
+          id: `${roleName}:branch:${fact.linkId}:else`,
+          marker: 'else',
+          linkId: fact.linkId,
+          arm: 'else',
+          span: fact.span,
+          depth: branchParents.length - 1,
+          empty: fact.empty,
+        });
+        continue;
+      }
+      branchParents.pop();
+      items.push({
+        kind: 'branch',
+        id: `${roleName}:branch:${fact.linkId}:join`,
+        marker: 'join',
+        linkId: fact.linkId,
+        arm: 'main',
+        span: fact.span,
+        depth: branchParents.length,
+      });
+      continue;
+    }
+
     if (fact.kind === 'new') {
       const itemId = `${roleName}:item:${items.length}:new`;
       const binding = addBinding(fact.fresh.name, 'new', fact.fresh.span, fact.fresh.typeName, itemId);
@@ -142,7 +176,7 @@ export function buildRoleItems(
 
     if (fact.kind === 'let' || fact.kind === 'get') {
       const itemId = `${roleName}:item:${items.length}:${fact.kind}`;
-      const priorVisible = new Map(visible);
+      const priorLookup = makeLookup(frames.map((frame) => new Map(frame)));
       const bindingIds: string[] = [];
       const patternBindings = new Map<string, Binding>();
       for (const name of fact.boundNames) {
@@ -151,8 +185,8 @@ export function buildRoleItems(
         patternBindings.set(name, binding);
         bindingIds.push(binding.id);
       }
-      const pattern = resolvePattern(fact.pattern, priorVisible, patternBindings);
-      const term = fact.kind === 'let' ? resolveTerm(fact.term, priorVisible) : undefined;
+      const pattern = resolvePattern(fact.pattern, priorLookup, patternBindings);
+      const term = fact.kind === 'let' ? resolveTerm(fact.term, priorLookup) : undefined;
       items.push({
         kind: 'local',
         id: itemId,
@@ -180,7 +214,7 @@ export function buildRoleItems(
     }
 
     if (fact.kind === 'event') {
-      const args = fact.args.map((arg) => resolveTerm(arg, visible));
+      const args = fact.args.map((arg) => resolveTerm(arg, lookup));
       items.push({
         kind: 'event',
         id: `${roleName}:event:${fact.event.span.start.offset}`,
@@ -214,50 +248,63 @@ function collectPatternVariables(term: PvTerm): string[] {
   return names;
 }
 
+/** 作用域查询：帧栈自内向外取最近同名绑定。 */
+type BindingLookup = (name: string) => string | undefined;
+
+function makeLookup(frames: readonly ReadonlyMap<string, string>[]): BindingLookup {
+  return (name) => {
+    for (let index = frames.length - 1; index >= 0; index--) {
+      const hit = frames[index].get(name);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
+  };
+}
+
 function resolvePattern(
   term: PvTerm,
-  visible: ReadonlyMap<string, string>,
+  lookup: BindingLookup,
   introduced: ReadonlyMap<string, Binding>,
 ): PvTerm {
   if (term.kind === 'variable') {
-    const bindingId = introduced.get(term.name)?.id ?? visible.get(term.name);
+    const bindingId = introduced.get(term.name)?.id ?? lookup(term.name);
     return bindingId === undefined ? term : { ...term, bindingId };
   }
-  if (term.kind === 'equality') return { ...term, term: resolveTerm(term.term, visible) };
-  if (term.kind === 'application') return { ...term, args: term.args.map((child) => resolvePattern(child, visible, introduced)) };
-  if (term.kind === 'tuple') return { ...term, items: term.items.map((child) => resolvePattern(child, visible, introduced)) };
-  return resolveTerm(term, visible);
+  if (term.kind === 'equality') return { ...term, term: resolveTerm(term.term, lookup) };
+  if (term.kind === 'application') return { ...term, args: term.args.map((child) => resolvePattern(child, lookup, introduced)) };
+  if (term.kind === 'tuple') return { ...term, items: term.items.map((child) => resolvePattern(child, lookup, introduced)) };
+  return resolveTerm(term, lookup);
 }
 
-function resolveTerm(term: PvTerm, visible: ReadonlyMap<string, string>): PvTerm {
+function resolveTerm(term: PvTerm, lookup: BindingLookup): PvTerm {
   if (term.kind === 'variable') {
-    const bindingId = visible.get(term.name);
+    const bindingId = lookup(term.name);
     return bindingId === undefined ? term : { ...term, bindingId };
   }
-  if (term.kind === 'application') return { ...term, args: term.args.map((child) => resolveTerm(child, visible)) };
-  if (term.kind === 'tuple') return { ...term, items: term.items.map((child) => resolveTerm(child, visible)) };
+  if (term.kind === 'application') return { ...term, args: term.args.map((child) => resolveTerm(child, lookup)) };
+  if (term.kind === 'tuple') return { ...term, items: term.items.map((child) => resolveTerm(child, lookup)) };
   if (term.kind === 'conditional') {
     return {
       ...term,
-      condition: resolveCondition(term.condition, visible),
-      thenTerm: resolveTerm(term.thenTerm, visible),
-      elseTerm: resolveTerm(term.elseTerm, visible),
+      condition: resolveCondition(term.condition, lookup),
+      thenTerm: resolveTerm(term.thenTerm, lookup),
+      elseTerm: resolveTerm(term.elseTerm, lookup),
     };
   }
-  if (term.kind === 'equality') return { ...term, term: resolveTerm(term.term, visible) };
+  if (term.kind === 'equality') return { ...term, term: resolveTerm(term.term, lookup) };
   return term;
 }
 
-function resolveCondition(condition: Condition, visible: ReadonlyMap<string, string>): Condition {
+function resolveCondition(condition: Condition, lookup: BindingLookup): Condition {
   if (condition.kind === 'comparison') {
     return {
       ...condition,
-      left: resolveTerm(condition.left, visible),
-      right: resolveTerm(condition.right, visible),
+      left: resolveTerm(condition.left, lookup),
+      right: resolveTerm(condition.right, lookup),
     };
   }
   if (condition.kind === 'compound') {
-    return { ...condition, clauses: condition.clauses.map((clause) => resolveCondition(clause, visible)) };
+    return { ...condition, clauses: condition.clauses.map((clause) => resolveCondition(clause, lookup)) };
   }
   return condition;
 }

@@ -53,7 +53,10 @@ export type ProcessFact =
   | { kind: 'let'; span: SourceSpan; text: string; pattern: PvTerm; term: PvTerm; boundNames: readonly string[] }
   | { kind: 'get'; span: SourceSpan; text: string; pattern: PvTerm; boundNames: readonly string[] }
   | { kind: 'insert'; span: SourceSpan; text: string }
-  | { kind: 'event'; event: PendingEvent; args: readonly PvTerm[] };
+  | { kind: 'event'; event: PendingEvent; args: readonly PvTerm[] }
+  | { kind: 'branch'; linkId: string; guardText: string; guardKind: 'if' | 'get'; span: SourceSpan }
+  | { kind: 'else'; linkId: string; span: SourceSpan; empty: boolean }
+  | { kind: 'join'; linkId: string; span: SourceSpan };
 
 /** 一次扫描的事实流：保留本地语句的源码顺序，供值层 IR 使用。 */
 export interface BodyScan {
@@ -437,7 +440,7 @@ function scanGet(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<s
   });
 
   cursor.position = inIndex + 1;
-  scanBranches(cursor, body, terminators, guard);
+  scanBranches(cursor, body, terminators, guard, `get:${String(patternSpan.start.offset)}`);
 }
 
 /** `insert 表(键, 值)`：整条语句作注释，挂到其后最近的消息步。 */
@@ -474,7 +477,7 @@ function scanIf(cursor: TokenCursor, body: BodyScan, terminators: ReadonlySet<st
   body.pending.guards.push(guard);
 
   cursor.position = thenIndex + 1;
-  scanBranches(cursor, body, terminators, guard);
+  scanBranches(cursor, body, terminators, guard, `if:${String(span.start.offset)}`);
 }
 
 /**
@@ -487,15 +490,47 @@ function scanBranches(
   body: BodyScan,
   terminators: ReadonlySet<string>,
   guard: PendingGuard,
+  linkId: string,
 ): void {
-  scanSequence(cursor, body, new Set([...terminators, 'else']));
-  if (!cursor.atIdent('else')) return;
+  const armStart = new Set(body.variables);
+  body.facts.push({
+    kind: 'branch',
+    linkId,
+    guardText: guard.text,
+    guardKind: guard.kind === 'get' ? 'get' : 'if',
+    span: guard.span,
+  });
 
-  cursor.next();
+  scanSequence(cursor, body, new Set([...terminators, 'else']));
+  if (!cursor.atIdent('else')) {
+    // 单臂分支：作用域回到分叉前，合流标记仍恒发。
+    body.variables = new Set(armStart);
+    body.facts.push({ kind: 'join', linkId, span: guard.span });
+    return;
+  }
+
+  const elseToken = cursor.next();
+  const elseSteps = body.steps.length;
+  // 两臂是兄弟作用域：else 看不见 then 臂引入的绑定。
+  body.variables = new Set(armStart);
+  // else 标记必须在 else 臂的 items 之前落到事实流里，空臂标志等扫完再回填。
+  const elseFactIndex = body.facts.push({
+    kind: 'else',
+    linkId,
+    span: cursor.span(elseToken.span.start),
+    empty: true,
+  }) - 1;
   // 守卫已挂到 then / in 分支的消息步上时（pending 已被清空），这里重新放回，让 else 分支的
   // 首个消息步也带上；若前一分支没有消息步，守卫还在 pending 里，就自然落到 else 分支。
   if (!body.pending.guards.includes(guard)) body.pending.guards.push({ ...guard });
   scanSequence(cursor, body, terminators);
+
+  const elseFact = body.facts[elseFactIndex];
+  if (elseFact?.kind === 'else') {
+    body.facts[elseFactIndex] = { ...elseFact, empty: body.steps.length === elseSteps };
+  }
+  body.variables = new Set(armStart);
+  body.facts.push({ kind: 'join', linkId, span: cursor.span(guard.span.start) });
 }
 
 function scanInvocation(cursor: TokenCursor, body: BodyScan): void {
