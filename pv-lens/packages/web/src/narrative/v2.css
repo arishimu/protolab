@@ -156,20 +156,27 @@
   stroke: #d4a72c;
 }
 
-.structured-node--branch rect {
-  fill: #eff6ff;
+.structured-node--branch line {
   stroke: #2563eb;
-  transform: skewY(-8deg);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+}
+
+.structured-parameter-label {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+.structured-method-caption {
+  fill: var(--muted);
+  font-size: 8.5px;
+  font-family: var(--mono);
 }
 
 .structured-event path {
-  fill: #334155;
-  stroke: #334155;
-}
-
-.structured-event line {
-  stroke: #334155;
-  stroke-width: 1.5;
+  fill: #0d9488;
+  stroke: #0d9488;
 }
 
 .structured-event text {

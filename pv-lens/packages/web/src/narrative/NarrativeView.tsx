@@ -155,6 +155,9 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
                 {[column.replicated ? '!' : '', column.parallel ? '|' : ''].filter(Boolean).join(' ')}
               </text>
             )}
+            {column.parameterLabelY !== undefined && (
+              <text className="structured-parameter-label" x={column.x + column.width / 2} y={column.parameterLabelY} textAnchor="middle">参数</text>
+            )}
             {isChannel && <text className="structured-channel-index" x={column.x + column.width / 2} y="48" textAnchor="middle">{channelGlyph(column.index)}</text>}
           </g>
         );
@@ -164,10 +167,15 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
 }
 
 function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pillars'][number] }) {
+  const frameY = (pillar.top + pillar.bottom) / 2;
   return (
-    <g className="structured-message-pillar" data-identity={pillar.id} aria-label={`消息 ${pillar.sequence} · 信道 ${pillar.channelName}`}>
+    <g className="structured-message-pillar" data-identity={pillar.id} data-term={pillar.termText} aria-label={`消息 M${String(pillar.sequence)} · 信道 ${pillar.channelName} · ${pillar.termText}`}>
       <rect x={pillar.channelX - 5} y={pillar.top - 6} width="10" height={Math.max(12, pillar.bottom - pillar.top + 12)} fill={pillar.color} />
       <text x={pillar.channelX + 10} y={pillar.top + 4} fill={pillar.color}>M{pillar.sequence}</text>
+      <g className="structured-message-frame">
+        <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 35} y={frameY - 11} width="70" height="22" stroke={pillar.color} />
+        <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, 10)}</text>
+      </g>
     </g>
   );
 }
@@ -185,30 +193,55 @@ function EndpointSvg({
   const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
   const curve = Math.abs(end - start) > 100 ? (start + end) / 2 : start + (end - start) / 2;
   const path = `M ${start} ${endpoint.y} Q ${curve} ${endpoint.y - 16} ${end} ${endpoint.y}`;
+  // 未配对词项靠近信道轨（T2 的信道段），给中间留出构造盒的位置。
+  const chipX = endpoint.roleX + (endpoint.channelX - endpoint.roleX) * 0.72;
   return (
     <g className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}`} data-identity={endpoint.id} data-channel={endpoint.channelName} aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}`}>
       <path d={path} stroke={color} markerEnd={marker} />
-      <rect className={`structured-term-chip structured-term-chip--${endpoint.termPresentation}`} x={(start + end) / 2 - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
-      <text x={(start + end) / 2} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 10)}</text>
-      {endpoint.unpaired && <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />}
+      {endpoint.unpaired && (
+        <>
+          <rect className={`structured-term-chip structured-term-chip--${endpoint.termPresentation}`} x={chipX - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
+          <text x={chipX} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 10)}</text>
+          <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />
+        </>
+      )}
     </g>
   );
 }
 
 function StructuredNodeSvg({ node }: { node: StructuredNode }) {
+  const label = truncate(node.label, node.labelMaxChars);
   if (node.kind === 'event') {
+    // 事件旗标：生命线上的实心旗 + 右侧标签（前提/结论区分归 #08）。
     return (
       <g className="structured-event" data-source-offset={node.span.start.offset} aria-label={node.label}>
-        <path d={`M ${node.x + node.width / 2} ${node.y + 5} l 9 9 l -9 9 l -9 -9 z`} />
-        <line x1={node.x + node.width / 2 + 8} y1={node.y + 10} x2={node.x + node.width / 2 + 20} y2={node.y - 3} />
-        <text x={node.x + node.width / 2 + 24} y={node.y + 18}>{node.label}</text>
+        <title>{node.label}</title>
+        <path d={`M ${node.x + node.width / 2} ${node.y + 7} l 12 6 l -12 6 z`} />
+        <text x={node.labelX} y={node.y + 18} textAnchor={node.labelAnchor}>{label}</text>
+      </g>
+    );
+  }
+  if (node.kind === 'branch') {
+    // 分支占位：生命线上的横 tick + 守卫原文（#03 会换成等值检查盒 + 臂道）。
+    return (
+      <g className="structured-node structured-node--branch" data-source-offset={node.span.start.offset} aria-label={node.label}>
+        <title>{node.label}</title>
+        <line x1={node.x + 8} x2={node.x + node.width - 8} y1={node.y + node.height / 2} y2={node.y + node.height / 2} />
+        <text x={node.labelX} y={node.y + node.height / 2 + 4} textAnchor={node.labelAnchor}>{label}</text>
       </g>
     );
   }
   return (
     <g className={`structured-node structured-node--${node.kind}`} data-source-offset={node.span.start.offset} aria-label={node.label}>
+      <title>{node.label}</title>
       <rect x={node.x} y={node.y} width={node.width} height={node.height} />
-      <text x={node.x + node.width / 2} y={node.y + node.height / 2 + 4} textAnchor="middle">{truncate(node.label, 8)}</text>
+      <text
+        x={node.labelAnchor === 'middle' ? node.x + node.width / 2 : node.labelX}
+        y={node.y + node.height / 2 + 4}
+        textAnchor={node.labelAnchor}
+      >
+        {label}
+      </text>
     </g>
   );
 }
@@ -242,6 +275,12 @@ function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['me
     >
       <polygon points={points.map(([x, y]) => `${String(x)},${String(y)}`).join(' ')} />
       <text x={method.x} y={method.y + 4} textAnchor="middle">{truncate(method.label, 10)}</text>
+      {method.caption !== undefined && (
+        <text className="structured-method-caption" x={method.x} y={method.y + halfHeight + 9} textAnchor="middle">
+          <title>{method.caption}</title>
+          {truncate(method.caption, 16)}
+        </text>
+      )}
     </g>
   );
 }

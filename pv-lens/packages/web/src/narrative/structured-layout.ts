@@ -16,6 +16,10 @@ export const MESSAGE_COLORS = ['#2563EB', '#0891B2', '#16A34A', '#D97706', '#DC2
 export const VALUE_COLORS = ['#BFDBFE', '#A5F3FC', '#BBF7D0', '#FED7AA', '#FECACA', '#DDD6FE', '#FBCFE8', '#CBD5E1'] as const;
 export const CHANNEL_STYLES = ['solid', 'long-dash', 'dot'] as const;
 
+/** 粗略字宽，仅用于估算标签占用与画布宽度（不做像素级排版）。 */
+const CHAR_WIDTH = 6.2;
+const CAPTION_CHAR_WIDTH = 5.6;
+
 export interface StructuredColumn {
   kind: 'role' | 'channel';
   name: string;
@@ -25,6 +29,8 @@ export interface StructuredColumn {
   signatureText?: string;
   replicated?: boolean;
   parallel?: boolean;
+  /** 参数簇小标题「参数」的 y；无参数时缺省。 */
+  parameterLabelY?: number;
 }
 
 export interface StructuredNode {
@@ -36,7 +42,11 @@ export interface StructuredNode {
   y: number;
   width: number;
   height: number;
+  /** 节点标签全文；渲染方按 labelMaxChars 截断，全文进 title / aria-label。 */
   label: string;
+  labelX: number;
+  labelAnchor: 'start' | 'middle';
+  labelMaxChars: number;
   span: SourceSpan;
   stepIndex?: number;
   direction?: 'out' | 'in';
@@ -62,6 +72,8 @@ export interface StructuredMethod {
   id: string;
   roleIndex: number;
   label: string;
+  /** 盒下小字：算子实参元组（原型里的 caption）。 */
+  caption?: string;
   direction: 'construct' | 'destruct' | 'select';
   x: number;
   y: number;
@@ -95,6 +107,9 @@ export interface MessagePillar {
   channelX: number;
   top: number;
   bottom: number;
+  /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）。 */
+  termText: string;
+  termPresentation: StructuredEndpoint['termPresentation'];
   endpoints: readonly StructuredEndpoint[];
 }
 
@@ -134,15 +149,22 @@ const METRICS = {
   columnGap: 38,
   headerHeight: 58,
   parameterHeight: 28,
+  parameterLabelGap: 20,
   nodeHeight: 28,
-  branchHeight: 38,
+  branchHeight: 26,
   localHeight: 30,
   eventHeight: 30,
   messageHeight: 30,
   valueWidth: 50,
   valueHeight: 18,
+  /** 值方块槽位（含格间留白）与方法盒槽位（盒 24 + 盒下 caption）。 */
+  valuePitch: 20,
+  methodPitch: 38,
+  chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
+  /** 构造盒落在「生命线 → 消息」路径上的横向偏移。 */
+  wireMethodOffset: 58,
 } as const;
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
@@ -155,23 +177,27 @@ export function buildStructuredNarrativeLayout(
   const gapUnit = 26 - compactness * 8;
   const horizontal = solveHorizontalSequence(result);
   const roleByName = new Map(roles.map((role) => [role.name, role]));
-  const columns = horizontal.nodes.map((node, index) => {
+  const columnX = (index: number): number => METRICS.margin + index * (METRICS.columnWidth + METRICS.columnGap);
+  const columns: StructuredColumn[] = horizontal.nodes.map((node, index) => {
     const role = node.kind === 'role' ? roleByName.get(node.name) : undefined;
     return {
       kind: node.kind,
       name: node.name,
       index: node.index,
-      x: METRICS.margin + index * (METRICS.columnWidth + METRICS.columnGap),
+      x: columnX(index),
       width: node.kind === 'channel' ? METRICS.channelWidth : METRICS.columnWidth,
       ...(role === undefined ? {} : {
         signatureText: signatureOf(role),
         replicated: role.replicated,
         parallel: role.parallel,
+        ...(role.parameters.length === 0 ? {} : { parameterLabelY: METRICS.headerHeight + METRICS.parameterLabelGap }),
       }),
     };
   });
   const roleColumns = new Map(roles.map((role) => [role.name, columns.find((column) => column.kind === 'role' && column.name === role.name)]));
   const channelColumns = new Map(columns.filter((column) => column.kind === 'channel').map((column) => [column.name, column]));
+  // 标签预算按「列在序列里的位置」取下一列坐标；column.index 是同类序号，不能当位置用。
+  const columnPosition = new Map(columns.map((column, position) => [`${column.kind}:${column.name}`, position]));
   const nodes: StructuredNode[] = [];
   const valueBlocks: StructuredValueBlock[] = [];
   const methods: StructuredMethod[] = [];
@@ -180,40 +206,63 @@ export function buildStructuredNarrativeLayout(
   const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
   const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
   let maxBottom = METRICS.margin + METRICS.headerHeight;
+  let maxTextRight = 0;
   const usedY = new Set<number>();
 
   roles.forEach((role, roleIndex) => {
     const column = roleColumns.get(role.name);
     if (column === undefined) return;
-    let cursor = METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight;
-    role.bindings
-      .filter((binding) => binding.kind === 'parameter')
-      .forEach((binding, parameterIndex) => {
-        const y = METRICS.headerHeight + 8 + parameterIndex * (METRICS.valueHeight + 3);
-        valueBlocks.push(valueBlockOf(
-          binding,
-          roleIndex,
-          column.x + column.width / 2,
-          y,
-          'binding',
-          bindingColors,
-          valueBlocks.length,
-        ));
-      });
-    cursor += Math.max(0, (role.parameters.length - 1) * (METRICS.valueHeight + 3));
+    const lifelineX = column.x + column.width / 2;
+    const nextColumn = columns[(columnPosition.get(`role:${role.name}`) ?? 0) + 1];
+    // 信道总线又窄又淡，标签可以借过；下一列是角色时则止步于它左缘，避免压到对方生命线。
+    const labelLimitX = nextColumn === undefined
+      ? Number.POSITIVE_INFINITY
+      : nextColumn.kind === 'channel'
+        ? nextColumn.x + nextColumn.width + METRICS.columnGap / 2 - 8
+        : nextColumn.x - 8;
+
+    const parameterBindings = role.bindings.filter((binding) => binding.kind === 'parameter');
+    const parameterTop = METRICS.headerHeight + METRICS.parameterLabelGap + 14;
+    parameterBindings.forEach((binding, parameterIndex) => {
+      valueBlocks.push(valueBlockOf(
+        binding,
+        roleIndex,
+        lifelineX,
+        parameterTop + parameterIndex * METRICS.valuePitch,
+        'binding',
+        bindingColors,
+        valueBlocks.length,
+      ));
+    });
+    let cursor = parameterBindings.length === 0
+      ? METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight
+      : parameterTop + parameterBindings.length * METRICS.valuePitch;
+
     role.items.forEach((item, itemIndex) => {
-      const height = item.kind === 'branch' ? METRICS.branchHeight : item.kind === 'event' ? METRICS.eventHeight : item.kind === 'message' ? METRICS.messageHeight : METRICS.localHeight;
-      const proposedY = cursor + height / 2;
-      const y = uniqueY(proposedY, usedY);
-      usedY.add(y);
       const stepItem = item.kind === 'message' ? item : undefined;
-      const stepIndex = stepItem?.endpoint.stepIndex;
+      const chain = valueChainOf(item, bindingById, destructorNames);
+      const baseHeight = item.kind === 'branch'
+        ? METRICS.branchHeight
+        : item.kind === 'event'
+          ? METRICS.eventHeight
+          : item.kind === 'message'
+            ? METRICS.messageHeight
+            : METRICS.localHeight;
+      const rowHeight = Math.max(baseHeight, chainHeightOf(chain) + METRICS.chainPadding);
+      const y = uniqueY(cursor + rowHeight / 2, usedY);
+      usedY.add(y);
+
+      const labelX = stepItem === undefined ? lifelineX + METRICS.valueWidth / 2 + 6 : lifelineX;
+      const labelAnchor: StructuredNode['labelAnchor'] = stepItem === undefined ? 'start' : 'middle';
+      const labelBudget = labelAnchor === 'start'
+        ? Math.max(6, Math.floor((labelLimitX - labelX) / CHAR_WIDTH))
+        : Math.max(6, Math.floor((METRICS.nodeHeight * 2) / CHAR_WIDTH) + 2);
       const label = stepItem !== undefined
         ? `${stepItem.endpoint.direction === 'out' ? '发出' : '接收'} · ${renderTerm(stepItem.endpoint.term)}`
         : item.kind === 'event'
           ? `event ${item.text}`
           : item.kind === 'branch'
-            ? `${item.marker}${item.guard === undefined ? '' : ` · ${conditionLabel(item.guard)}`}`
+            ? branchLabel(item)
             : item.kind === 'local'
               ? item.text
               : '';
@@ -222,26 +271,76 @@ export function buildStructuredNarrativeLayout(
         roleIndex,
         itemIndex,
         kind: item.kind,
-        x: column.x + column.width / 2 - METRICS.nodeHeight,
-        y: y - height / 2,
+        x: lifelineX - METRICS.nodeHeight,
+        y: y - baseHeight / 2,
         width: METRICS.nodeHeight * 2,
-        height,
+        height: baseHeight,
         label,
+        labelX,
+        labelAnchor,
+        labelMaxChars: labelBudget,
         span: item.span,
-        ...(stepItem === undefined ? {} : { stepIndex, direction: stepItem.endpoint.direction, channelName: renderTerm(stepItem.endpoint.channel) }),
+        ...(stepItem === undefined ? {} : { stepIndex: stepItem.endpoint.stepIndex, direction: stepItem.endpoint.direction, channelName: renderTerm(stepItem.endpoint.channel) }),
         bindingIds: item.kind === 'local' && item.bindingId !== undefined ? [item.bindingId] : [],
       });
+      if (labelAnchor === 'start') {
+        maxTextRight = Math.max(maxTextRight, labelX + Math.min(label.length, labelBudget) * CHAR_WIDTH);
+      }
+
+      // 值层竖向链：紧贴生命线，值方块 20px 一格、方法盒 38px 一格（盒下留 caption），行高随链长增长。
+      let slotTop = y - chainHeightOf(chain) / 2;
+      chain.forEach((entry) => {
+        if (entry.kind === 'value') {
+          const binding = bindingById.get(entry.bindingId);
+          const slotY = slotTop + METRICS.valuePitch / 2;
+          slotTop += METRICS.valuePitch;
+          if (binding === undefined) return;
+          valueBlocks.push(valueBlockOf(
+            binding,
+            roleIndex,
+            lifelineX,
+            slotY,
+            entry.occurrence,
+            bindingColors,
+            valueBlocks.length,
+          ));
+          maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
+          return;
+        }
+        const boxCenterY = slotTop + METRICS.methodHeight / 2;
+        slotTop += METRICS.methodPitch;
+        methods.push({
+          id: `${item.id}:method`,
+          roleIndex,
+          label: entry.label,
+          ...(entry.caption === undefined ? {} : { caption: entry.caption }),
+          direction: entry.direction,
+          x: lifelineX,
+          y: boxCenterY,
+          width: METRICS.methodWidth,
+          height: METRICS.methodHeight,
+          inputBindingIds: entry.inputBindingIds,
+          outputBindingIds: entry.outputBindingIds,
+          sourceSpan: item.span,
+        });
+        if (entry.caption !== undefined) {
+          const captionChars = Math.min(entry.caption.length, 16);
+          maxTextRight = Math.max(maxTextRight, lifelineX + (captionChars * CAPTION_CHAR_WIDTH) / 2);
+        }
+      });
+
       if (stepItem !== undefined) {
         const channelName = renderTerm(stepItem.endpoint.channel);
         const channel = channelColumns.get(channelName);
         if (channel !== undefined) {
+          const channelCenterX = channel.x + channel.width / 2;
           endpoints.push({
             roleIndex,
             stepIndex: stepItem.endpoint.stepIndex,
             id: stepItem.endpoint.id,
             direction: stepItem.endpoint.direction,
-            roleX: column.x + column.width / 2,
-            channelX: channel.x + channel.width / 2,
+            roleX: lifelineX,
+            channelX: channelCenterX,
             y,
             channelName,
             termText: renderTerm(stepItem.endpoint.term),
@@ -249,23 +348,38 @@ export function buildStructuredNarrativeLayout(
             unpaired: true,
             sourceSpan: item.span,
           });
+          // 构造盒落在「生命线 → 消息」路径上：横置梯形，盒内算子名、盒下实参。
+          if (stepItem.endpoint.direction === 'out') {
+            const wire = wireMethodOf(stepItem.endpoint.term, destructorNames);
+            if (wire !== null) {
+              const towardsChannel = Math.sign(channelCenterX - lifelineX) || 1;
+              methods.push({
+                id: `${item.id}:wire-method`,
+                roleIndex,
+                label: wire.label,
+                ...(wire.caption === undefined ? {} : { caption: wire.caption }),
+                direction: wire.direction,
+                x: lifelineX + towardsChannel * METRICS.wireMethodOffset,
+                y,
+                width: METRICS.methodWidth,
+                height: METRICS.methodHeight,
+                inputBindingIds: wire.inputBindingIds,
+                outputBindingIds: [],
+                sourceSpan: item.span,
+              });
+              if (wire.caption !== undefined) {
+                const captionChars = Math.min(wire.caption.length, 16);
+                maxTextRight = Math.max(
+                  maxTextRight,
+                  lifelineX + METRICS.wireMethodOffset + (captionChars * CAPTION_CHAR_WIDTH) / 2,
+                );
+              }
+            }
+          }
         }
       }
-      projectValueLayer({
-        item,
-        roleIndex,
-        roleX: column.x + column.width / 2,
-        y,
-        channelX: stepItem === undefined
-          ? undefined
-          : channelColumns.get(renderTerm(stepItem.endpoint.channel))?.x,
-        bindingById,
-        bindingColors,
-        destructorNames,
-        valueBlocks,
-        methods,
-      });
-      cursor = y + height / 2 + gapUnit;
+
+      cursor = y + rowHeight / 2 + gapUnit;
       maxBottom = Math.max(maxBottom, cursor);
     });
     maxBottom = Math.max(maxBottom, cursor);
@@ -282,17 +396,20 @@ export function buildStructuredNarrativeLayout(
     paired.add(incoming.id);
     const channel = channelColumns.get(out.channelName);
     if (channel === undefined) return;
-    const endpointsForPillar = [out, incoming];
+    const channelX = channel.x + channel.width / 2;
     pillars.push({
       id: `message-${String(index + 1)}`,
       color: MESSAGE_COLORS[index % MESSAGE_COLORS.length],
       sequence: index + 1,
       channelName: out.channelName,
-      channelX: channel.x + channel.width / 2,
+      channelX,
       top: Math.min(out.y, incoming.y),
       bottom: Math.max(out.y, incoming.y),
-      endpoints: endpointsForPillar,
+      termText: out.termText,
+      termPresentation: out.termPresentation,
+      endpoints: [out, incoming],
     });
+    maxTextRight = Math.max(maxTextRight, channelX + 35);
   });
   const finalEndpoints = endpoints.map((endpoint) => ({ ...endpoint, unpaired: !paired.has(endpoint.id) }));
   const finalPillars = pillars.map((pillar) => ({
@@ -303,9 +420,10 @@ export function buildStructuredNarrativeLayout(
   if (new Set(finalEndpoints.map((endpoint) => endpoint.y)).size !== finalEndpoints.length) {
     conflicts.push({ id: 'global-y', message: '消息端点的局部 y 约束无法完全分离，已延长生命线。', y: maxBottom });
   }
-  const width = columns.length === 0
-    ? METRICS.margin * 2
-    : columns[columns.length - 1].x + columns[columns.length - 1].width + METRICS.margin;
+  const columnsRight = columns.length === 0
+    ? METRICS.margin
+    : columns[columns.length - 1].x + columns[columns.length - 1].width;
+  const width = Math.max(columnsRight + METRICS.margin, maxTextRight + 12);
   return {
     columns,
     nodes,
@@ -323,122 +441,105 @@ export function buildStructuredNarrativeLayout(
   };
 }
 
-interface ValueProjectionContext {
-  item: RoleItem;
-  roleIndex: number;
-  roleX: number;
-  y: number;
-  channelX?: number;
-  bindingById: ReadonlyMap<string, Binding>;
-  bindingColors: ReadonlyMap<string, string>;
-  destructorNames: ReadonlySet<string>;
-  valueBlocks: StructuredValueBlock[];
-  methods: StructuredMethod[];
-}
+/** 值层链的一格：值方块，或代算子方法盒。 */
+type ChainEntry =
+  | { kind: 'value'; bindingId: string; occurrence: StructuredValueBlock['occurrence'] }
+  | {
+      kind: 'method';
+      label: string;
+      direction: StructuredMethod['direction'];
+      caption?: string;
+      inputBindingIds: readonly string[];
+      outputBindingIds: readonly string[];
+    };
 
-function projectValueLayer(context: ValueProjectionContext): void {
-  const { item, roleIndex, roleX, y, bindingById, bindingColors, valueBlocks, methods } = context;
-  const pushBlocks = (
-    refs: readonly TermBindingRef[],
-    verticalOffset: number,
-    introduced: ReadonlySet<string> = new Set(),
-  ): void => {
-    refs.forEach((ref, index) => {
-      const binding = bindingById.get(ref.bindingId);
-      if (binding === undefined) return;
-      const occurrence = ref.equality
-        ? 'equality'
-        : introduced.has(ref.bindingId)
-          ? 'binding'
-          : 'reference';
-      const offset = (index - (refs.length - 1) / 2) * (METRICS.valueWidth + 4);
-      valueBlocks.push(valueBlockOf(
-        binding,
-        roleIndex,
-        roleX + offset,
-        y + verticalOffset,
-        occurrence,
-        bindingColors,
-        valueBlocks.length,
-      ));
-    });
+/**
+ * 一个 item 在值层里的竖向链（自上而下）：
+ * `let` = 输入 → 方法盒 → 输出；`get` = 表模式实参 → 方法盒 → 绑定名；
+ * 消息端 = 该端词项引用到的值；`new` = 一个绑定；`event` = 参数引用。
+ */
+function valueChainOf(
+  item: RoleItem,
+  bindingById: ReadonlyMap<string, Binding>,
+  destructorNames: ReadonlySet<string>,
+): ChainEntry[] {
+  const entries: ChainEntry[] = [];
+  const pushValues = (refs: readonly TermBindingRef[], introduced: ReadonlySet<string> = new Set()): void => {
+    for (const ref of refs) {
+      if (!bindingById.has(ref.bindingId)) continue;
+      entries.push({
+        kind: 'value',
+        bindingId: ref.bindingId,
+        occurrence: ref.equality ? 'equality' : introduced.has(ref.bindingId) ? 'binding' : 'reference',
+      });
+    }
   };
 
   if (item.kind === 'message') {
-    const refs = termBindingRefs(item.endpoint.term);
-    pushBlocks(refs, 0, new Set(item.endpoint.bindingIds));
-    const method = methodOfTerm(item.endpoint.term, context.destructorNames);
-    if (item.endpoint.direction === 'out' && method !== null) {
-      const direction = Math.sign((context.channelX ?? roleX + 1) - roleX) || 1;
-      methods.push({
-        id: `${item.id}:wire-method`,
-        roleIndex,
-        label: method.label,
-        direction: method.direction,
-        x: roleX + direction * 44,
-        y: y - 24,
-        width: METRICS.methodWidth,
-        height: METRICS.methodHeight,
-        inputBindingIds: refs.map((ref) => ref.bindingId),
-        outputBindingIds: [],
-        sourceSpan: item.span,
-      });
-    }
-    return;
+    pushValues(termBindingRefs(item.endpoint.term), new Set(item.endpoint.bindingIds));
+    return entries;
   }
+  if (item.kind === 'event') {
+    pushValues(item.args.flatMap((arg) => termBindingRefs(arg)));
+    return entries;
+  }
+  if (item.kind !== 'local') return entries;
+  if (item.operation === 'new') {
+    pushValues(item.bindingIds.map((bindingId) => ({ bindingId, equality: false })), new Set(item.bindingIds));
+    return entries;
+  }
+  if (item.operation === 'insert') return entries;
 
-  if (item.kind === 'local') {
-    if (item.operation === 'new') {
-      const bindingId = item.bindingIds[0];
-      const binding = bindingId === undefined ? undefined : bindingById.get(bindingId);
-      if (binding !== undefined) {
-        valueBlocks.push(valueBlockOf(
-          binding,
-          roleIndex,
-          roleX,
-          y,
-          'binding',
-          bindingColors,
-          valueBlocks.length,
-        ));
-      }
-      return;
-    }
-
-    const inputRefs = item.term === undefined ? [] : termBindingRefs(item.term);
+  const introduced = new Set(item.bindingIds);
+  if (item.operation === 'get') {
     const patternRefs = item.pattern === undefined ? [] : termBindingRefs(item.pattern);
-    pushBlocks(inputRefs, -20);
-    pushBlocks(patternRefs, 20, new Set(item.bindingIds));
-    const methodTerm = item.operation === 'get' ? item.pattern : item.term;
-    const method = methodTerm === undefined
-      ? null
-      : item.operation === 'get'
-        ? { label: methodLabel(methodTerm, 'get'), direction: 'destruct' as const }
-        : methodOfTerm(methodTerm, context.destructorNames);
-    if (method !== null) {
-      methods.push({
-        id: `${item.id}:method`,
-        roleIndex,
-        label: method.label,
-        direction: method.direction,
-        x: roleX,
-        y,
-        width: METRICS.methodWidth,
-        height: METRICS.methodHeight,
-        inputBindingIds: inputRefs.map((ref) => ref.bindingId),
-        outputBindingIds: item.bindingIds,
-        sourceSpan: item.span,
-      });
+    pushValues(patternRefs.filter((ref) => !introduced.has(ref.bindingId)));
+    if (item.pattern !== undefined) {
+      const method = methodOfTerm(item.pattern, destructorNames, true);
+      if (method !== null) {
+        entries.push({
+          kind: 'method',
+          label: method.label,
+          direction: method.direction,
+          caption: captionOf(item.pattern),
+          inputBindingIds: patternRefs.filter((ref) => !introduced.has(ref.bindingId)).map((ref) => ref.bindingId),
+          outputBindingIds: item.bindingIds,
+        });
+      }
     }
-    return;
+    pushValues(patternRefs.filter((ref) => introduced.has(ref.bindingId)), introduced);
+    return entries;
   }
 
-  if (item.kind === 'event') pushBlocks(item.args.flatMap((arg) => termBindingRefs(arg)), 0);
+  const termRefs = item.term === undefined ? [] : termBindingRefs(item.term);
+  pushValues(termRefs);
+  if (item.term !== undefined) {
+    const method = methodOfTerm(item.term, destructorNames);
+    if (method !== null) {
+      entries.push({
+        kind: 'method',
+        label: method.label,
+        direction: method.direction,
+        caption: captionOf(item.term),
+        inputBindingIds: termRefs.map((ref) => ref.bindingId),
+        outputBindingIds: item.bindingIds,
+      });
+    }
+  }
+  if (item.pattern !== undefined) pushValues(termBindingRefs(item.pattern), introduced);
+  return entries;
 }
 
 interface TermBindingRef {
   bindingId: string;
   equality: boolean;
+}
+
+function chainHeightOf(chain: readonly ChainEntry[]): number {
+  return chain.reduce(
+    (total, entry) => total + (entry.kind === 'method' ? METRICS.methodPitch : METRICS.valuePitch),
+    0,
+  );
 }
 
 function termBindingRefs(term: PvTerm, equality = false): TermBindingRef[] {
@@ -468,22 +569,43 @@ function conditionBindingRefs(condition: Condition): TermBindingRef[] {
 function methodOfTerm(
   term: PvTerm,
   destructorNames: ReadonlySet<string>,
+  forceDestruct = false,
 ): { label: string; direction: StructuredMethod['direction'] } | null {
   if (term.kind === 'application') {
     return {
       label: term.functor,
-      direction: destructorNames.has(term.functor) ? 'destruct' : 'construct',
+      direction: forceDestruct || destructorNames.has(term.functor) ? 'destruct' : 'construct',
     };
   }
-  if (term.kind === 'tuple') return { label: 'tuple', direction: 'construct' };
+  if (term.kind === 'tuple') {
+    return forceDestruct
+      ? { label: 'tuple', direction: 'destruct' }
+      : { label: 'tuple', direction: 'construct' };
+  }
   if (term.kind === 'conditional') return { label: '?:', direction: 'select' };
   return null;
 }
 
-function methodLabel(term: PvTerm, fallback: string): string {
-  if (term.kind === 'application') return term.functor;
-  if (term.kind === 'tuple') return 'tuple';
-  return fallback;
+/** 出消息上的构造盒：同一族梯形横置，落在生命线到信道的路径上。 */
+function wireMethodOf(
+  term: PvTerm,
+  destructorNames: ReadonlySet<string>,
+): { label: string; direction: StructuredMethod['direction']; caption?: string; inputBindingIds: readonly string[] } | null {
+  if (term.kind !== 'application' && term.kind !== 'tuple' && term.kind !== 'conditional') return null;
+  const method = methodOfTerm(term, destructorNames);
+  if (method === null) return null;
+  return {
+    label: method.label,
+    direction: method.direction,
+    caption: captionOf(term),
+    inputBindingIds: termBindingRefs(term).map((ref) => ref.bindingId),
+  };
+}
+
+/** 盒下小字：算子的实参元组（`adec` → `(m, skB)`），与原型 caption 同口径。 */
+function captionOf(term: PvTerm): string {
+  if (term.kind === 'application') return `(${term.args.map((arg) => renderTerm(arg)).join(', ')})`;
+  return renderTerm(term);
 }
 
 function termPresentation(term: PvTerm): StructuredEndpoint['termPresentation'] {
@@ -531,15 +653,28 @@ function signatureOf(role: PvRole): string {
   if (role.parameters.length === 0) return '';
   return `(${role.parameters.map((parameter) => parameter.typeName === undefined ? parameter.name : `${parameter.name}: ${parameter.typeName}`).join(', ')})`;
 }
+
 function uniqueY(value: number, used: ReadonlySet<number>): number {
   let y = value;
   while (used.has(y)) y += 4;
   return y;
 }
 
+/** 分支标记的可读标签；#03 会用等值检查盒与臂道替换这个占位。 */
+function branchLabel(item: Extract<RoleItem, { kind: 'branch' }>): string {
+  if (item.marker === 'else') return item.empty === true ? 'else ∅' : 'else';
+  if (item.marker === 'join') return 'join';
+  return item.guard === undefined ? 'if' : `if ${renderCondition(item.guard)}`;
+}
 
-function conditionLabel(condition: { kind: string; text?: string; operator?: string }): string {
-  return condition.kind === 'unknown' ? condition.text ?? 'unknown' : condition.operator ?? condition.kind;
+function renderCondition(condition: Condition): string {
+  if (condition.kind === 'comparison') {
+    return `${renderTerm(condition.left)} ${condition.operator} ${renderTerm(condition.right)}`;
+  }
+  if (condition.kind === 'compound') {
+    return condition.clauses.map((clause) => renderCondition(clause)).join(` ${condition.operator} `);
+  }
+  return condition.text;
 }
 
 function clamp(value: number, min: number, max: number): number {
