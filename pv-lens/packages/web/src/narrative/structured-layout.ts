@@ -75,6 +75,8 @@ export interface StructuredMethod {
   /** 盒下小字：算子实参元组（原型里的 caption）。 */
   caption?: string;
   direction: 'construct' | 'destruct' | 'select';
+  /** 横置构造盒的窄底朝向：窄端指向消息（与原型的「短底 = 值方块宽」同口径）。 */
+  narrowTowards?: 'left' | 'right';
   x: number;
   y: number;
   width: number;
@@ -107,9 +109,10 @@ export interface MessagePillar {
   channelX: number;
   top: number;
   bottom: number;
-  /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）。 */
+  /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）与帧的中轴 y。 */
   termText: string;
   termPresentation: StructuredEndpoint['termPresentation'];
+  frameY: number;
   endpoints: readonly StructuredEndpoint[];
 }
 
@@ -156,7 +159,7 @@ const METRICS = {
   eventHeight: 30,
   messageHeight: 30,
   valueWidth: 50,
-  valueHeight: 18,
+  valueHeight: 16,
   /** 值方块槽位（含格间留白）与方法盒槽位（盒 24 + 盒下 caption）。 */
   valuePitch: 20,
   methodPitch: 38,
@@ -348,7 +351,8 @@ export function buildStructuredNarrativeLayout(
             unpaired: true,
             sourceSpan: item.span,
           });
-          // 构造盒落在「生命线 → 消息」路径上：横置梯形，盒内算子名、盒下实参。
+          // 构造盒落在「生命线 → 消息」路径上：横置梯形，盒内算子名；
+          // 不再写 caption——紧邻的信道帧已经写全了同一个词项，caption 会和帧打架。
           if (stepItem.endpoint.direction === 'out') {
             const wire = wireMethodOf(stepItem.endpoint.term, destructorNames);
             if (wire !== null) {
@@ -357,8 +361,8 @@ export function buildStructuredNarrativeLayout(
                 id: `${item.id}:wire-method`,
                 roleIndex,
                 label: wire.label,
-                ...(wire.caption === undefined ? {} : { caption: wire.caption }),
                 direction: wire.direction,
+                ...(wire.direction === 'construct' ? { narrowTowards: towardsChannel > 0 ? 'right' as const : 'left' as const } : {}),
                 x: lifelineX + towardsChannel * METRICS.wireMethodOffset,
                 y,
                 width: METRICS.methodWidth,
@@ -367,13 +371,6 @@ export function buildStructuredNarrativeLayout(
                 outputBindingIds: [],
                 sourceSpan: item.span,
               });
-              if (wire.caption !== undefined) {
-                const captionChars = Math.min(wire.caption.length, 16);
-                maxTextRight = Math.max(
-                  maxTextRight,
-                  lifelineX + METRICS.wireMethodOffset + (captionChars * CAPTION_CHAR_WIDTH) / 2,
-                );
-              }
             }
           }
         }
@@ -407,6 +404,8 @@ export function buildStructuredNarrativeLayout(
       bottom: Math.max(out.y, incoming.y),
       termText: out.termText,
       termPresentation: out.termPresentation,
+      // 帧对齐到发送端那一端：弧的走向固定（发出→信道→接收），帧不必浮在两端中间。
+      frameY: out.y,
       endpoints: [out, incoming],
     });
     maxTextRight = Math.max(maxTextRight, channelX + 35);
@@ -590,14 +589,14 @@ function methodOfTerm(
 function wireMethodOf(
   term: PvTerm,
   destructorNames: ReadonlySet<string>,
-): { label: string; direction: StructuredMethod['direction']; caption?: string; inputBindingIds: readonly string[] } | null {
-  if (term.kind !== 'application' && term.kind !== 'tuple' && term.kind !== 'conditional') return null;
+): { label: string; direction: StructuredMethod['direction']; inputBindingIds: readonly string[] } | null {
+  // 元组不是算子：线上不为它画构造盒，信道帧已经把结构写全了（链内元组仍画）。
+  if (term.kind === 'tuple') return null;
   const method = methodOfTerm(term, destructorNames);
   if (method === null) return null;
   return {
     label: method.label,
     direction: method.direction,
-    caption: captionOf(term),
     inputBindingIds: termBindingRefs(term).map((ref) => ref.bindingId),
   };
 }

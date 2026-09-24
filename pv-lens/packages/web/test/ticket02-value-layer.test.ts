@@ -154,9 +154,37 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
     expect(checksign?.direction).toBe('destruct');
     const wire = layout.methods.find((method) => method.id.endsWith(':wire-method'));
     expect(wire?.direction).toBe('construct');
-    // 构造盒夹在生命线与信道之间，不压值方块。
-    const role = layout.columns.find((column) => column.kind === 'role' && column.name === 'serverB');
-    expect(role).toBeDefined();
-    expect(Math.abs((wire?.x ?? 0) - (role!.x + role!.width / 2))).toBeGreaterThan(50);
+    // 线上构造盒不写 caption：紧邻的信道帧已经写全了同一个词项，两者会打架。
+    expect(wire?.caption).toBeUndefined();
+    // 构造盒的窄底朝消息（原型口径），长底贴生命线侧：serverB 在信道右侧，所以窄端朝左。
+    const roleIndex = layout.columns.filter((column) => column.kind === 'role').findIndex((column) => column.name === 'serverB');
+    const serverWire = layout.methods.find((method) => method.roleIndex === roleIndex && method.id.endsWith(':wire-method'));
+    const lifelineX = layout.columns.find((column) => column.kind === 'role' && column.name === 'serverB')!.x + 77;
+    expect(serverWire?.narrowTowards).toBe('left');
+    // 夹在生命线与信道之间，不压值方块。
+    expect(Math.abs((serverWire?.x ?? 0) - lifelineX)).toBeGreaterThan(50);
+  });
+
+  it('箭头只指向抵达目标：配对消息的发送段没有箭头，接收段有', () => {
+    const result = coreFixture('pv/handshake-fixed.pv');
+    const svg = renderSvg(result);
+    const groupOf = (id: string) => {
+      const start = svg.indexOf(`data-identity="${id}"`);
+      expect(start, id).toBeGreaterThan(-1);
+      return svg.slice(start, svg.indexOf('</g>', start));
+    };
+    expect(groupOf('clientA:message:0')).not.toContain('marker-end');
+    expect(groupOf('serverB:message:0')).toContain('marker-end');
+    // 发送端在生命线侧留一个同色起点圆点。
+    expect(groupOf('clientA:message:0')).toContain('structured-sender-dot');
+  });
+
+  it('线上不为元组画构造盒（元组不是算子）', () => {
+    const layout = buildStructuredNarrativeLayout(coreFixture('pv/ns-original.pv'));
+    const wireLabels = layout.methods
+      .filter((method) => method.id.endsWith(':wire-method'))
+      .map((method) => method.label);
+    expect(wireLabels).not.toContain('tuple');
+    expect(wireLabels).toContain('aenc');
   });
 });

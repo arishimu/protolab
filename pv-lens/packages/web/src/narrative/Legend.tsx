@@ -64,7 +64,7 @@ export function Legend() {
         </div>
         <div className="legend-item">
           <dt>
-            <span className="legend-chip">跨泳道连线</span>
+            <span className="legend-chip">消息</span>
           </dt>
           <dd>设计意图上的 out → in：两方协议按源码顺序自动推断。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准</dd>
         </div>
@@ -84,7 +84,7 @@ export function Legend() {
           <dt>
             <code>new …</code>
           </dt>
-          <dd>该步骤之前新生成的新鲜名</dd>
+          <dd>`new` 引入的绑定，在生命线上显示为一个值方块</dd>
         </div>
         <div className="legend-item">
           <dt>
@@ -94,9 +94,21 @@ export function Legend() {
         </div>
         <div className="legend-item">
           <dt>
+            <span className="legend-message-pillar">M1</span>
+          </dt>
+          <dd>消息：同色消息柱跨在信道里连接两端，词项只在信道帧里写一遍（未配对的消息没有柱）</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
+            <span className="legend-branch-tick">if …</span>
+          </dt>
+          <dd>分支标记：生命线上的横 tick 与守卫原文；等值检查盒与臂道见 ticket 03</dd>
+        </div>
+        <div className="legend-item">
+          <dt>
             <code>if …</code> / <code>let … =</code> / <code>get …</code> / <code>insert …</code>
           </dt>
-          <dd>守卫条件与表操作注释；线性展开下 then / else 两分支共享同一条条件原文</dd>
+          <dd>`if` / `get` 的分支标记与守卫原文；`let` 显示为方法盒（输入在上、输出在下），`insert` 是生命线上的本地步骤</dd>
         </div>
         <div className="legend-item">
           <dt>

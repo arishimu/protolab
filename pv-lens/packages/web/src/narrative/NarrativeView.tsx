@@ -133,7 +133,7 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
         return (
           <g key={`${column.kind}-${column.name}`} className={`structured-column structured-column--${column.kind}`} data-identity={column.name}>
             {isChannel ? (
-              <rect className={`structured-channel structured-channel--${style}`} x={column.x + 10} y="28" width={column.width - 20} height={layout.height - 60} />
+              <rect className={`structured-channel structured-channel--${style}`} x={column.x + 6} y="28" width={column.width - 12} height={layout.height - 60} />
             ) : (
               <line className="structured-lifeline" x1={column.x + column.width / 2} x2={column.x + column.width / 2} y1="62" y2={layout.height - 24} />
             )}
@@ -167,14 +167,15 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
 }
 
 function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pillars'][number] }) {
-  const frameY = (pillar.top + pillar.bottom) / 2;
+  const frameY = pillar.frameY;
   return (
     <g className="structured-message-pillar" data-identity={pillar.id} data-term={pillar.termText} aria-label={`消息 M${String(pillar.sequence)} · 信道 ${pillar.channelName} · ${pillar.termText}`}>
       <rect x={pillar.channelX - 5} y={pillar.top - 6} width="10" height={Math.max(12, pillar.bottom - pillar.top + 12)} fill={pillar.color} />
       <text x={pillar.channelX + 10} y={pillar.top + 4} fill={pillar.color}>M{pillar.sequence}</text>
       <g className="structured-message-frame">
-        <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 35} y={frameY - 11} width="70" height="22" stroke={pillar.color} />
-        <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, 10)}</text>
+        <title>{pillar.termText}</title>
+        <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 28} y={frameY - 11} width="56" height="22" stroke={pillar.color} />
+        <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, 8)}</text>
       </g>
     </g>
   );
@@ -195,11 +196,25 @@ function EndpointSvg({
   const path = `M ${start} ${endpoint.y} Q ${curve} ${endpoint.y - 16} ${end} ${endpoint.y}`;
   // 未配对词项靠近信道轨（T2 的信道段），给中间留出构造盒的位置。
   const chipX = endpoint.roleX + (endpoint.channelX - endpoint.roleX) * 0.72;
+  // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
+  // 接收段与未配对端（指向信道轨）才有箭头。
+  const showArrow = endpoint.unpaired || endpoint.direction === 'in';
+  const startDot = !endpoint.unpaired && endpoint.direction === 'out';
   return (
     <g className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}`} data-identity={endpoint.id} data-channel={endpoint.channelName} aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}`}>
-      <path d={path} stroke={color} markerEnd={marker} />
+      <path d={path} stroke={color} markerEnd={showArrow ? marker : undefined} />
+      {startDot && (
+        <circle
+          className="structured-sender-dot"
+          cx={endpoint.roleX + Math.sign(endpoint.channelX - endpoint.roleX) * 30}
+          cy={endpoint.y}
+          r="3.5"
+          fill={color}
+        />
+      )}
       {endpoint.unpaired && (
         <>
+          <title>{endpoint.termText}</title>
           <rect className={`structured-term-chip structured-term-chip--${endpoint.termPresentation}`} x={chipX - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
           <text x={chipX} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 10)}</text>
           <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />
@@ -249,13 +264,24 @@ function StructuredNodeSvg({ node }: { node: StructuredNode }) {
 function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['methods'][number] }) {
   const halfWidth = method.width / 2;
   const halfHeight = method.height / 2;
+  const narrowHeight = halfHeight - 5;
+  // 竖置（解构 / 选择）：上宽下窄，窄底贴输出方块；
+  // 横置（构造）：窄端朝消息，长端贴生命线侧。
+  const narrowRight = method.narrowTowards !== 'left';
   const points = method.direction === 'construct'
-    ? [
-        [method.x - halfWidth, method.y - halfHeight + 5],
-        [method.x + halfWidth, method.y - halfHeight],
-        [method.x + halfWidth, method.y + halfHeight],
-        [method.x - halfWidth, method.y + halfHeight - 5],
-      ]
+    ? (narrowRight
+        ? [
+            [method.x - halfWidth, method.y - halfHeight],
+            [method.x + halfWidth, method.y - narrowHeight],
+            [method.x + halfWidth, method.y + narrowHeight],
+            [method.x - halfWidth, method.y + halfHeight],
+          ]
+        : [
+            [method.x - halfWidth, method.y - narrowHeight],
+            [method.x + halfWidth, method.y - halfHeight],
+            [method.x + halfWidth, method.y + halfHeight],
+            [method.x - halfWidth, method.y + narrowHeight],
+          ])
     : [
         [method.x - halfWidth, method.y - halfHeight],
         [method.x + halfWidth, method.y - halfHeight],

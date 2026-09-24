@@ -117,7 +117,7 @@
 }
 
 .structured-value-block--equality rect {
-  stroke-dasharray: 2 1;
+  stroke-dasharray: 5 3;
 }
 
 .structured-value-block text,
@@ -223,12 +223,25 @@
 
 .legend-value-block,
 .legend-method-box,
-.legend-wire-chip {
+.legend-wire-chip,
+.legend-message-pillar,
+.legend-branch-tick {
   display: inline-block;
   padding: 0.05rem 0.35rem;
   color: #1f2937;
   font-family: var(--mono);
   font-size: 0.72rem;
+}
+
+.legend-message-pillar {
+  background: #ffffff;
+  border: 1px solid #475569;
+  border-left: 3px solid #16a34a;
+  border-radius: 3px;
+}
+
+.legend-branch-tick {
+  border-bottom: 1.5px dashed #2563eb;
 }
 
 .legend-value-block {
