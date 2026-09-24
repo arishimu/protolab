@@ -198,6 +198,58 @@
   fill: #0d9488;
 }
 
+/* 分支折叠：展开态守卫盒旁的折叠开关，折叠态的一格折叠条。 */
+.structured-branch-toggle,
+.structured-branch-fold {
+  cursor: pointer;
+}
+
+.structured-branch-toggle rect {
+  fill: #eff6ff;
+  stroke: #2563eb;
+  stroke-width: 1.1;
+}
+
+.structured-branch-toggle text {
+  fill: #2563eb;
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.structured-branch-toggle:hover rect {
+  fill: #dbeafe;
+  stroke-width: 1.6;
+}
+
+.structured-branch-fold rect {
+  fill: #ecfeff;
+  stroke: #1d4ed8;
+  stroke-width: 1.2;
+}
+
+.structured-branch-fold text {
+  fill: #1d4ed8;
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 650;
+}
+
+.structured-branch-fold:hover rect {
+  fill: #cffafe;
+  stroke-width: 1.6;
+}
+
+.structured-branch-toggle:focus-visible,
+.structured-branch-fold:focus-visible {
+  outline: none;
+}
+
+.structured-branch-toggle:focus-visible rect,
+.structured-branch-fold:focus-visible rect {
+  stroke-width: 1.8;
+}
+
 .structured-method--construct polygon {
   stroke-linejoin: bevel;
 }

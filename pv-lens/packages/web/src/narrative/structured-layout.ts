@@ -1,5 +1,6 @@
 import type {
   Binding,
+  BranchItem,
   Condition,
   MessagePairing,
   ParseResult,
@@ -85,6 +86,9 @@ export interface StructuredMethod {
   height: number;
   inputBindingIds: readonly string[];
   outputBindingIds: readonly string[];
+  /** 该检查盒是某个分支的守卫时，记录分支 item id 与守卫原文（折叠开关用）。 */
+  branchId?: string;
+  branchText?: string;
   sourceSpan: SourceSpan;
 }
 
@@ -107,6 +111,8 @@ export interface StructuredArmRun {
   roleIndex: number;
   arm: 'then' | 'else';
   lane: number;
+  /** 因两道封顶而需要道内缩进的层数（0 = 不缩进）。 */
+  overflow: number;
   /** 轨道 x 与它接回的生命线 x（两端横 tick 用）。 */
   railX: number;
   lifelineX: number;
@@ -114,6 +120,22 @@ export interface StructuredArmRun {
   bottom: number;
   empty: boolean;
   label: string;
+}
+
+/** 折叠后的分支条：一整段 `branch…join` 收成一格，点它重新展开。 */
+export interface StructuredBranchFold {
+  /** 折叠键：分支标记 item 的稳定 id。 */
+  branchId: string;
+  roleIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** 折叠条全文：`▸ if x = a · +3`。 */
+  label: string;
+  guardText: string;
+  hiddenCount: number;
+  sourceSpan: SourceSpan;
 }
 
 export interface StructuredEndpoint {
@@ -162,6 +184,7 @@ export interface StructuredNarrativeLayout {
   methods: readonly StructuredMethod[];
   chips: readonly StructuredChip[];
   armRuns: readonly StructuredArmRun[];
+  branchFolds: readonly StructuredBranchFold[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
@@ -177,6 +200,8 @@ export interface StructuredLayoutOptions {
   pairings?: readonly MessagePairing[];
   /** 0 = 偏好间距，1 = 最紧凑；gap.unit 始终落在 [18, 26]。 */
   compactness?: number;
+  /** 已折叠的分支（按分支标记 item id）；折叠只作显式开关，默认展开。 */
+  collapsedBranches?: readonly string[];
 }
 
 const METRICS = {
@@ -203,6 +228,11 @@ const METRICS = {
   chipHeight: 18,
   /** 臂道轨道间距。 */
   laneStep: 22,
+  /** 两道封顶后，更深层嵌套在同一道内的缩进步长。 */
+  laneOverflowIndent: 12,
+  /** 折叠分支条的高度与最大宽度。 */
+  branchFoldHeight: 22,
+  branchFoldMaxWidth: 200,
   chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
@@ -246,8 +276,10 @@ export function buildStructuredNarrativeLayout(
   const methods: StructuredMethod[] = [];
   const chips: StructuredChip[] = [];
   const armRuns: StructuredArmRun[] = [];
+  const branchFolds: StructuredBranchFold[] = [];
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
+  const collapsedBranches = new Set(options.collapsedBranches ?? []);
   const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
   const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
   const roleLifelines = columns
@@ -293,7 +325,39 @@ export function buildStructuredNarrativeLayout(
       ? METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight
       : parameterTop + parameterBindings.length * METRICS.valuePitch;
 
+    // 折叠分支时跳过 `branch…join` 的整个区间；`foldedDepth` 记录剩余要吞掉的嵌套层数。
+    let foldedDepth = 0;
     role.items.forEach((item, itemIndex) => {
+      if (foldedDepth > 0) {
+        if (isBranchStart(item)) foldedDepth += 1;
+        else if (isBranchJoin(item)) foldedDepth -= 1;
+        return;
+      }
+      if (isBranchStart(item) && collapsedBranches.has(item.id)) {
+        const hiddenCount = countBranchItems(role.items, itemIndex);
+        const height = METRICS.branchFoldHeight;
+        const y = uniqueY(cursor + height / 2, usedY);
+        usedY.add(y);
+        const label = `▸ ${branchLabel(item)} · +${String(hiddenCount)}`;
+        branchFolds.push({
+          branchId: item.id,
+          roleIndex,
+          x: lifelineX,
+          y,
+          width: Math.min(METRICS.branchFoldMaxWidth, 24 + label.length * CHAR_WIDTH),
+          height,
+          label,
+          guardText: guardTextOf(item),
+          hiddenCount,
+          sourceSpan: item.span,
+        });
+        maxTextRight = Math.max(maxTextRight, lifelineX + label.length * CHAR_WIDTH);
+        cursor = y + height / 2 + gapUnit;
+        maxBottom = Math.max(maxBottom, cursor);
+        foldedDepth = 1;
+        return;
+      }
+
       const stepItem = item.kind === 'message' ? item : undefined;
       const chain = valueChainOf(item, bindingById, destructorNames);
       const baseHeight = item.kind === 'branch'
@@ -311,18 +375,23 @@ export function buildStructuredNarrativeLayout(
         if (item.marker === 'branch') {
           const enclosingElse = armStack.filter((frame) => frame.lane >= 2).length;
           const lane = Math.min(2, 1 + enclosingElse);
+          const overflow = Math.max(0, enclosingElse - 1);
+          const label = armRunLabel('then', false, overflow);
+          const railX = armRailX(lifelineX, lane) + overflow * METRICS.laneOverflowIndent;
           armRuns.push({
             id: item.id,
             roleIndex,
             arm: 'then',
             lane,
-            railX: armRailX(lifelineX, lane),
+            overflow,
+            railX,
             lifelineX,
             top: y,
             bottom: y,
             empty: false,
-            label: enclosingElse === 0 ? 'then' : `then +${String(enclosingElse)}`,
+            label,
           });
+          maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
           armStack.push({ runIndex: armRuns.length - 1, lane, enclosingElse });
         } else if (item.marker === 'else') {
           const frame = armStack[armStack.length - 1];
@@ -330,18 +399,24 @@ export function buildStructuredNarrativeLayout(
             const run = armRuns[frame.runIndex];
             if (run !== undefined) armRuns[frame.runIndex] = { ...run, bottom: y };
             const lane = Math.min(2, 2 + frame.enclosingElse);
+            const overflow = Math.max(0, frame.enclosingElse - 1);
+            const empty = item.empty === true;
+            const label = armRunLabel('else', empty, overflow);
+            const railX = armRailX(lifelineX, lane) + overflow * METRICS.laneOverflowIndent;
             armRuns.push({
               id: item.id,
               roleIndex,
               arm: 'else',
               lane,
-              railX: armRailX(lifelineX, lane),
+              overflow,
+              railX,
               lifelineX,
               top: y,
               bottom: y,
-              empty: item.empty === true,
-              label: item.empty === true ? 'else ∅' : 'else',
+              empty,
+              label,
             });
+            maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
             armStack[armStack.length - 1] = { runIndex: armRuns.length - 1, lane, enclosingElse: frame.enclosingElse };
           }
         } else {
@@ -390,7 +465,8 @@ export function buildStructuredNarrativeLayout(
 
       // 值层竖向链：紧贴生命线，值方块 20px 一格、方法盒 38px 一格（盒下留 caption），行高随链长增长。
       let slotTop = y - chainHeightOf(chain) / 2;
-      chain.forEach((entry) => {
+      const firstCheckIndex = chain.findIndex((entry) => entry.kind === 'check');
+      chain.forEach((entry, entryIndex) => {
         if (entry.kind === 'value') {
           const binding = bindingById.get(entry.bindingId);
           const slotY = slotTop + METRICS.valuePitch / 2;
@@ -433,7 +509,7 @@ export function buildStructuredNarrativeLayout(
           const boxY = slotTop + 33;
           slotTop += METRICS.checkPitch;
           methods.push({
-            id: `${item.id}:check`,
+            id: `${item.id}:check:${String(entryIndex)}`,
             roleIndex,
             label: entry.op,
             direction: 'check',
@@ -444,6 +520,10 @@ export function buildStructuredNarrativeLayout(
             height: METRICS.methodHeight,
             inputBindingIds: entry.operands.filter((operand) => operand.kind === 'value').map((operand) => operand.bindingId),
             outputBindingIds: [],
+            // 复合守卫会有多行检查盒，折叠开关只挂在第一行，一个分支一个开关。
+            ...(isBranchStart(item) && entryIndex === firstCheckIndex
+              ? { branchId: item.id, branchText: guardTextOf(item) }
+              : {}),
             sourceSpan: item.span,
           });
           maxTextRight = Math.max(maxTextRight, rowX + 27 + METRICS.chipWidth / 2);
@@ -589,6 +669,7 @@ export function buildStructuredNarrativeLayout(
     methods,
     chips,
     armRuns,
+    branchFolds,
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,
@@ -906,11 +987,50 @@ function uniqueY(value: number, used: ReadonlySet<number>): number {
   return y;
 }
 
-/** 分支标记的可读标签；#03 会用等值检查盒与臂道替换这个占位。 */
-function branchLabel(item: Extract<RoleItem, { kind: 'branch' }>): string {
+/** 分支标记的可读标签。 */
+function branchLabel(item: BranchItem): string {
   if (item.marker === 'else') return item.empty === true ? 'else ∅' : 'else';
   if (item.marker === 'join') return 'join';
-  return item.guard === undefined ? 'if' : `if ${renderCondition(item.guard)}`;
+  const keyword = item.guardKind === 'get' ? 'get' : 'if';
+  const guard = guardTextOf(item);
+  return guard.length === 0 ? keyword : `${keyword} ${guard}`;
+}
+
+/** 守卫的可读原文：结构化的 `Condition` 优先，回退到源码片段。 */
+function guardTextOf(item: BranchItem): string {
+  if (item.guard !== undefined) return renderCondition(item.guard);
+  return item.guardText ?? '';
+}
+
+/** 臂道标签：两道封顶后，更深层嵌套在道内缩进并以 `↳ … +N` 标出。 */
+function armRunLabel(arm: 'then' | 'else', empty: boolean, overflow: number): string {
+  const base = arm === 'then' ? 'then' : empty ? 'else ∅' : 'else';
+  return overflow > 0 ? `↳ ${base} +${String(overflow)}` : base;
+}
+
+/** 分支标记流的两种边界：`branch` 开始一层，`join` 关闭一层。 */
+function isBranchStart(item: RoleItem): item is BranchItem {
+  return item.kind === 'branch' && item.marker === 'branch';
+}
+
+function isBranchJoin(item: RoleItem): item is BranchItem {
+  return item.kind === 'branch' && item.marker === 'join';
+}
+
+/** 折叠一个分支时要吞掉的可见步骤数（不含分支标记本身；嵌套分支一并计入）。 */
+function countBranchItems(items: readonly RoleItem[], startIndex: number): number {
+  let depth = 1;
+  let count = 0;
+  for (let index = startIndex + 1; index < items.length; index += 1) {
+    const item = items[index];
+    if (isBranchStart(item)) depth += 1;
+    else if (isBranchJoin(item)) {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+    if (item.kind !== 'branch') count += 1;
+  }
+  return count;
 }
 
 function renderCondition(condition: Condition): string {

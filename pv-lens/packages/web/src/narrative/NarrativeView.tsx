@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import type { ParseResult, StepPairing } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
@@ -16,17 +17,26 @@ import './v2.css';
 export interface NarrativeViewProps {
   result: ParseResult;
   pairings?: readonly StepPairing[];
+  /** 初始即折叠的分支（分支标记 item id）；默认全部展开。 */
+  initialCollapsedBranches?: readonly string[];
 }
 
-export function NarrativeView({ result, pairings = [] }: NarrativeViewProps) {
+export function NarrativeView({ result, pairings = [], initialCollapsedBranches = [] }: NarrativeViewProps) {
   const [compactness, setCompactness] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [collapsedBranches, setCollapsedBranches] = useState<readonly string[]>(initialCollapsedBranches);
+  const toggleBranch = (branchId: string): void => {
+    setCollapsedBranches((current) => current.includes(branchId)
+      ? current.filter((id) => id !== branchId)
+      : [...current, branchId]);
+  };
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
       pairings: legacyPairingsToMessagePairings(pairings),
       compactness,
+      collapsedBranches,
     }),
-    [result, pairings, compactness],
+    [result, pairings, compactness, collapsedBranches],
   );
   const legacy = useMemo(() => buildNarrativeLayout(result, { pairings }), [result, pairings]);
 
@@ -59,7 +69,7 @@ export function NarrativeView({ result, pairings = [] }: NarrativeViewProps) {
             纵轴是每个角色自己的消息序，信道是共享空间锚点；颜色只表示消息和值，不表示信道或验证结论。
             跨角色连接表达设计意图，不代表攻击者模型下的可达性。
           </p>
-          <StructuredNarrativeCanvas layout={structured} zoom={zoom} legacy={legacy} />
+          <StructuredNarrativeCanvas layout={structured} zoom={zoom} legacy={legacy} onToggleBranch={toggleBranch} />
           <NarrativeDiagnostics result={result} />
           <Legend />
         </>
@@ -74,10 +84,12 @@ function StructuredNarrativeCanvas({
   layout,
   zoom,
   legacy,
+  onToggleBranch,
 }: {
   layout: StructuredNarrativeLayout;
   zoom: number;
   legacy: ReturnType<typeof buildNarrativeLayout>;
+  onToggleBranch: (branchId: string) => void;
 }) {
   const pairedEndpointCount = layout.endpoints.filter((endpoint) => !endpoint.unpaired).length;
   const messageCount = pairedEndpointCount / 2;
@@ -101,6 +113,11 @@ function StructuredNarrativeCanvas({
         <g className="structured-arm-layer">
           {layout.armRuns.map((run) => <ArmRunSvg key={run.id} run={run} />)}
         </g>
+        <g className="structured-branch-fold-layer">
+          {layout.branchFolds.map((fold) => (
+            <BranchFoldSvg key={fold.branchId} fold={fold} onToggleBranch={onToggleBranch} />
+          ))}
+        </g>
         <g className="structured-message-layer">
           {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
           {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
@@ -111,7 +128,7 @@ function StructuredNarrativeCanvas({
             .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
         </g>
         <g className="structured-value-layer">
-          {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} />)}
+          {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} onToggleBranch={onToggleBranch} />)}
           {layout.chips.map((chip) => <StructuredChipSvg key={chip.id} chip={chip} />)}
           {layout.valueBlocks.map((block) => <StructuredValueBlockSvg key={block.id} block={block} />)}
         </g>
@@ -269,7 +286,13 @@ function StructuredNodeSvg({ node }: { node: StructuredNode }) {
   );
 }
 
-function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['methods'][number] }) {
+function StructuredMethodSvg({
+  method,
+  onToggleBranch,
+}: {
+  method: StructuredNarrativeLayout['methods'][number];
+  onToggleBranch: (branchId: string) => void;
+}) {
   const halfWidth = method.width / 2;
   const halfHeight = method.height / 2;
   const narrowHeight = halfHeight - 5;
@@ -320,8 +343,80 @@ function StructuredMethodSvg({ method }: { method: StructuredNarrativeLayout['me
           {truncate(method.caption, 16)}
         </text>
       )}
+      {method.branchId !== undefined && (
+        <BranchToggleSvg method={method} onToggleBranch={onToggleBranch} />
+      )}
     </g>
   );
+}
+
+/** 展开态守卫盒旁的折叠开关：一个分支一个（复合守卫只在第一行挂）。 */
+function BranchToggleSvg({
+  method,
+  onToggleBranch,
+}: {
+  method: StructuredNarrativeLayout['methods'][number];
+  onToggleBranch: (branchId: string) => void;
+}) {
+  const branchId = method.branchId;
+  if (branchId === undefined) return null;
+  const branchText = method.branchText ?? '';
+  const halfWidth = method.width / 2;
+  return (
+    <g
+      className="structured-branch-toggle"
+      role="button"
+      tabIndex={0}
+      data-branch-id={branchId}
+      aria-label={`折叠分支 ${branchText}`}
+      onClick={() => onToggleBranch(branchId)}
+      onKeyDown={(event) => activateOnKey(event, () => onToggleBranch(branchId))}
+    >
+      <title>{`折叠分支 ${branchText}`}</title>
+      <rect x={method.x + halfWidth + 3} y={method.y - 7} width="14" height="14" rx="4" />
+      <text x={method.x + halfWidth + 10} y={method.y + 4} textAnchor="middle">▾</text>
+    </g>
+  );
+}
+
+function BranchFoldSvg({
+  fold,
+  onToggleBranch,
+}: {
+  fold: StructuredNarrativeLayout['branchFolds'][number];
+  onToggleBranch: (branchId: string) => void;
+}) {
+  return (
+    <g
+      className="structured-branch-fold"
+      role="button"
+      tabIndex={0}
+      data-branch-id={fold.branchId}
+      aria-label={`展开分支 ${fold.guardText}（隐藏 ${String(fold.hiddenCount)} 步）`}
+      onClick={() => onToggleBranch(fold.branchId)}
+      onKeyDown={(event) => activateOnKey(event, () => onToggleBranch(fold.branchId))}
+    >
+      <title>{fold.label}</title>
+      <rect
+        x={fold.x - fold.width / 2}
+        y={fold.y - fold.height / 2}
+        width={fold.width}
+        height={fold.height}
+        rx={fold.height / 2}
+      />
+      <text x={fold.x} y={fold.y + 4} textAnchor="middle">
+        {truncate(fold.label, Math.max(4, Math.floor((fold.width - 12) / 6.2)))}
+      </text>
+    </g>
+  );
+}
+
+/** 让 role="button" 的 SVG 元素像真按钮一样响应 Enter / Space。 */
+function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): void {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    action();
+  }
 }
 
 function StructuredValueBlockSvg({ block }: { block: StructuredNarrativeLayout['valueBlocks'][number] }) {
