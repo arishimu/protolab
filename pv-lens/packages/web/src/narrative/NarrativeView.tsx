@@ -358,6 +358,8 @@ function BranchToggleSvg({
   if (branchId === undefined) return null;
   const branchText = method.branchText ?? '';
   const halfWidth = method.width / 2;
+  // 开关放在臂道（信道外侧）的反面，避免与臂道轨道打架。
+  const toggleX = method.x - (method.outward ?? 1) * (halfWidth + 10);
   return (
     <g
       className="structured-branch-toggle"
@@ -369,8 +371,8 @@ function BranchToggleSvg({
       onKeyDown={(event) => activateOnKey(event, () => onToggleBranch(branchId))}
     >
       <title>{`折叠分支 ${branchText}`}</title>
-      <rect x={method.x + halfWidth + 3} y={method.y - 7} width="14" height="14" rx="4" />
-      <text x={method.x + halfWidth + 10} y={method.y + 4} textAnchor="middle">▾</text>
+      <rect x={toggleX - 7} y={method.y - 7} width="14" height="14" rx="4" />
+      <text x={toggleX} y={method.y + 4} textAnchor="middle">▾</text>
     </g>
   );
 }
@@ -452,7 +454,12 @@ function ArmRunSvg({ run }: { run: StructuredNarrativeLayout['armRuns'][number] 
       <line className="structured-arm-rail" x1={run.railX} x2={run.railX} y1={top} y2={bottom} />
       <line className="structured-arm-tick" x1={run.railX} x2={run.lifelineX} y1={top} y2={top} />
       <line className="structured-arm-tick" x1={run.railX} x2={run.lifelineX} y1={bottom} y2={bottom} />
-      <text className="structured-arm-label" x={run.railX + 5} y={top + 12} textAnchor="start">{run.label}</text>
+      <text
+        className="structured-arm-label"
+        x={run.railX + run.outward * 5}
+        y={top + 12}
+        textAnchor={run.outward > 0 ? 'start' : 'end'}
+      >{run.label}</text>
     </g>
   );
 }

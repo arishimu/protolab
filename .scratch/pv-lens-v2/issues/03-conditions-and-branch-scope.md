@@ -40,3 +40,8 @@
 ---
 
 2026-09-24（后续，视觉校正）：用户以 `prototype/05-density-folding.html` 为视觉基准指出「连消息都是弧线，严重偏离预期」。已删除跨线弧：消息段一律画水平直线，跨中间生命线也不上拱；`StructuredEndpoint.crossesIntermediate` 字段、布局里的 `crossesIntermediate()`/`roleLifelines` 一并删除。同步修订 `docs/adr/0004`（点 2）与 `docs/adr/0010`（点 3），并新增渲染断言「四样例端点的 path 不含 `Q`」。
+
+2026-09-24（后续，第二处视觉校正）：用户再以 `prototype/08-conditional-constructors.html` 为基准指出「梯形的朝向都不对」。用真浏览器（Playwright + 本地 chromium）对比后定位两处：
+1. **值层构造链**（`let x = encrypt(...)` / `let pkA = pk(skA)`）此前贴着生命线竖排，横置梯形在竖向栈里变成压扁的斜片；现改成 prototype 08 的 `drawChainInward` 口径——横置盒朝信道方向偏移（`chainConstructOffset = 46`）、窄底朝消息，绑定的输出值块落在盒远端（`chainOutputOffset = 88`）、盒子不动。
+2. **臂道侧**此前永远在生命线右侧；现改成画在信道的**外侧**（`outward`），构造链画在内侧，与 prototype 08 的 `outward`/`inward` 同口径，两者不再打架。折叠开关随之放到臂道的反侧；左侧臂道的画布左缘预留 `leftArmMargin`。
+新增回归：构造链横置偏移 + 输出块位置 + 臂道侧；既有臂道断言改为比距离。prototype 08 右置角色的构造梯形是反的（A 侧窄底朝消息、B 侧窄底朝生命线，自身不对称，应为原型 bug），实现保持对称的「窄底朝消息」。

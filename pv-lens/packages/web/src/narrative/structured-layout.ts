@@ -11,7 +11,7 @@ import type {
   StepPairing,
 } from '@pv-lens/core';
 import { narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
-import type { HorizontalSequence } from '@pv-lens/core';
+import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
 
 export const MESSAGE_COLORS = ['#2563EB', '#0891B2', '#16A34A', '#D97706', '#DC2626', '#7C3AED', '#DB2777', '#475569'] as const;
 export const VALUE_COLORS = ['#BFDBFE', '#A5F3FC', '#BBF7D0', '#FED7AA', '#FECACA', '#DDD6FE', '#FBCFE8', '#CBD5E1'] as const;
@@ -86,6 +86,8 @@ export interface StructuredMethod {
   height: number;
   inputBindingIds: readonly string[];
   outputBindingIds: readonly string[];
+  /** 分支守卫的臂道所在侧（+1 右 / -1 左）；折叠开关渲染在反侧。 */
+  outward?: 1 | -1;
   /** 该检查盒是某个分支的守卫时，记录分支 item id 与守卫原文（折叠开关用）。 */
   branchId?: string;
   branchText?: string;
@@ -111,6 +113,8 @@ export interface StructuredArmRun {
   roleIndex: number;
   arm: 'then' | 'else';
   lane: number;
+  /** 臂道画在生命线的哪一侧：+1 右 / -1 左（= 远离信道的方向）。 */
+  outward: 1 | -1;
   /** 因两道封顶而需要道内缩进的层数（0 = 不缩进）。 */
   overflow: number;
   /** 轨道 x 与它接回的生命线 x（两端横 tick 用）。 */
@@ -224,10 +228,15 @@ const METRICS = {
   checkPitch: 50,
   chipWidth: 56,
   chipHeight: 18,
-  /** 臂道轨道间距。 */
+  /** 臂道轨道间距（臂道画在信道外侧，与 prototype 08 同口径）。 */
   laneStep: 22,
   /** 两道封顶后，更深层嵌套在同一道内的缩进步长。 */
   laneOverflowIndent: 12,
+  /** 有分支角色的臂道翻到左侧时，给画布左边留出的额外余量。 */
+  leftArmMargin: 56,
+  /** 值层构造链：横置盒与输出值块相对生命线朝信道方向的偏移。 */
+  chainConstructOffset: 46,
+  chainOutputOffset: 88,
   /** 折叠分支条的高度与最大宽度。 */
   branchFoldHeight: 22,
   branchFoldMaxWidth: 200,
@@ -248,7 +257,23 @@ export function buildStructuredNarrativeLayout(
   const gapUnit = 26 - compactness * 8;
   const horizontal = solveHorizontalSequence(result);
   const roleByName = new Map(roles.map((role) => [role.name, role]));
-  const columnX = (index: number): number => METRICS.margin + index * (METRICS.columnWidth + METRICS.columnGap);
+  // 臂道画在信道外侧、构造链画在内侧（朝信道）——与 prototype 08 同口径。
+  const channelPositions = horizontal.nodes.flatMap((node, position) => node.kind === 'channel' ? [position] : []);
+  const nearestChannelPosition = (position: number): number => channelPositions.reduce(
+    (best, candidate) => Math.abs(candidate - position) < Math.abs(best - position) ? candidate : best,
+    channelPositions[0] ?? position,
+  );
+  const outwardByColumn = new Map<string, 1 | -1>();
+  horizontal.nodes.forEach((node, position) => {
+    outwardByColumn.set(
+      columnKey(node),
+      channelPositions.length === 0 || nearestChannelPosition(position) >= position ? -1 : 1,
+    );
+  });
+  const needsLeftArmMargin = roles.some((role) => outwardByColumn.get(`role:${role.name}`) === -1
+    && role.items.some((item) => item.kind === 'branch' && item.marker === 'branch'));
+  const margin = METRICS.margin + (needsLeftArmMargin ? METRICS.leftArmMargin : 0);
+  const columnX = (index: number): number => margin + index * (METRICS.columnWidth + METRICS.columnGap);
   const columns: StructuredColumn[] = horizontal.nodes.map((node, index) => {
     const role = node.kind === 'role' ? roleByName.get(node.name) : undefined;
     return {
@@ -280,15 +305,17 @@ export function buildStructuredNarrativeLayout(
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
   const bindingById = new Map(roles.flatMap((role) => role.bindings).map((binding) => [binding.id, binding]));
   const destructorNames = new Set(result.destructors.map((destructor) => destructor.name));
-  let maxBottom = METRICS.margin + METRICS.headerHeight;
+  let maxBottom = margin + METRICS.headerHeight;
   let maxTextRight = 0;
   const usedY = new Set<number>();
 
   roles.forEach((role, roleIndex) => {
     const column = roleColumns.get(role.name);
     if (column === undefined) return;
+    const outward = outwardByColumn.get(`role:${role.name}`) ?? 1;
+    const inward: 1 | -1 = outward === 1 ? -1 : 1;
     const lifelineX = column.x + column.width / 2;
-    /** 值层链/方法盒当前所在列（臂道轨道只作标记，条目仍贴生命线——与 proto08 一致）。 */
+    /** 值层竖向链的当前列（守卫盒 / 芯片 / 解构盒仍贴生命线；构造链另朝信道偏移）。 */
     const rowX = lifelineX;
     const nextColumn = columns[(columnPosition.get(`role:${role.name}`) ?? 0) + 1];
     // 信道总线又窄又淡，标签可以借过；下一列是角色时则止步于它左缘，避免压到对方生命线。
@@ -313,7 +340,7 @@ export function buildStructuredNarrativeLayout(
     });
     const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
     let cursor = parameterBindings.length === 0
-      ? METRICS.margin + METRICS.headerHeight + METRICS.parameterHeight
+      ? margin + METRICS.headerHeight + METRICS.parameterHeight
       : parameterTop + parameterBindings.length * METRICS.valuePitch;
 
     // 折叠分支时跳过 `branch…join` 的整个区间；`foldedDepth` 记录剩余要吞掉的嵌套层数。
@@ -368,12 +395,13 @@ export function buildStructuredNarrativeLayout(
           const lane = Math.min(2, 1 + enclosingElse);
           const overflow = Math.max(0, enclosingElse - 1);
           const label = armRunLabel('then', false, overflow);
-          const railX = armRailX(lifelineX, lane) + overflow * METRICS.laneOverflowIndent;
+          const railX = armRailX(lifelineX, lane, outward, overflow);
           armRuns.push({
             id: item.id,
             roleIndex,
             arm: 'then',
             lane,
+            outward,
             overflow,
             railX,
             lifelineX,
@@ -382,7 +410,7 @@ export function buildStructuredNarrativeLayout(
             empty: false,
             label,
           });
-          maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
+          if (outward > 0) maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
           armStack.push({ runIndex: armRuns.length - 1, lane, enclosingElse });
         } else if (item.marker === 'else') {
           const frame = armStack[armStack.length - 1];
@@ -393,12 +421,13 @@ export function buildStructuredNarrativeLayout(
             const overflow = Math.max(0, frame.enclosingElse - 1);
             const empty = item.empty === true;
             const label = armRunLabel('else', empty, overflow);
-            const railX = armRailX(lifelineX, lane) + overflow * METRICS.laneOverflowIndent;
+            const railX = armRailX(lifelineX, lane, outward, overflow);
             armRuns.push({
               id: item.id,
               roleIndex,
               arm: 'else',
               lane,
+              outward,
               overflow,
               railX,
               lifelineX,
@@ -407,7 +436,7 @@ export function buildStructuredNarrativeLayout(
               empty,
               label,
             });
-            maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
+            if (outward > 0) maxTextRight = Math.max(maxTextRight, railX + 5 + label.length * CHAR_WIDTH);
             armStack[armStack.length - 1] = { runIndex: armRuns.length - 1, lane, enclosingElse: frame.enclosingElse };
           }
         } else {
@@ -455,14 +484,23 @@ export function buildStructuredNarrativeLayout(
       }
 
       // 值层竖向链：紧贴生命线，值方块 20px 一格、方法盒 38px 一格（盒下留 caption），行高随链长增长。
+      // 构造链例外：横置盒朝信道方向偏移，绑定的输出值块落在盒的远端（prototype 08 口径）。
       let slotTop = y - chainHeightOf(chain) / 2;
       const firstCheckIndex = chain.findIndex((entry) => entry.kind === 'check');
+      let pendingConstruct: { entryIndex: number; boxY: number; outputX: number; outputBindingIds: readonly string[] } | null = null;
       chain.forEach((entry, entryIndex) => {
         if (entry.kind === 'value') {
           const binding = bindingById.get(entry.bindingId);
+          if (binding === undefined) return;
+          const outputSlot = pendingConstruct === null ? -1 : pendingConstruct.outputBindingIds.indexOf(entry.bindingId);
+          if (pendingConstruct !== null && outputSlot >= 0 && entryIndex === pendingConstruct.entryIndex + 1 + outputSlot) {
+            const outputCount = pendingConstruct.outputBindingIds.length;
+            const outputY = pendingConstruct.boxY + (outputSlot - (outputCount - 1) / 2) * METRICS.valuePitch;
+            valueBlocks.push(valueBlockOf(binding, roleIndex, pendingConstruct.outputX, outputY, 'binding', bindingColors, valueBlocks.length));
+            return;
+          }
           const slotY = slotTop + METRICS.valuePitch / 2;
           slotTop += METRICS.valuePitch;
-          if (binding === undefined) return;
           valueBlocks.push(valueBlockOf(
             binding,
             roleIndex,
@@ -513,7 +551,7 @@ export function buildStructuredNarrativeLayout(
             outputBindingIds: [],
             // 复合守卫会有多行检查盒，折叠开关只挂在第一行，一个分支一个开关。
             ...(isBranchStart(item) && entryIndex === firstCheckIndex
-              ? { branchId: item.id, branchText: guardTextOf(item) }
+              ? { branchId: item.id, branchText: guardTextOf(item), outward }
               : {}),
             sourceSpan: item.span,
           });
@@ -541,13 +579,17 @@ export function buildStructuredNarrativeLayout(
 
         const boxCenterY = slotTop + METRICS.methodHeight / 2;
         slotTop += METRICS.methodPitch;
+        // 构造 = 横置梯形，朝信道方向偏移；解构 / 选择留在生命线上竖置。
+        const isConstruct = entry.direction === 'construct';
+        const boxX = isConstruct ? lifelineX + inward * METRICS.chainConstructOffset : lifelineX;
         methods.push({
           id: `${item.id}:method`,
           roleIndex,
           label: entry.label,
           ...(entry.caption === undefined ? {} : { caption: entry.caption }),
           direction: entry.direction,
-          x: lifelineX,
+          ...(isConstruct ? { narrowTowards: inward > 0 ? 'right' as const : 'left' as const } : {}),
+          x: boxX,
           y: boxCenterY,
           width: METRICS.methodWidth,
           height: METRICS.methodHeight,
@@ -555,9 +597,21 @@ export function buildStructuredNarrativeLayout(
           outputBindingIds: entry.outputBindingIds,
           sourceSpan: item.span,
         });
+        if (isConstruct) {
+          pendingConstruct = {
+            entryIndex,
+            boxY: boxCenterY,
+            outputX: lifelineX + inward * METRICS.chainOutputOffset,
+            outputBindingIds: entry.outputBindingIds,
+          };
+          maxTextRight = Math.max(maxTextRight, boxX + METRICS.methodWidth / 2 + 8);
+          maxTextRight = Math.max(maxTextRight, lifelineX + inward * (METRICS.chainOutputOffset + METRICS.valueWidth / 2));
+        } else {
+          pendingConstruct = null;
+        }
         if (entry.caption !== undefined) {
           const captionChars = Math.min(entry.caption.length, 16);
-          maxTextRight = Math.max(maxTextRight, lifelineX + (captionChars * CAPTION_CHAR_WIDTH) / 2);
+          maxTextRight = Math.max(maxTextRight, boxX + (captionChars * CAPTION_CHAR_WIDTH) / 2);
         }
       });
 
@@ -649,9 +703,9 @@ export function buildStructuredNarrativeLayout(
     conflicts.push({ id: 'global-y', message: '消息端点的局部 y 约束无法完全分离，已延长生命线。', y: maxBottom });
   }
   const columnsRight = columns.length === 0
-    ? METRICS.margin
+    ? margin
     : columns[columns.length - 1].x + columns[columns.length - 1].width;
-  const width = Math.max(columnsRight + METRICS.margin, maxTextRight + 12);
+  const width = Math.max(columnsRight + margin, maxTextRight + 12);
   return {
     columns,
     nodes,
@@ -665,7 +719,7 @@ export function buildStructuredNarrativeLayout(
     conflicts,
     horizontal,
     width,
-    height: maxBottom + METRICS.margin,
+    height: maxBottom + margin,
     hasLanes: roles.length > 0,
     compactness,
     gapUnit,
@@ -1033,9 +1087,14 @@ function renderCondition(condition: Condition): string {
   return condition.text;
 }
 
-/** 臂道轨道 x：从值方块右缘之外起算，避免压住方块。 */
-function armRailX(lifelineX: number, lane: number): number {
-  return lifelineX + METRICS.valueWidth / 2 + 6 + lane * METRICS.laneStep;
+/** 臂道轨道 x：从值方块外侧起算，画在信道的外侧（远离消息方向）。 */
+function armRailX(lifelineX: number, lane: number, outward: 1 | -1, overflow: number): number {
+  return lifelineX + outward * (METRICS.valueWidth / 2 + 6 + lane * METRICS.laneStep + overflow * METRICS.laneOverflowIndent);
+}
+
+/** 水平序列节点的稳定键。 */
+function columnKey(node: HorizontalNode): string {
+  return `${node.kind}:${node.name}`;
 }
 
 function clamp(value: number, min: number, max: number): number {

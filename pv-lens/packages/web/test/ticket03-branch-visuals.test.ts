@@ -63,7 +63,8 @@ describe('ticket #03 视觉合同：等值检查盒与臂道', () => {
     for (const run of layout.armRuns) {
       expect(run.arm).toBe('then');
       expect(run.lane).toBe(1);
-      expect(run.railX - run.lifelineX).toBeGreaterThan(25);
+      // 臂道画在值方块之外、信道的外侧；左置角色在左，右置在右。
+      expect(Math.abs(run.railX - run.lifelineX)).toBeGreaterThan(25);
       expect(run.bottom).toBeGreaterThanOrEqual(run.top);
     }
   });
@@ -115,7 +116,8 @@ describe('ticket #03 视觉合同：等值检查盒与臂道', () => {
     expect(thenRuns[0].label).toBe('then');
     expect(thenRuns[1].label).toBe('then');
     expect(thenRuns[2].label).toBe('↳ then +1');
-    expect(thenRuns[2].railX).toBeGreaterThan(thenRuns[1].railX);
+    expect(Math.abs(thenRuns[2].railX - thenRuns[2].lifelineX))
+      .toBeGreaterThan(Math.abs(thenRuns[1].railX - thenRuns[1].lifelineX));
     const elseRuns = layout.armRuns.filter((run) => run.arm === 'else');
     expect(elseRuns.every((run) => run.lane === 2)).toBe(true);
     expect(elseRuns[elseRuns.length - 1].label).toBe('↳ else +1');
@@ -181,6 +183,36 @@ describe('ticket #03 视觉合同：等值检查盒与臂道', () => {
         expect(x + text.length * 6.2, `「${text}」越出画布`).toBeLessThanOrEqual(width + 1);
       }
     }
+  });
+
+  it('值层构造链横置朝信道偏移，输出值块落在远端；臂道在信道外侧', () => {
+    const result = parsePv([
+      'free c: channel.',
+      'fun enc(bitstring, bitstring): bitstring.',
+      'let p(k: bitstring) =',
+      '  new n: bitstring;',
+      '  let x = enc(n, k) in',
+      '  if k = a then out(c, x).',
+      'process p(t).',
+    ].join('\n'));
+    const layout = buildStructuredNarrativeLayout(result);
+    const roleColumn = layout.columns.find((column) => column.kind === 'role');
+    const lifelineX = (roleColumn?.x ?? 0) + (roleColumn?.width ?? 0) / 2;
+    const construct = layout.methods.find((method) => method.label === 'enc');
+    expect(construct?.direction).toBe('construct');
+    // p 在信道左侧：构造盒朝右（信道）偏移，窄底也朝右；臂道翻到左侧（信道外侧）。
+    expect(construct?.narrowTowards).toBe('right');
+    expect(construct?.x).toBeGreaterThan(lifelineX);
+    const xBinding = result.roles[0].bindings.find((binding) => binding.name === 'x');
+    const output = layout.valueBlocks.find(
+      (block) => block.bindingId === xBinding?.id && block.occurrence === 'binding',
+    );
+    expect(output).toBeDefined();
+    expect(output?.x).toBeGreaterThan(construct?.x ?? 0);
+    expect(output?.y).toBe(construct?.y);
+    const arm = layout.armRuns.find((run) => run.arm === 'then');
+    expect(arm?.outward).toBe(-1);
+    expect(arm?.railX).toBeLessThan(lifelineX);
   });
 
   it('消息一律画直线：跨过中间生命线也不上拱（对齐 prototype 05）', () => {
