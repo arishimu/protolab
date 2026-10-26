@@ -67,8 +67,8 @@ export type ProverifRunFailure =
 
 export type ProverifRunResult = ProverifRunSuccess | ProverifRunFailure;
 
-/** 解析实际要 spawn 的可执行文件路径。 */
-function resolveExecutablePath(options: ProverifRunOptions): string {
+/** 解析实际要 spawn 的可执行文件路径（显式选项 > PROVERIF_PATH 环境变量 > PATH 上的 `proverif`）。 */
+export function resolveExecutablePath(options: ProverifRunOptions): string {
   const explicit = options.executablePath?.trim();
   if (explicit !== undefined && explicit.length > 0) return explicit;
   const fromEnv = process.env[PROVERIF_PATH_ENV]?.trim();

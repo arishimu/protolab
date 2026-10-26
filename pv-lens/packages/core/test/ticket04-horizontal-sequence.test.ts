@@ -82,7 +82,7 @@ describe('ticket #04：水平序列与局部梯子（core 求解器）', () => {
     expect(sequence.nodes.map((node) => node.name)).toEqual(['r2', 'c2', 'r1', 'c0', 'r0', 'c3', 'c1']);
   });
 
-  it('打乱步骤书写顺序不改序列（候选枚举顺序无关的确定性）', () => {
+  it('打乱步骤书写顺序不改序列（边收集顺序与求和次序无关的确定性见证）', () => {
     const shuffled = parsePv([
       'free c0: channel. free c1: channel. free c2: channel. free c3: channel.',
       'let r0 = out(c0, a); out(c2, b); out(c3, x1); out(c3, x2).',
@@ -122,10 +122,9 @@ describe('ticket #04：水平序列与局部梯子（core 求解器）', () => {
 
   it('多信道交错排布，信道不集中在同一侧', () => {
     const sequence = solveHorizontalSequence(parsePv(fixture('pv/multi-channel.pv')));
-    const names = sequence.nodes.map((node) => node.name);
-    expect(names).toEqual(['processS', 'c2', 'processB', 'c1', 'processA', 'c3']);
-    const channelPositions = names
-      .map((name, index) => (name.startsWith('c') ? index : -1))
+    expect(sequence.nodes.map((node) => node.name)).toEqual(['processS', 'c2', 'processB', 'c1', 'processA', 'c3']);
+    const channelPositions = sequence.nodes
+      .map((node, index) => (node.kind === 'channel' ? index : -1))
       .filter((index) => index >= 0);
     channelPositions.forEach((position, index) => {
       if (index > 0) expect(position - channelPositions[index - 1]).toBeGreaterThanOrEqual(2);

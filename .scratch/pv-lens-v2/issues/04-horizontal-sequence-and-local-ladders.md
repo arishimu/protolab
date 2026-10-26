@@ -22,3 +22,5 @@
 - 文档更正：ADR-0009 见证数字「min-max=2 时 sum ≥ 11」经枚举复核为笔误（正确 ≥ 9），已加更正注记；两目标最优解集不相交的结论不变。
 
 未做新增视觉改动（本票是布局语义，渲染沿用 02/03 已过真浏览器验收的结构化视图），故未另开浏览器视觉验收。验收证据：`pnpm typecheck` 三包通过；全量测试 25 个测试文件、261 项通过（含真实 ProVerif 集成 6 项）；`pnpm build` 通过。
+
+2026-10-26，`/code-review`（ce38068...HEAD，两轴子代理）后落实修复：web 测试补「可完整滚动查看」的渲染侧证据（SVG viewBox/height = 布局高度）与 branchFolds/armRuns 几何有限性断言；core 测试的信道位置检测改用 `kind` 判别（不再按名字前缀推断）；打乱测试标题改为精确陈述其见证范围（边收集顺序无关；求解器无枚举顺序 seam，且可满足约束重塑顺序已由 `horizontal-sequence.test.ts` 的 `['b','c','a']` 用例覆盖）；server 导出 `resolveExecutablePath` 并让集成测试标题路径复用它（消除对适配器解析逻辑的镜像）。修复后全量测试 261 项、typecheck、build 均通过。

@@ -2,9 +2,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { coreSamples, getSampleSource, parsePv } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { buildStructuredNarrativeLayout } from '../src/narrative/structured-layout';
+import { NarrativeView } from '../src/narrative/NarrativeView';
 
 const webDir = fileURLToPath(new URL('..', import.meta.url));
 
@@ -34,7 +37,7 @@ describe('ticket #04：水平序列与局部梯子（web 布局）', () => {
     expect(new Set(ys).size).toBe(ys.length);
   });
 
-  it('画布高度由内容决定：加步骤变高，两次构建结果确定', () => {
+  it('画布高度由内容决定：加步骤变高，两次构建结果确定，渲染画布承载完整高度', () => {
     const base = parsePv([
       'free c: channel.',
       'let a = out(c, x).',
@@ -60,6 +63,11 @@ describe('ticket #04：水平序列与局部梯子（web 布局）', () => {
       expect(Number.isFinite(point.x)).toBe(true);
       expect(Number.isFinite(point.y)).toBe(true);
     }
+
+    // 「可完整滚动查看」的渲染侧证据：SVG 画布的 viewBox/height 与布局高度一致。
+    const svg = renderToString(createElement(NarrativeView, { result: longer }));
+    expect(svg).toContain(`viewBox="0 0 ${String(longerLayout.width)} ${String(longerLayout.height)}"`);
+    expect(svg).toContain(`height="${String(longerLayout.height)}"`);
   });
 
   it('全样例可绘制：信道是独立总线列，端点对准自己的信道', () => {
@@ -77,7 +85,7 @@ describe('ticket #04：水平序列与局部梯子（web 布局）', () => {
       for (const endpoint of layout.endpoints) {
         const column = channelColumns.find((candidate) => candidate.name === endpoint.channelName);
         expect(column, `${id}：端点信道 ${endpoint.channelName} 有独立总线列`).toBeDefined();
-        expect(endpoint.channelX).toBe(column ? column.x + column.width / 2 : undefined);
+        expect(endpoint.channelX).toBe(column!.x + column!.width / 2);
       }
       for (const column of layout.columns) {
         expect(Number.isFinite(column.x)).toBe(true);
@@ -93,5 +101,7 @@ function layoutPoints(layout: ReturnType<typeof buildStructuredNarrativeLayout>)
     ...layout.valueBlocks.map((block) => ({ x: block.x, y: block.y })),
     ...layout.methods.map((method) => ({ x: method.x, y: method.y })),
     ...layout.endpoints.map((endpoint) => ({ x: endpoint.roleX, y: endpoint.y })),
+    ...layout.branchFolds.map((fold) => ({ x: fold.x, y: fold.y })),
+    ...layout.armRuns.map((run) => ({ x: run.railX, y: run.top })),
   ];
 }
