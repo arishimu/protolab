@@ -9,6 +9,8 @@ Status: complete
 
 ## Notes
 
+> 口径提示（2026-10-26）：本节「已锁定原则」写作于 effort 中途，属历史快照。其中点 2 的**跨线弧**已被 `docs/adr/0010` 改为一律直线；点 9/10 的广播共享行、「收到 ×N」梁、角色左右二分与同侧 jog 已被下方 Decisions 10/11 与 `docs/adr/0008`/`0009` 取代。冲突时以编号更大的 ADR 与下方 Decisions 为准。
+
 - 领域：`.pv` → 规范叙事视图。词表 `CONTEXT.md`；架构约束 `docs/adr/0001`、`0002`；视图语义 `docs/adr/0003`、`docs/adr/0004`；多方人工配对边界 `docs/adr/0005`。
 - 每个会话先读 `CONTEXT.md` 与相关 ADR。
 - Skills：HITL 用 `grilling` + `domain-modeling`；画法分叉用 `prototype`；ProVerif 事实用 `research`。
