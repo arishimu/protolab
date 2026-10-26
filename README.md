@@ -1,6 +1,6 @@
 # 仓库说明
 
-这个仓库是我的安全协议学习与工具开发工作区。前半段自学 ProVerif（密码协议自动验证工具），后半段在此之上做了一个安全协议可视化建模的 Web 工具 **pv-lens**（MVP 已完成）。学习资料归档在 `docs/proverif/`，工具代码在 `pv-lens/`。
+这个仓库是我的安全协议学习与工具开发工作区。前半段自学 ProVerif（密码协议自动验证工具），后半段在此之上做了一个安全协议可视化 Web 工具 **pv-lens**：当前交付「规范叙事视图 + ProVerif 验证」的只读 MVP，「可视化建模」（画布编辑回写 `.pv`）是二期愿景（ADR-0011）。学习资料归档在 `docs/proverif/`，工具代码在 `pv-lens/`。
 
 ## 目录结构
 
@@ -9,7 +9,7 @@
   - `docs/proverif/note/`：分章学习笔记，`00-framework.md` 起头，每篇讲一个能力问题
   - `docs/proverif/pv/`：示例模型，全部 `.pv`
   - `docs/proverif/pdf/`：官方 PDF（手册、教程、综述）
-- `pv-lens/`：安全协议可视化建模 Web 工具（pnpm workspace，三包：`core` 纯 TS 共享核心 / `server` Node 验证后端 / `web` React + Vite 前端）
+- `pv-lens/`：安全协议可视化（阅读与验证）Web 工具，画布编辑建模为二期（pnpm workspace，三包：`core` 纯 TS 共享核心 / `server` Node 验证后端 / `web` React + Vite 前端）
 - `README.md`：索引页，定位 + 导航 + 常用命令
 
 ## 学习笔记导航
@@ -54,11 +54,11 @@ proverif docs/proverif/pv/hello.pv | grep "RESULT"
 
 通过 `opam` 安装的 ProVerif，在 `bash`/`zsh` 里先执行 `eval "$(opam env)"`，`fish` 用户用 `eval (opam env)`。
 
-## pv-lens：规范叙事视图 + ProVerif 验证（MVP 已完成）
+## pv-lens：规范叙事视图 + ProVerif 验证（MVP 已完成，叙事视图 v2 迭代中）
 
 `pv-lens/` 是把「协议结构」与「ProVerif 验证结论」接到一起的本地 Web 工具：装载 `.pv` 后浏览器把每条角色渲染成一条泳道（消息步骤 + 符号化词项 + 未配对/降级标注），并按**设计意图**给两方协议画跨泳道连线（类型 + 源码顺序，多方协议不自动连线，连上不代安全保证）；点「运行验证」由后端 `spawn` 本机 ProVerif；结果按查询逐条呈现（证明成立 / 被证伪 / 未能证明），被证伪时附反例 trace 原文与完整 stdout。界面中文，代码与术语保留英文。
 
-**定位与边界**：用户是学习密码学的学生、教师、研究者；个人使用、本地/自托管运行，不上公网。MVP 只读不编辑——画布编辑与反例 trace 归因可视化属二期，ProVerif 不随应用打包（假设本机已装）。设计与验收口径见 [`.scratch/pv-lens/spec.md`](.scratch/pv-lens/spec.md)，架构约束见 `docs/adr/0001`、`docs/adr/0002`，词汇表见 `CONTEXT.md`。
+**定位与边界**：用户是学习密码学的学生、教师、研究者；个人使用、本地/自托管运行，不上公网。MVP 只读不编辑——画布编辑与反例 trace 归因可视化属二期，ProVerif 不随应用打包（假设本机已装）；分期口径见 [ADR-0011](docs/adr/0011-product-phasing.md)。设计与验收口径见 [`.scratch/pv-lens/spec.md`](.scratch/pv-lens/spec.md)（v2 在 [`.scratch/pv-lens-v2/`](.scratch/pv-lens-v2/spec.md)），架构约束见 `docs/adr/0001`、`docs/adr/0002`，词汇表见 `CONTEXT.md`。
 
 ### 前置条件
 
