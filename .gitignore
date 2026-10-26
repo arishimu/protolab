@@ -1,3 +1,5 @@
 # ---- 本地 harness 产物 ----
 # .pi/skills 是指向 .agents/skills 的符号链接农场，可由 skills-lock.json 重建
 .pi/
+
+.mimosa/
