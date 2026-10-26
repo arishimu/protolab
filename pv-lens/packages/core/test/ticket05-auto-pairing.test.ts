@@ -50,4 +50,41 @@ describe('ticket #05：消息层与两方意图配对（core 统一配对）', (
     const { pairings } = composeMessagePairings(result);
     expect(pairings).toEqual([]);
   });
+
+  it('人工声明的拒绝路径各给明确诊断（06 交互的前置合同）', () => {
+    const twoParty = parsePv([
+      'free c: channel.',
+      'let a = out(c, x); out(c, y).',
+      'let b = in(c, x); in(c, y).',
+      'process a | b.',
+    ].join('\n'));
+    const autoPairing = composeMessagePairings(twoParty).pairings[0];
+
+    const onAuto = composeMessagePairings(twoParty, [{ outEnd: autoPairing.outEnd, inEnd: autoPairing.inEnd }]);
+    expect(onAuto.pairings).toHaveLength(2);
+    expect(onAuto.diagnostics.map((diagnostic) => diagnostic.kind)).toContain('automatic-endpoint');
+
+    const crossChannel = parsePv([
+      'free c1: channel. free c2: channel.',
+      'let a = out(c1, x); in(c1, y).',
+      'let b = in(c2, z).',
+      'process a | b.',
+    ].join('\n'));
+    // 自动为空（跨信道），人工意图不再被 automatic-endpoint 挡住：
+    const reversed = composeMessagePairings(crossChannel, [
+      { outEnd: { roleIndex: 0, stepIndex: 1 }, inEnd: { roleIndex: 1, stepIndex: 0 } },
+    ]);
+    expect(reversed.pairings).toEqual([]);
+    expect(reversed.diagnostics.map((diagnostic) => diagnostic.kind)).toEqual(['invalid-direction']);
+
+    const sameRole = composeMessagePairings(crossChannel, [
+      { outEnd: { roleIndex: 0, stepIndex: 0 }, inEnd: { roleIndex: 0, stepIndex: 1 } },
+    ]);
+    expect(sameRole.diagnostics.map((diagnostic) => diagnostic.kind)).toEqual(['invalid-direction']);
+
+    const unknown = composeMessagePairings(crossChannel, [
+      { outEnd: { roleIndex: 0, stepIndex: 9 }, inEnd: { roleIndex: 1, stepIndex: 9 } },
+    ]);
+    expect(unknown.diagnostics.map((diagnostic) => diagnostic.kind)).toEqual(['unknown-endpoint']);
+  });
 });

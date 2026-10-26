@@ -22,3 +22,5 @@
 口径注记（防 09/10 重开）：「段内分别标发送 wire term 与实际到达词项」按 ticket 02 真浏览器验收口径执行——配对消息的 wire term **只在信道帧写一遍**（设计意图下实际到达词项 = 发送方 wire term），接收端以值层绑定引用相接；「箭头指向」按 ticket 02 定稿：配对发送段画起点圆点不画箭头，接收段与未配对段才有箭头（指向接收方块 / 信道轨）。
 
 验收证据：`pnpm typecheck` 三包通过；全量测试 27 个测试文件、266 项通过（含真实 ProVerif 集成 6 项）。视觉沿用 02/03 已过真浏览器验收的渲染路径，本票无新增视觉改动。
+
+2026-10-26，`/code-review`（13c1257...96bfe5f，两轴子代理）后落实修复：core 补 `automatic-endpoint` / `invalid-direction`（含同角色）/ `unknown-endpoint` 三类拒绝诊断的合同测试（`invalid-channel` 与 manual 来源已由 `v2-ir.test.ts` 覆盖，评审误报为零覆盖）；web 渲染冒烟补端点 `data-identity` 可寻址断言、色板字面量标注来源。评审确认的两处口径注记（wire term 一遍于信道帧；配对发送段起点圆点无箭头）与 spec 用户故事 9/10 字面有偏差，以 ticket 02 真浏览器定稿为准，留待 09 票视觉语言复核时统一裁决。修复后全量 267 项、typecheck 通过。

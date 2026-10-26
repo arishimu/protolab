@@ -51,9 +51,14 @@ describe('ticket #05：消息层与两方意图配对（web 视图）', () => {
     expect(svg).toContain('data-identity="message-1"');
     expect(svg).toContain('data-identity="message-3"');
     expect(svg).toContain('消息 M1');
-    // 三条消息三种消息身份色（首三条 token），发送段与接收段同色。
+    // 三条消息三种消息身份色（MESSAGE_COLORS 首三条 token 的字面量副本，防断言同源失效），
+    // 发送段与接收段同色。
     for (const color of ['#2563EB', '#0891B2', '#16A34A']) {
       expect(svg).toContain(`stroke="${color}"`);
+    }
+    // 端点在 SVG 里按语义身份（endpoint id）可寻址。
+    for (const endpoint of pairedEndpoints.slice(0, 2)) {
+      expect(svg).toContain(`data-identity="${endpoint.id}"`);
     }
   });
 
