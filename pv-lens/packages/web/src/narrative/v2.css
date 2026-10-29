@@ -321,6 +321,18 @@
   stroke-width: 2;
 }
 
+/* 线上词项芯片（ticket 11）：描边由内联未配对橙给出，文字用同族深色。 */
+.structured-chip--wire text {
+  fill: #7c2d12;
+}
+
+/* 置顶标签底（ticket 11）：跨泳道消息线从文字背后穿过而非划穿文字。 */
+.structured-label-bg {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: rgba(148, 163, 184, 0.35);
+  stroke-width: 0.5;
+}
+
 .structured-message-pillar text {
   font-size: 10px;
   font-family: var(--mono);
@@ -376,4 +388,16 @@
   background: #ffffff;
   border: 1px dashed #475569;
   border-radius: 3px;
+}
+
+/* 未配对端点 glyph（ticket 11）：橙色空心圆点，与画布 structured-unpaired-dot 同口径。 */
+.legend-unpaired-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #c2410c;
+  border-radius: 50%;
+  background: #ffffff;
+  margin-right: 2px;
+  vertical-align: baseline;
 }

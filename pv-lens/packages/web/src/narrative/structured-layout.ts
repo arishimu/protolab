@@ -94,12 +94,16 @@ export interface StructuredMethod {
   sourceSpan: SourceSpan;
 }
 
-/** 虚线芯片：派生值（解构输出未绑定）、条件芯片、表模式芯片。不发值身份色。 */
+/**
+ * 虚线芯片：派生值（解构输出未绑定）、条件芯片、表模式芯片不发值身份色；
+ * `wire` 是未配对消息的线上词项（该词项在别处不再重复书写），描边用未配对橙。
+ */
 export interface StructuredChip {
   id: string;
   roleIndex: number;
   text: string;
-  kind: 'derived' | 'condition' | 'pattern';
+  kind: 'derived' | 'condition' | 'pattern' | 'wire';
+  color?: string;
   x: number;
   y: number;
   width: number;
@@ -168,6 +172,8 @@ export interface MessagePillar {
   /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）与帧的中轴 y。 */
   termText: string;
   termPresentation: StructuredEndpoint['termPresentation'];
+  /** identity 接收去重时，接收绑定省略泳道方块，改在帧内词项旁标注值身份色带。 */
+  termValueColor?: string;
   frameY: number;
   endpoints: readonly StructuredEndpoint[];
 }
@@ -245,6 +251,13 @@ const METRICS = {
   methodHeight: 24,
   /** 构造盒落在「生命线 → 消息」路径上的横向偏移。 */
   wireMethodOffset: 58,
+  /** 行标签起点相对生命线的缩进（避开方法盒右缘与值方块）。 */
+  labelInset: 37,
+  /** 未配对线上芯片：置于该行值层之下的间隙与宽度上限（不越出自身泳道）。 */
+  wireChipGap: 6,
+  wireChipMaxWidth: 132,
+  /** 跨泳道消息线的禁置带半高：线两侧该范围内不放本列值层元素。 */
+  crossReserveHalf: 11,
 } as const;
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
@@ -309,6 +322,158 @@ export function buildStructuredNarrativeLayout(
   let maxTextRight = 0;
   const usedY = new Set<number>();
 
+  // —— 行几何预计算（F2/F3/F5）——
+  // 先用与正式放置完全相同的游标推进规则算出每个 item 的行 y（并登记全局 usedY），
+  // 才能在正式放置前给「被消息线穿过的中间角色列」登记禁置带。
+  const roleIndexByName = new Map(roles.map((role, index) => [role.name, index]));
+  const endpointChannelByRef = new Map<string, string>();
+  roles.forEach((role, roleIndex) => {
+    role.items.forEach((item) => {
+      if (item.kind !== 'message') return;
+      endpointChannelByRef.set(`${roleIndex}:${item.endpoint.stepIndex}`, renderTerm(item.endpoint.channel));
+    });
+  });
+  // 与消息柱构建同一条有效性规则（两端存在且同信道），无效配对不触发去重。
+  const pairedKeys = new Set<string>();
+  (options.pairings ?? []).forEach((pairing) => {
+    const outKey = `${pairing.outEnd.roleIndex}:${pairing.outEnd.stepIndex}`;
+    const inKey = `${pairing.inEnd.roleIndex}:${pairing.inEnd.stepIndex}`;
+    const outChannel = endpointChannelByRef.get(outKey);
+    const inChannel = endpointChannelByRef.get(inKey);
+    if (outChannel === undefined || inChannel === undefined || outChannel !== inChannel) return;
+    pairedKeys.add(outKey);
+    pairedKeys.add(inKey);
+  });
+
+  /** identity 接收（F5）：`in(c, x)` 词项恰为绑定变量且已配对 → 泳道省略绑定方块，帧内标值身份色。 */
+  const identityTermColorByRef = new Map<string, string>();
+  const chainOfItem = (item: RoleItem, roleIndex: number): ChainEntry[] => {
+    const chain = valueChainOf(item, bindingById, destructorNames);
+    if (item.kind !== 'message' || item.endpoint.direction !== 'in') return chain;
+    const ref = `${roleIndex}:${item.endpoint.stepIndex}`;
+    const term = item.endpoint.term;
+    if (!pairedKeys.has(ref) || term.kind !== 'variable' || term.bindingId === undefined) return chain;
+    const filtered = chain.filter((entry) => !(entry.kind === 'value' && entry.bindingId === term.bindingId && entry.occurrence === 'binding'));
+    if (filtered.length !== chain.length) {
+      const color = bindingColors.get(term.bindingId);
+      if (color !== undefined) identityTermColorByRef.set(ref, color);
+    }
+    return filtered;
+  };
+
+  /** 未配对端的线上芯片（F2）：词项不是裸绑定变量才画（裸变量已由泳道内的值方块写明）。 */
+  const wireChipOf = (item: RoleItem, roleIndex: number): boolean => {
+    if (item.kind !== 'message') return false;
+    if (pairedKeys.has(`${roleIndex}:${item.endpoint.stepIndex}`)) return false;
+    const term = item.endpoint.term;
+    if (term.kind === 'variable' && term.bindingId !== undefined) return false;
+    return channelColumns.has(renderTerm(item.endpoint.channel));
+  };
+
+  const baseHeightOf = (item: RoleItem): number => item.kind === 'branch'
+    ? METRICS.branchHeight
+    : item.kind === 'event'
+      ? METRICS.eventHeight
+      : item.kind === 'message'
+        ? METRICS.messageHeight
+        : METRICS.localHeight;
+  const advanceAfterRow = (y: number, rowHeight: number, chip: boolean): number =>
+    y + rowHeight / 2 + (chip ? METRICS.wireChipGap + METRICS.chipHeight : 0) + gapUnit;
+  const startCursor = (role: PvRole): number => {
+    const parameterCount = role.bindings.filter((binding) => binding.kind === 'parameter').length;
+    return parameterCount === 0
+      ? margin + METRICS.headerHeight + METRICS.parameterHeight
+      : METRICS.headerHeight + METRICS.parameterLabelGap + 14 + parameterCount * METRICS.valuePitch;
+  };
+
+  interface RowInfo { y: number; rowHeight: number; chip: boolean }
+  /**
+   * 行 y 的分配（含行级禁置带避让）：整行与其链带若压到预留带，则整行下移。
+   * 预留带来自其它角色的消息线，而线 y 又来自行 y——以三遍迭代收敛：
+   * 第一遍无避让求出初始线位，随后每遍用最新带重算行 y 与线 y。
+   */
+  const computeRows = (reserved: ReadonlyMap<number, readonly number[]>): {
+    rowInfo: Map<string, RowInfo>;
+    foldYByBranch: Map<string, number>;
+    endpointRows: Array<{ roleIndex: number; itemIndex: number; y: number }>;
+  } => {
+    const rowInfo = new Map<string, RowInfo>();
+    const foldYByBranch = new Map<string, number>();
+    const endpointRows: Array<{ roleIndex: number; itemIndex: number; y: number }> = [];
+    const rowUsedY = new Set<number>();
+    roles.forEach((role, roleIndex) => {
+      const bands = reserved.get(roleIndex) ?? [];
+      const clearsBands = (top: number, bottom: number): boolean =>
+        bands.every((bandY) => bottom <= bandY - METRICS.crossReserveHalf || top >= bandY + METRICS.crossReserveHalf);
+      let cursor = startCursor(role);
+      let foldedDepth = 0;
+      role.items.forEach((item, itemIndex) => {
+        if (foldedDepth > 0) {
+          if (isBranchStart(item)) foldedDepth += 1;
+          else if (isBranchJoin(item)) foldedDepth -= 1;
+          return;
+        }
+        if (isBranchStart(item) && collapsedBranches.has(item.id)) {
+          let y = uniqueY(cursor + METRICS.branchFoldHeight / 2, rowUsedY);
+          while (!clearsBands(y - METRICS.branchFoldHeight / 2 - 2, y + METRICS.branchFoldHeight / 2 + 2)) {
+            y = uniqueY(y + METRICS.crossReserveHalf * 2 + METRICS.branchFoldHeight / 2 + 2, rowUsedY);
+          }
+          rowUsedY.add(y);
+          foldYByBranch.set(item.id, y);
+          cursor = y + METRICS.branchFoldHeight / 2 + gapUnit;
+          foldedDepth = 1;
+          return;
+        }
+        const rowHeight = Math.max(baseHeightOf(item), chainHeightOf(chainOfItem(item, roleIndex)) + METRICS.chainPadding);
+        let y = uniqueY(cursor + rowHeight / 2, rowUsedY);
+        while (!clearsBands(y - rowHeight / 2 - 2, y + rowHeight / 2 + 2)) {
+          y = uniqueY(y + METRICS.crossReserveHalf * 2 + rowHeight + 4, rowUsedY);
+        }
+        rowUsedY.add(y);
+        const chip = wireChipOf(item, roleIndex);
+        rowInfo.set(`${roleIndex}:${String(itemIndex)}`, { y, rowHeight, chip });
+        if (item.kind === 'message') endpointRows.push({ roleIndex, itemIndex, y });
+        cursor = advanceAfterRow(y, rowHeight, chip);
+      });
+    });
+    return { rowInfo, foldYByBranch, endpointRows };
+  };
+
+  /** 由端点行位推「被穿过的中间角色列」的预留带。 */
+  const computeReservations = (endpointRows: readonly { roleIndex: number; itemIndex: number; y: number }[]): Map<number, number[]> => {
+    const reservedYsByRole = new Map<number, number[]>();
+    endpointRows.forEach((row) => {
+      const role = roles[row.roleIndex];
+      const item = role?.items[row.itemIndex];
+      if (role === undefined || item === undefined || item.kind !== 'message') return;
+      const column = roleColumns.get(role.name);
+      if (column === undefined) return;
+      const lifelineX = column.x + column.width / 2;
+      const channel = channelColumns.get(renderTerm(item.endpoint.channel));
+      if (channel === undefined) return;
+      const channelCenterX = channel.x + channel.width / 2;
+      const left = Math.min(lifelineX, channelCenterX);
+      const right = Math.max(lifelineX, channelCenterX);
+      columns.forEach((other) => {
+        if (other.kind !== 'role' || other.name === role.name) return;
+        const otherCenterX = other.x + other.width / 2;
+        if (otherCenterX <= left || otherCenterX >= right) return;
+        const otherIndex = roleIndexByName.get(other.name);
+        if (otherIndex === undefined) return;
+        const bands = reservedYsByRole.get(otherIndex) ?? [];
+        bands.push(row.y);
+        reservedYsByRole.set(otherIndex, bands);
+      });
+    });
+    return reservedYsByRole;
+  };
+
+  let rows = computeRows(new Map());
+  for (let pass = 0; pass < 2; pass += 1) {
+    rows = computeRows(computeReservations(rows.endpointRows));
+  }
+  const { rowInfo, foldYByBranch } = rows;
+
   roles.forEach((role, roleIndex) => {
     const column = roleColumns.get(role.name);
     if (column === undefined) return;
@@ -318,12 +483,9 @@ export function buildStructuredNarrativeLayout(
     /** 值层竖向链的当前列（守卫盒 / 芯片 / 解构盒仍贴生命线；构造链另朝信道偏移）。 */
     const rowX = lifelineX;
     const nextColumn = columns[(columnPosition.get(`role:${role.name}`) ?? 0) + 1];
-    // 信道总线又窄又淡，标签可以借过；下一列是角色时则止步于它左缘，避免压到对方生命线。
-    const labelLimitX = nextColumn === undefined
-      ? Number.POSITIVE_INFINITY
-      : nextColumn.kind === 'channel'
-        ? nextColumn.x + nextColumn.width + METRICS.columnGap / 2 - 8
-        : nextColumn.x - 8;
+    // 标签不越列（F7）：预算止于下一列左缘，不再借用信道总线——事件/守卫原文
+    // 曾经穿过信道轨道压在总线块上；超预算由渲染方截断，全文进 title。
+    const labelLimitX = nextColumn === undefined ? Number.POSITIVE_INFINITY : nextColumn.x - 8;
 
     const parameterBindings = role.bindings.filter((binding) => binding.kind === 'parameter');
     const parameterTop = METRICS.headerHeight + METRICS.parameterLabelGap + 14;
@@ -339,9 +501,7 @@ export function buildStructuredNarrativeLayout(
       ));
     });
     const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
-    let cursor = parameterBindings.length === 0
-      ? margin + METRICS.headerHeight + METRICS.parameterHeight
-      : parameterTop + parameterBindings.length * METRICS.valuePitch;
+    let cursor = startCursor(role);
 
     // 折叠分支时跳过 `branch…join` 的整个区间；`foldedDepth` 记录剩余要吞掉的嵌套层数。
     let foldedDepth = 0;
@@ -354,22 +514,23 @@ export function buildStructuredNarrativeLayout(
       if (isBranchStart(item) && collapsedBranches.has(item.id)) {
         const hiddenCount = countBranchItems(role.items, itemIndex);
         const height = METRICS.branchFoldHeight;
-        const y = uniqueY(cursor + height / 2, usedY);
-        usedY.add(y);
+        const y = foldYByBranch.get(item.id) ?? uniqueY(cursor + height / 2, usedY);
         const label = `▸ ${branchLabel(item)} · +${String(hiddenCount)}`;
+        // 折叠条封在自身泳道内（F8）：不再越列压到邻列元素，文字随宽截断。
+        const width = Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
         branchFolds.push({
           branchId: item.id,
           roleIndex,
           x: lifelineX,
           y,
-          width: Math.min(METRICS.branchFoldMaxWidth, 24 + label.length * CHAR_WIDTH),
+          width,
           height,
           label,
           guardText: guardTextOf(item),
           hiddenCount,
           sourceSpan: item.span,
         });
-        maxTextRight = Math.max(maxTextRight, lifelineX + label.length * CHAR_WIDTH);
+        maxTextRight = Math.max(maxTextRight, lifelineX + width / 2);
         cursor = y + height / 2 + gapUnit;
         maxBottom = Math.max(maxBottom, cursor);
         foldedDepth = 1;
@@ -377,17 +538,14 @@ export function buildStructuredNarrativeLayout(
       }
 
       const stepItem = item.kind === 'message' ? item : undefined;
-      const chain = valueChainOf(item, bindingById, destructorNames);
-      const baseHeight = item.kind === 'branch'
-        ? METRICS.branchHeight
-        : item.kind === 'event'
-          ? METRICS.eventHeight
-          : item.kind === 'message'
-            ? METRICS.messageHeight
-            : METRICS.localHeight;
-      const rowHeight = Math.max(baseHeight, chainHeightOf(chain) + METRICS.chainPadding);
-      const y = uniqueY(cursor + rowHeight / 2, usedY);
-      usedY.add(y);
+      let wireChipBottom = 0;
+      const chain = chainOfItem(item, roleIndex);
+      const baseHeight = baseHeightOf(item);
+      const fallbackHeight = Math.max(baseHeight, chainHeightOf(chain) + METRICS.chainPadding);
+      // 行 y 来自预计算（与禁置带、全局 usedY 同源）；兜底路径只在预计算缺失时用。
+      const info = rowInfo.get(`${roleIndex}:${String(itemIndex)}`)
+        ?? { y: uniqueY(cursor + fallbackHeight / 2, usedY), rowHeight: fallbackHeight, chip: wireChipOf(item, roleIndex) };
+      const { y, rowHeight } = info;
 
       if (item.kind === 'branch') {
         if (item.marker === 'branch') {
@@ -448,7 +606,7 @@ export function buildStructuredNarrativeLayout(
         }
       }
 
-      const labelX = stepItem === undefined ? lifelineX + METRICS.valueWidth / 2 + 6 : lifelineX;
+      const labelX = stepItem === undefined ? lifelineX + METRICS.labelInset : lifelineX;
       const labelAnchor: StructuredNode['labelAnchor'] = stepItem === undefined ? 'start' : 'middle';
       const labelBudget = labelAnchor === 'start'
         ? Math.max(6, Math.floor((labelLimitX - labelX) / CHAR_WIDTH))
@@ -656,10 +814,32 @@ export function buildStructuredNarrativeLayout(
               });
             }
           }
+          // 未配对端的线上词项芯片（F2）：落在自身泳道、该行值层之下，宽度按文字估算，
+          // 描边用未配对橙与虚线/空心点同色——不再画在 0.72 分位点压住邻列文字。
+          if (info.chip) {
+            const text = renderTerm(stepItem.endpoint.term);
+            const chipWidth = Math.min(METRICS.wireChipMaxWidth, 20 + text.length * CAPTION_CHAR_WIDTH);
+            const chipY = Math.max(y + rowHeight / 2, slotTop) + METRICS.wireChipGap + METRICS.chipHeight / 2;
+            chips.push({
+              id: `${item.id}:wire-chip`,
+              roleIndex,
+              text,
+              kind: 'wire',
+              color: '#C2410C',
+              x: lifelineX,
+              y: chipY,
+              width: chipWidth,
+              height: METRICS.chipHeight,
+              sourceSpan: item.span,
+            });
+            maxTextRight = Math.max(maxTextRight, lifelineX + chipWidth / 2);
+            wireChipBottom = chipY + METRICS.chipHeight / 2;
+          }
         }
       }
 
-      cursor = y + rowHeight / 2 + gapUnit;
+      // 芯片可能因禁置带/链下移而低于常规行底，游标取两者较大者。
+      cursor = Math.max(advanceAfterRow(y, rowHeight, info.chip), wireChipBottom + gapUnit);
       maxBottom = Math.max(maxBottom, cursor);
     });
     maxBottom = Math.max(maxBottom, cursor);
@@ -677,6 +857,8 @@ export function buildStructuredNarrativeLayout(
     const channel = channelColumns.get(out.channelName);
     if (channel === undefined) return;
     const channelX = channel.x + channel.width / 2;
+    // identity 接收去重时，接收绑定的值身份色转移到信道帧词项上（F5）。
+    const termValueColor = identityTermColorByRef.get(`${pairing.inEnd.roleIndex}:${pairing.inEnd.stepIndex}`);
     pillars.push({
       id: `message-${String(index + 1)}`,
       color: MESSAGE_COLORS[index % MESSAGE_COLORS.length],
@@ -687,6 +869,7 @@ export function buildStructuredNarrativeLayout(
       bottom: Math.max(out.y, incoming.y),
       termText: out.termText,
       termPresentation: out.termPresentation,
+      ...(termValueColor === undefined ? {} : { termValueColor }),
       // 帧对齐到发送端那一端：弧的走向固定（发出→信道→接收），帧不必浮在两端中间。
       frameY: out.y,
       endpoints: [out, incoming],
@@ -797,7 +980,7 @@ function valueChainOf(
           kind: 'method',
           label: method.label,
           direction: method.direction,
-          caption: captionOf(item.pattern),
+          caption: methodCaptionOf(item.pattern),
           inputBindingIds: patternRefs.filter((ref) => !introduced.has(ref.bindingId)).map((ref) => ref.bindingId),
           outputBindingIds: item.bindingIds,
         });
@@ -816,7 +999,7 @@ function valueChainOf(
         kind: 'method',
         label: method.label,
         direction: method.direction,
-        caption: captionOf(item.term),
+        caption: methodCaptionOf(item.term),
         inputBindingIds: termRefs.map((ref) => ref.bindingId),
         outputBindingIds: item.bindingIds,
       });
@@ -878,7 +1061,7 @@ function pushCondition(
           kind: 'method',
           label: method.label,
           direction: method.direction,
-          caption: captionOf(side),
+          caption: methodCaptionOf(side),
           inputBindingIds: refs.map((ref) => ref.bindingId),
           outputBindingIds: [],
         });
@@ -971,6 +1154,17 @@ function wireMethodOf(
     direction: method.direction,
     inputBindingIds: termBindingRefs(term).map((ref) => ref.bindingId),
   };
+}
+
+/**
+ * 盒下小字（F6 收紧）：实参全部是已绑定变量时不写——操作数已以同色值方块排在盒旁，
+ * caption 只补「方块写不出的实参」（自由名、字面量等）。
+ */
+function methodCaptionOf(term: PvTerm): string | undefined {
+  if (term.kind === 'application' && term.args.every((arg) => arg.kind === 'variable' && arg.bindingId !== undefined)) {
+    return undefined;
+  }
+  return captionOf(term);
 }
 
 /** 盒下小字：算子的实参元组（`adec` → `(m, skB)`），与原型 caption 同口径。 */

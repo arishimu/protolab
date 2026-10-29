@@ -154,10 +154,12 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
     expect(chips).toBe(layout.pillars.length + unpaired);
   });
 
-  it('方法盒带实参 caption，构造盒落在生命线到信道的路径上', () => {
+  it('方法盒 caption 只补值方块写不出的实参，构造盒落在生命线到信道的路径上', () => {
     const layout = buildStructuredNarrativeLayout(coreFixture('pv/handshake-fixed.pv'));
     const checksign = layout.methods.find((method) => method.label === 'checksign');
-    expect(checksign?.caption).toBe('(y, pkB)');
+    // ticket 11（F6）：checksign(y, pkB) 的实参全部是已绑定变量，操作数已是相邻同色值方块，
+    // caption 省略；只有含自由名/字面量实参（方块写不出）的方法盒才写 caption。
+    expect(checksign?.caption).toBeUndefined();
     expect(checksign?.direction).toBe('destruct');
     const wire = layout.methods.find((method) => method.id.endsWith(':wire-method'));
     expect(wire?.direction).toBe('construct');

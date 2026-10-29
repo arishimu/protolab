@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactElement } from 'react';
 import type { ParseResult, StepPairing } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
@@ -71,7 +71,7 @@ export function NarrativeView({ result, pairings = [], initialCollapsedBranches 
           </p>
           <StructuredNarrativeCanvas layout={structured} zoom={zoom} legacy={legacy} onToggleBranch={toggleBranch} />
           <NarrativeDiagnostics result={result} />
-          <Legend />
+          <Legend layout={structured} result={result} />
         </>
       ) : (
         <NoRoleStructure result={result} />
@@ -113,24 +113,26 @@ function StructuredNarrativeCanvas({
         <g className="structured-arm-layer">
           {layout.armRuns.map((run) => <ArmRunSvg key={run.id} run={run} />)}
         </g>
-        <g className="structured-branch-fold-layer">
-          {layout.branchFolds.map((fold) => (
-            <BranchFoldSvg key={fold.branchId} fold={fold} onToggleBranch={onToggleBranch} />
-          ))}
-        </g>
         <g className="structured-message-layer">
           {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
           {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
-        </g>
-        <g className="structured-node-layer">
-          {layout.nodes
-            .filter((node) => node.kind !== 'message' && node.kind !== 'branch' && (node.kind !== 'local' || node.bindingIds.length === 0))
-            .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
         </g>
         <g className="structured-value-layer">
           {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} onToggleBranch={onToggleBranch} />)}
           {layout.chips.map((chip) => <StructuredChipSvg key={chip.id} chip={chip} />)}
           {layout.valueBlocks.map((block) => <StructuredValueBlockSvg key={block.id} block={block} />)}
+        </g>
+        {/* 折叠条压在值层之上（F8）：折叠态文字永远可见；臂道轨道从折叠条背后穿过。 */}
+        <g className="structured-branch-fold-layer">
+          {layout.branchFolds.map((fold) => (
+            <BranchFoldSvg key={fold.branchId} fold={fold} onToggleBranch={onToggleBranch} />
+          ))}
+        </g>
+        {/* 文本节点置顶（F4）：事件/分支/本地标签永远盖住线与芯片，不被虚线划穿。 */}
+        <g className="structured-node-layer">
+          {layout.nodes
+            .filter((node) => node.kind !== 'message' && node.kind !== 'branch' && (node.kind !== 'local' || node.bindingIds.length === 0))
+            .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
         </g>
         {layout.conflicts.map((conflict) => (
           <g key={conflict.id} className="structured-conflict" aria-label={conflict.message}>
@@ -196,6 +198,10 @@ function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pilla
       <g className="structured-message-frame">
         <title>{pillar.termText}</title>
         <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 28} y={frameY - 11} width="56" height="22" stroke={pillar.color} />
+        {/* identity 接收去重（F5）：接收绑定的值身份色以帧内色带标注，泳道省略同名词块。 */}
+        {pillar.termValueColor !== undefined && (
+          <rect className="structured-term-value-strip" x={pillar.channelX - 26} y={frameY - 8} width="3.5" height="16" fill={pillar.termValueColor} />
+        )}
         <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, 8)}</text>
       </g>
     </g>
@@ -215,8 +221,6 @@ function EndpointSvg({
   const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
   // 消息一律画直线（对齐 prototype 05）：跨过中间生命线也不上拱，不做跨线弧。
   const path = `M ${start} ${endpoint.y} L ${end} ${endpoint.y}`;
-  // 未配对词项靠近信道轨（T2 的信道段），给中间留出构造盒的位置。
-  const chipX = endpoint.roleX + (endpoint.channelX - endpoint.roleX) * 0.72;
   // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
   // 接收段与未配对端（指向信道轨）才有箭头。
   const showArrow = endpoint.unpaired || endpoint.direction === 'in';
@@ -236,8 +240,6 @@ function EndpointSvg({
       {endpoint.unpaired && (
         <>
           <title>{endpoint.termText}</title>
-          <rect className={`structured-term-chip structured-term-chip--${endpoint.termPresentation}`} x={chipX - 35} y={endpoint.y - 11} width="70" height="22" stroke={color} />
-          <text x={chipX} y={endpoint.y + 4} textAnchor="middle">{truncate(endpoint.termText, 10)}</text>
           <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />
         </>
       )}
@@ -247,12 +249,18 @@ function EndpointSvg({
 
 function StructuredNodeSvg({ node }: { node: StructuredNode }) {
   const label = truncate(node.label, node.labelMaxChars);
+  // 置顶标签配不透明底（F4）：跨泳道消息线从文字背后穿过，而不是划穿文字。
+  const labelWidth = label.length * 6.2 + 8;
+  const labelBg = (baselineY: number): ReactElement => (
+    <rect className="structured-label-bg" x={node.labelX - 4} y={baselineY - 11} width={labelWidth} height="14" rx="3" />
+  );
   if (node.kind === 'event') {
     // 事件旗标：生命线上的实心旗 + 右侧标签（前提/结论区分归 #08）。
     return (
       <g className="structured-event" data-source-offset={node.span.start.offset} aria-label={node.label}>
         <title>{node.label}</title>
         <path d={`M ${node.x + node.width / 2} ${node.y + 7} l 12 6 l -12 6 z`} />
+        {labelBg(node.y + 18)}
         <text x={node.labelX} y={node.y + 18} textAnchor={node.labelAnchor}>{label}</text>
       </g>
     );
@@ -263,6 +271,7 @@ function StructuredNodeSvg({ node }: { node: StructuredNode }) {
       <g className="structured-node structured-node--branch" data-source-offset={node.span.start.offset} aria-label={node.label}>
         <title>{node.label}</title>
         <line x1={node.x + 8} x2={node.x + node.width - 8} y1={node.y + node.height / 2} y2={node.y + node.height / 2} />
+        {labelBg(node.y + node.height / 2 + 4)}
         <text x={node.labelX} y={node.y + node.height / 2 + 4} textAnchor={node.labelAnchor}>{label}</text>
       </g>
     );
@@ -469,12 +478,16 @@ function StructuredChipSvg({ chip }: { chip: StructuredNarrativeLayout['chips'][
     ? '派生芯片'
     : chip.kind === 'condition'
       ? '条件芯片'
-      : '模式芯片';
+      : chip.kind === 'wire'
+        ? '线上词项'
+        : '模式芯片';
+  // 宽度由布局按文字估算（F2）：截断预算跟随芯片宽度，不再固定 9 字符。
+  const maxChars = chip.kind === 'wire' ? Math.max(3, Math.floor((chip.width - 8) / 5.6)) : 9;
   return (
     <g className={`structured-chip structured-chip--${chip.kind}`} data-source-offset={chip.sourceSpan.start.offset} aria-label={`${kindLabel} ${chip.text}`}>
       <title>{chip.text}</title>
-      <rect x={chip.x - chip.width / 2} y={chip.y - chip.height / 2} width={chip.width} height={chip.height} rx="4" />
-      <text x={chip.x} y={chip.y + 4} textAnchor="middle">{truncate(chip.text, 9)}</text>
+      <rect x={chip.x - chip.width / 2} y={chip.y - chip.height / 2} width={chip.width} height={chip.height} rx="4" stroke={chip.color} />
+      <text x={chip.x} y={chip.y + 4} textAnchor="middle">{truncate(chip.text, maxChars)}</text>
     </g>
   );
 }

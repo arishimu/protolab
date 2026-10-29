@@ -66,11 +66,14 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
     expect(html).toContain('0 条跨泳道连线');
   });
 
-  it('图例解释记法；中文 UI', () => {
+  it('图例解释记法且按画布内容过滤（ticket 11）；中文 UI', () => {
     const html = render(fixture('hello'));
     expect(html).toContain('图例');
-    expect(html).toContain('{m}k');
-    expect(html).toContain('复制');
+    // hello 只有未配对消息：图例只剩未配对/线上词项/方向三条，加密记法与复制标记不出现。
+    expect(html).toContain('未配对');
+    expect(html).toContain('线上词项');
+    expect(html).not.toContain('{m}k');
+    expect(html).not.toContain('复制作用域');
   });
 
   it('ticket #01：角色参数簇和多信道生命线可从 v2 视图读取', () => {
@@ -99,7 +102,8 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
     expect(html).toContain('data-binding-id="p:new:');
     expect(html).toContain('structured-method--construct');
     expect(html).toContain('structured-method--destruct');
-    expect(html).toContain('structured-term-chip--wire');
+    // ticket 11（F2）：未配对线上词项改为泳道内芯片（structured-chip--wire），不再画在信道分位点上。
+    expect(html).toContain('structured-chip--wire');
   });
 
   it('完全没有角色结构时给中文提示而非白屏', () => {
