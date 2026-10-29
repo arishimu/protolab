@@ -28,3 +28,5 @@
 - 验证：`pnpm test` 28 文件 275 项全绿；typecheck 三包、build 通过。真浏览器截图验收四样例（playwright chromium，见 `11-screenshots/`）：hello 图例仅 3 条且未配对自解释；握手无压字/无 x 相邻重复/event 不穿信道/adec 无 caption；NS 修正跨泳道线穿过中间泳道留白；NS 原版 senc 盒与芯片分离、`{|secretANa|}Na` 全文无截断。
 
 既定限制与移交：参数簇（泳道顶部固定区）与行锚定节点（消息步方框、事件旗）不做禁置带避让，极端巧合下线仍可能从其后穿过（多为不透明底遮线，不划穿文字）——07 票弹性间距统一解决；消息柱帧内词项仍截断 8 字符（帧宽 56，ticket02 定稿）、右邻信道列的角色标签预算约 11 字符（长 event/守卫标签省略号 + title 全文）——09 票多信道视觉统一处理。
+
+2026-10-29，`/code-review`（9e2a7a4，两轴子代理）后落实修复：Spec 轴——F3 禁置带原只盖行体、未配对线上芯片排在行底之外可能落回带内（ns-mutual-auth 通过属样例巧合），行避让带已扩展到芯片下缘成为构造性保证；F5 未配对分支补断言（单角色合成样例：`in(c,x)` 无 wire 芯片、绑定方块保留，`out(c,f(x))` 芯片文本 f(x)）。Standards 轴——CONTEXT.md 新增「未配对线上词项芯片」「帧内值身份色带」词条（消除与 wire 词项芯片词条的冲突、补一色一值在帧内的延伸位）；`refOf`/`rowKeyOf` 收拢复合字符串键；`UNPAIRED_COLOR` 常量统一未配对橙（布局与渲染两处）；Legend `entries`→`present` 消歧。判断性建议记录不落实：`computeRows` 与正式放置的双份游标推进是三遍迭代的已知代价（见上），图例条目 Record 化收益低于 JSX 差异成本，测试中 METRICS 幻数已注释来源。caption 省略规则按票面一般化口径波及 `get` 表模式与守卫内嵌解构盒（`methodCaptionOf` 对全部方法盒生效）；`labelInset` 31→37 为 F7 标签避让方法盒右缘的配套微调。修复后 28 文件 275 项全绿、typecheck 通过。

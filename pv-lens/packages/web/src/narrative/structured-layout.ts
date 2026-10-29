@@ -15,6 +15,14 @@ import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
 
 export const MESSAGE_COLORS = ['#2563EB', '#0891B2', '#16A34A', '#D97706', '#DC2626', '#7C3AED', '#DB2777', '#475569'] as const;
 export const VALUE_COLORS = ['#BFDBFE', '#A5F3FC', '#BBF7D0', '#FED7AA', '#FECACA', '#DDD6FE', '#FBCFE8', '#CBD5E1'] as const;
+/** 未配对端点统一用色（虚线/空心圆点/线上词项芯片），与 v2.css 的 #c2410c 同值。 */
+export const UNPAIRED_COLOR = '#C2410C';
+
+/** 端点引用键：角色下标 + 消息步序，配对、预留带与去重共用同一表示。 */
+const refOf = (roleIndex: number, stepIndex: number): string => `${roleIndex}:${stepIndex}`;
+
+/** 行键：角色下标 + item 下标（预计算与正式放置之间按它对行 y 达成一致）。 */
+const rowKeyOf = (roleIndex: number, itemIndex: number): string => `${roleIndex}:${String(itemIndex)}`;
 export const CHANNEL_STYLES = ['solid', 'long-dash', 'dot'] as const;
 
 /** 粗略字宽，仅用于估算标签占用与画布宽度（不做像素级排版）。 */
@@ -330,14 +338,14 @@ export function buildStructuredNarrativeLayout(
   roles.forEach((role, roleIndex) => {
     role.items.forEach((item) => {
       if (item.kind !== 'message') return;
-      endpointChannelByRef.set(`${roleIndex}:${item.endpoint.stepIndex}`, renderTerm(item.endpoint.channel));
+      endpointChannelByRef.set(refOf(roleIndex, item.endpoint.stepIndex), renderTerm(item.endpoint.channel));
     });
   });
   // 与消息柱构建同一条有效性规则（两端存在且同信道），无效配对不触发去重。
   const pairedKeys = new Set<string>();
   (options.pairings ?? []).forEach((pairing) => {
-    const outKey = `${pairing.outEnd.roleIndex}:${pairing.outEnd.stepIndex}`;
-    const inKey = `${pairing.inEnd.roleIndex}:${pairing.inEnd.stepIndex}`;
+    const outKey = refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex);
+    const inKey = refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex);
     const outChannel = endpointChannelByRef.get(outKey);
     const inChannel = endpointChannelByRef.get(inKey);
     if (outChannel === undefined || inChannel === undefined || outChannel !== inChannel) return;
@@ -350,7 +358,7 @@ export function buildStructuredNarrativeLayout(
   const chainOfItem = (item: RoleItem, roleIndex: number): ChainEntry[] => {
     const chain = valueChainOf(item, bindingById, destructorNames);
     if (item.kind !== 'message' || item.endpoint.direction !== 'in') return chain;
-    const ref = `${roleIndex}:${item.endpoint.stepIndex}`;
+    const ref = refOf(roleIndex, item.endpoint.stepIndex);
     const term = item.endpoint.term;
     if (!pairedKeys.has(ref) || term.kind !== 'variable' || term.bindingId === undefined) return chain;
     const filtered = chain.filter((entry) => !(entry.kind === 'value' && entry.bindingId === term.bindingId && entry.occurrence === 'binding'));
@@ -364,7 +372,7 @@ export function buildStructuredNarrativeLayout(
   /** 未配对端的线上芯片（F2）：词项不是裸绑定变量才画（裸变量已由泳道内的值方块写明）。 */
   const wireChipOf = (item: RoleItem, roleIndex: number): boolean => {
     if (item.kind !== 'message') return false;
-    if (pairedKeys.has(`${roleIndex}:${item.endpoint.stepIndex}`)) return false;
+    if (pairedKeys.has(refOf(roleIndex, item.endpoint.stepIndex))) return false;
     const term = item.endpoint.term;
     if (term.kind === 'variable' && term.bindingId !== undefined) return false;
     return channelColumns.has(renderTerm(item.endpoint.channel));
@@ -425,13 +433,15 @@ export function buildStructuredNarrativeLayout(
           return;
         }
         const rowHeight = Math.max(baseHeightOf(item), chainHeightOf(chainOfItem(item, roleIndex)) + METRICS.chainPadding);
+        const chip = wireChipOf(item, roleIndex);
         let y = uniqueY(cursor + rowHeight / 2, rowUsedY);
-        while (!clearsBands(y - rowHeight / 2 - 2, y + rowHeight / 2 + 2)) {
+        // 避让带覆盖整行的可见底：行体 + 未配对线上芯片（芯片排在行底之下，须一并避线）。
+        const rowBottom = y + rowHeight / 2 + (chip ? METRICS.wireChipGap + METRICS.chipHeight : 0);
+        while (!clearsBands(y - rowHeight / 2 - 2, rowBottom + 2)) {
           y = uniqueY(y + METRICS.crossReserveHalf * 2 + rowHeight + 4, rowUsedY);
         }
         rowUsedY.add(y);
-        const chip = wireChipOf(item, roleIndex);
-        rowInfo.set(`${roleIndex}:${String(itemIndex)}`, { y, rowHeight, chip });
+        rowInfo.set(rowKeyOf(roleIndex, itemIndex), { y, rowHeight, chip });
         if (item.kind === 'message') endpointRows.push({ roleIndex, itemIndex, y });
         cursor = advanceAfterRow(y, rowHeight, chip);
       });
@@ -543,7 +553,7 @@ export function buildStructuredNarrativeLayout(
       const baseHeight = baseHeightOf(item);
       const fallbackHeight = Math.max(baseHeight, chainHeightOf(chain) + METRICS.chainPadding);
       // 行 y 来自预计算（与禁置带、全局 usedY 同源）；兜底路径只在预计算缺失时用。
-      const info = rowInfo.get(`${roleIndex}:${String(itemIndex)}`)
+      const info = rowInfo.get(rowKeyOf(roleIndex, itemIndex))
         ?? { y: uniqueY(cursor + fallbackHeight / 2, usedY), rowHeight: fallbackHeight, chip: wireChipOf(item, roleIndex) };
       const { y, rowHeight } = info;
 
@@ -825,7 +835,7 @@ export function buildStructuredNarrativeLayout(
               roleIndex,
               text,
               kind: 'wire',
-              color: '#C2410C',
+              color: UNPAIRED_COLOR,
               x: lifelineX,
               y: chipY,
               width: chipWidth,
@@ -845,12 +855,12 @@ export function buildStructuredNarrativeLayout(
     maxBottom = Math.max(maxBottom, cursor);
   });
 
-  const endpointByRef = new Map(endpoints.map((endpoint) => [`${endpoint.roleIndex}:${endpoint.stepIndex}`, endpoint]));
+  const endpointByRef = new Map(endpoints.map((endpoint) => [refOf(endpoint.roleIndex, endpoint.stepIndex), endpoint]));
   const paired = new Set<string>();
   const pillars: MessagePillar[] = [];
   (options.pairings ?? []).forEach((pairing, index) => {
-    const out = endpointByRef.get(`${pairing.outEnd.roleIndex}:${pairing.outEnd.stepIndex}`);
-    const incoming = endpointByRef.get(`${pairing.inEnd.roleIndex}:${pairing.inEnd.stepIndex}`);
+    const out = endpointByRef.get(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex));
+    const incoming = endpointByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
     if (out === undefined || incoming === undefined || out.channelName !== incoming.channelName) return;
     paired.add(out.id);
     paired.add(incoming.id);
@@ -858,7 +868,7 @@ export function buildStructuredNarrativeLayout(
     if (channel === undefined) return;
     const channelX = channel.x + channel.width / 2;
     // identity 接收去重时，接收绑定的值身份色转移到信道帧词项上（F5）。
-    const termValueColor = identityTermColorByRef.get(`${pairing.inEnd.roleIndex}:${pairing.inEnd.stepIndex}`);
+    const termValueColor = identityTermColorByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
     pillars.push({
       id: `message-${String(index + 1)}`,
       color: MESSAGE_COLORS[index % MESSAGE_COLORS.length],

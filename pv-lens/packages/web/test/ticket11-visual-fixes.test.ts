@@ -99,6 +99,20 @@ describe('ticket #11：使用关卡视觉修复', () => {
       expect(alone.valueBlocks.some((block) => block.bindingId === term.bindingId && block.occurrence === 'binding')).toBe(true);
     }
     expect(identityCount).toBeGreaterThanOrEqual(3);
+    // F5 后半句：未配对 identity 接收不画重复的线上芯片，绑定方块保留（单角色自动配对为空）。
+    const single = parsePv([
+      'free c: channel.',
+      'free s: bitstring [private].',
+      'fun f(bitstring): bitstring.',
+      'let r = in(c, x: bitstring); out(c, f(x)).',
+      'process r.',
+    ].join('\n'));
+    const singleLayout = buildStructuredNarrativeLayout(single);
+    const wireTexts = singleLayout.chips.filter((chip) => chip.kind === 'wire').map((chip) => chip.text);
+    expect(wireTexts).toEqual(['f(x)']);
+    const inBinding = singleLayout.endpoints.find((endpoint) => endpoint.direction === 'in');
+    expect(inBinding).toBeDefined();
+    expect(singleLayout.valueBlocks.some((block) => block.label === 'x' && block.occurrence === 'binding')).toBe(true);
   });
 
   it('F6 方法盒去冗余：实参全为已绑定变量时不写盒下 caption（adec / sdec）', () => {

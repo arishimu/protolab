@@ -117,7 +117,7 @@ function collectTermUsage(result: ParseResult): TermUsage {
 
 export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; result: ParseResult }) {
   const content = legendContentFor(layout, result);
-  const entries = new Set(content.keys);
+  const present = new Set(content.keys);
   return (
     <div className="narrative-legend" aria-label="图例">
       <h4>图例</h4>
@@ -133,7 +133,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>构造子 {entry.functors.join(' / ')} 的密码学惯用记法</dd>
             </div>
           ))}
-          {entries.has('functor-fallback') && (
+          {present.has('functor-fallback') && (
             <div className="legend-item">
               <dt>
                 <code>functor(a, b)</code>
@@ -141,7 +141,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>其它构造子（含 pk / spk / nonce_to_bitstring / messtermI 等自定义构造子）回退为函数调用写法</dd>
             </div>
           )}
-          {entries.has('tuple') && (
+          {present.has('tuple') && (
             <div className="legend-item">
               <dt>
                 <code>(a, b, c)</code>
@@ -149,7 +149,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>元组</dd>
             </div>
           )}
-          {entries.has('equality') && (
+          {present.has('equality') && (
             <div className="legend-item">
               <dt>
                 <code>=M</code>
@@ -157,7 +157,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>等值模式：接收到的词项必须等于 M</dd>
             </div>
           )}
-          {entries.has('value-block') && (
+          {present.has('value-block') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-value-block">值</span>
@@ -165,7 +165,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>值方块（含 `new` 与角色参数引入的绑定）：一种颜色对应一个角色本地绑定，同色再现表示同一绑定的引用或等值复制</dd>
             </div>
           )}
-          {entries.has('method-box') && (
+          {present.has('method-box') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-method-box">方法</span>
@@ -173,7 +173,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>方法盒：竖向梯形表示解构、横向表示构造、`?:` 表示产出单个值的条件选择；输入取自上方同色值方块，输出为下方值块；`=` / `∈` 检查盒无输出</dd>
             </div>
           )}
-          {entries.has('wire-chip') && (
+          {present.has('wire-chip') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-wire-chip">线上词项</span>
@@ -181,7 +181,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤下方的自身泳道里</dd>
             </div>
           )}
-          {entries.has('derived-chip') && (
+          {present.has('derived-chip') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-wire-chip">派生</span>
@@ -189,7 +189,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>虚线芯片：解构产出的未绑定中间值、条件、表模式，不产生新的值身份</dd>
             </div>
           )}
-          {entries.has('unpaired') && (
+          {present.has('unpaired') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-unpaired-dot" aria-hidden="true" /> 未配对
@@ -197,7 +197,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>虚线为该步骤的消息线：一端在角色生命线，另一端的橙色空心圆点标记词项抵达的信道总线。多方协议不自动连线（画对优先于画全）</dd>
             </div>
           )}
-          {entries.has('message-pillar') && (
+          {present.has('message-pillar') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-message-pillar">M1</span>
@@ -205,7 +205,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准</dd>
             </div>
           )}
-          {entries.has('direction') && (
+          {present.has('direction') && (
             <div className="legend-item">
               <dt>
                 <code>→ 发出</code> / <code>← 接收</code>
@@ -213,7 +213,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>消息步骤的方向与所在信道；配对消息的发送端画实心起点圆点、不画箭头</dd>
             </div>
           )}
-          {entries.has('scope-flags') && (
+          {present.has('scope-flags') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-chip">!</span> / <span className="legend-chip">|</span>
@@ -221,7 +221,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>`!` 表示该角色处于复制作用域（可并发多会话），`|` 表示处于并行组合内</dd>
             </div>
           )}
-          {entries.has('event') && (
+          {present.has('event') && (
             <div className="legend-item">
               <dt>
                 <code>event …</code>
@@ -229,7 +229,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>事件标注（对应性查询引用的协议位置）</dd>
             </div>
           )}
-          {entries.has('branch-lane') && (
+          {present.has('branch-lane') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-branch-tick">if …</span>
@@ -237,7 +237,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>分支：守卫排成等值检查行；生命线旁的虚线竖轨是臂道（then / else），`▾` 开关折叠整个分支、折叠条显示守卫与隐藏步数</dd>
             </div>
           )}
-          {entries.has('local-ops') && (
+          {present.has('local-ops') && (
             <div className="legend-item">
               <dt>
                 <code>let / get / insert</code>
@@ -245,7 +245,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dd>`let` 显示为方法盒（输入在上、输出在下）；`get` 按表模式检查；`insert` 是生命线上的本地步骤</dd>
             </div>
           )}
-          {entries.has('diagnostics') && (
+          {present.has('diagnostics') && (
             <div className="legend-item">
               <dt>
                 <span className="legend-chip legend-chip--degraded">降级诊断</span>{' '}

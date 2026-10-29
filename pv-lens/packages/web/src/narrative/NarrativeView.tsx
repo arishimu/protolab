@@ -5,6 +5,7 @@ import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   CHANNEL_STYLES,
   MESSAGE_COLORS,
+  UNPAIRED_COLOR,
   VALUE_COLORS,
   buildStructuredNarrativeLayout,
   legacyPairingsToMessagePairings,
@@ -215,7 +216,7 @@ function EndpointSvg({
   endpoint: StructuredNarrativeLayout['endpoints'][number];
   messageIndex: number;
 }) {
-  const color = messageIndex >= 0 ? MESSAGE_COLORS[messageIndex % MESSAGE_COLORS.length] : '#C2410C';
+  const color = messageIndex >= 0 ? MESSAGE_COLORS[messageIndex % MESSAGE_COLORS.length] : UNPAIRED_COLOR;
   const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
   const start = endpoint.direction === 'out' ? endpoint.roleX : endpoint.channelX;
   const end = endpoint.direction === 'out' ? endpoint.channelX : endpoint.roleX;
