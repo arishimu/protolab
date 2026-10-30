@@ -219,7 +219,7 @@ export type { StepPairing, StepPairingAnchor } from './pairing.js';
 export { solveHorizontalSequence, collectChannels } from './horizontal-sequence.js';
 export type { HorizontalNode, HorizontalOrderConstraint, HorizontalSequence } from './horizontal-sequence.js';
 export { composeMessagePairings } from './message-pairing.js';
-export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix } from './correspondence.js';
+export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles } from './correspondence.js';
 export type {
   CorrespondenceCell,
   CorrespondencePlan,

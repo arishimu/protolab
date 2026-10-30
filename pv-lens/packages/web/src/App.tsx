@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { composeMessagePairings, createCorrespondencePlan, parsePv } from '@pv-lens/core';
+import { composeMessagePairings, createCorrespondencePlan, deriveEventRoles, parsePv } from '@pv-lens/core';
 import type { PairingIntent } from '@pv-lens/core';
 import { CorrespondencePanel } from './CorrespondencePanel';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
@@ -53,25 +53,12 @@ function LoadedView() {
   if (!current) return null;
 
   // 对应性计划（ticket 08）：n² 有序 inj-event 对与事件角色（前提/结论）都从同一计划派生，
-  // 旗标形状与矩阵共用，不两处各算一遍。
+  // 旗标形状与矩阵共用同一份（deriveEventRoles），不两处各算。
   const correspondencePlan = useMemo(
     () => createCorrespondencePlan(current.source, parseResult),
     [current.source, parseResult],
   );
-  const eventRolesByOffset = useMemo(() => {
-    const roles = new Map<number, { premise: boolean; conclusion: boolean }>();
-    correspondencePlan.queries.forEach((query) => {
-      const fromOffset = query.from.span.start.offset;
-      const from = roles.get(fromOffset) ?? { premise: false, conclusion: false };
-      from.premise = true;
-      roles.set(fromOffset, from);
-      const toOffset = query.to.span.start.offset;
-      const to = roles.get(toOffset) ?? { premise: false, conclusion: false };
-      to.conclusion = true;
-      roles.set(toOffset, to);
-    });
-    return roles;
-  }, [correspondencePlan]);
+  const eventRolesByOffset = useMemo(() => deriveEventRoles(correspondencePlan), [correspondencePlan]);
   const eventByOffset = useMemo(
     () => new Map(correspondencePlan.events.map((event) => [event.span.start.offset, event])),
     [correspondencePlan],
@@ -128,8 +115,7 @@ function LoadedView() {
         eventCorrespondence={eventCorrespondence}
       />
       <CorrespondencePanel
-        source={current.source}
-        parseResult={parseResult}
+        plan={correspondencePlan}
         selectedEventId={selectedEventId}
         onSelectEvent={setSelectedEventId}
         selectedQueryId={selectedQueryId}

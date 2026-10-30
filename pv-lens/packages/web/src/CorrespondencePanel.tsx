@@ -8,19 +8,18 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import type { ParseResult, VerificationResult } from '@pv-lens/core';
-import { buildCorrespondenceMatrix, createCorrespondencePlan } from '@pv-lens/core';
+import type { CorrespondencePlan, VerificationResult } from '@pv-lens/core';
+import { buildCorrespondenceMatrix } from '@pv-lens/core';
 import type { CorrespondenceCell, EventReference } from '@pv-lens/core';
 import { requestVerification } from './verify';
 import type { VerifyFailure } from './verify';
 import { VERDICT_META } from './query-presentation';
 
-export const CORRESPONDENCE_TIMEOUT_MS = 60_000;
+const CORRESPONDENCE_TIMEOUT_MS = 60_000;
 
 export interface CorrespondencePanelProps {
-  /** 当前 `.pv` 全文（注入只发生在发给验证器的副本上，原文不变）。 */
-  source: string;
-  parseResult: ParseResult;
+  /** App 派生并共享的对应性计划（旗标形状与矩阵同一份，避免两处各算）。 */
+  plan: CorrespondencePlan;
   /** 双向联动的选中事件 id（行/列高亮）；null = 未选。 */
   selectedEventId: string | null;
   onSelectEvent: (eventId: string | null) => void;
@@ -41,8 +40,7 @@ interface CacheEntry {
 }
 
 export function CorrespondencePanel({
-  source,
-  parseResult,
+  plan,
   selectedEventId,
   onSelectEvent,
   selectedQueryId,
@@ -52,7 +50,6 @@ export function CorrespondencePanel({
   const cacheRef = useRef(new Map<string, CacheEntry>());
   const abortRef = useRef<AbortController | null>(null);
 
-  const plan = useMemo(() => createCorrespondencePlan(source, parseResult), [source, parseResult]);
   const cells = useMemo(
     () => (state.status === 'done' && state.ok ? buildCorrespondenceMatrix(plan, state.results) : buildCorrespondenceMatrix(plan)),
     [plan, state],
@@ -64,7 +61,7 @@ export function CorrespondencePanel({
 
   async function run(): Promise<void> {
     if (state.status === 'running') return;
-    const cached = cacheRef.current.get(source);
+    const cached = cacheRef.current.get(plan.source);
     if (cached !== undefined) {
       setState({ status: 'done', ok: true, results: cached.results, stdout: cached.stdout });
       return;
@@ -78,7 +75,7 @@ export function CorrespondencePanel({
     });
     if (abortRef.current === controller) abortRef.current = null;
     if (outcome.ok) {
-      cacheRef.current.set(source, { results: outcome.results, stdout: outcome.stdout });
+      cacheRef.current.set(plan.source, { results: outcome.results, stdout: outcome.stdout });
       setState({ status: 'done', ok: true, results: outcome.results, stdout: outcome.stdout });
     } else {
       setState({ status: 'done', ok: false, outcome });
@@ -189,7 +186,7 @@ function CorrespondenceMatrixTable({
               {events.map((to) => {
                 const cell = cellOf(from.id, to.id);
                 if (cell === undefined) return <td key={to.id} />;
-                const meta = cell.verdict === 'pending' ? null : VERDICT_META[cell.verdict];
+                const meta = metaFor(cell.verdict);
                 const reflexive = from.id === to.id;
                 return (
                   <td key={to.id}>
@@ -216,8 +213,12 @@ function CorrespondenceMatrixTable({
   );
 }
 
+/** pending 无徽标（未验证 ≠ 未能证明），其余三态沿用归一化判定的呈现元数据。 */
+const metaFor = (verdict: CorrespondenceCell['verdict']) =>
+  verdict === 'pending' ? null : VERDICT_META[verdict];
+
 function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell }) {
-  const meta = cell.verdict === 'pending' ? null : VERDICT_META[cell.verdict];
+  const meta = metaFor(cell.verdict);
   return (
     <div className="correspondence-detail" aria-label="对应性单元详情">
       <p className="correspondence-detail-query"><code>query {cell.query.text}.</code></p>

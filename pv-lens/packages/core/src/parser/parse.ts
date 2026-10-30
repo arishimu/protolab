@@ -335,7 +335,8 @@ function parseEventDeclaration(cursor: TokenCursor): EventDeclaration | null {
   return { name: nameToken.text, argTypes, span: nameToken.span };
 }
 
-function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {  const keyword = cursor.next();
+function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {
+  const keyword = cursor.next();
   const stop = findTopLevelToken(cursor, cursor.position, ['.']);
   const end = stop < 0 ? cursor.tokens.length - 1 : stop;
   const result: { name: string; span: SourceSpan }[] = [];

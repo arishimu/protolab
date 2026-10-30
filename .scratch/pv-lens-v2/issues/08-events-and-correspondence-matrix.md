@@ -25,3 +25,7 @@
 测试：`packages/web/test/ticket08-correspondence.test.ts` 4 项（n² 规模与自反标记、三态映射与 trace 保留、旗标形状与可点击、无事件提示）；v2-ir 断言更新为类型化查询文本；ticket02 事件 title 断言放宽（后缀角色说明）。真浏览器验收（真 ProVerif）：16 单元全映射（7 成立 / 9 反例 / 0 未证出——与协议语义一致：acceptsClient→termServer 类无对应查询被证伪）；重跑请求数不变（缓存命中）；反例单元 trace 入口；旗标单击 4 表头高亮、双击自反单元详情显示生成查询原文。截图见 `08-screenshots/`。
 
 口径注记：矩阵「未证出」态在四样例上未出现（handshake 全部可判定）；该分支由单测的合成结果覆盖。缓存为会话内存（组件 ref），协议切换后同 source 重进仍命中；「未证出 ≠ 不成立」措辞沿用 VERDICT_META 纪律（R5 条款）。
+
+2026-10-30，`/code-review`（两轴子代理）后落实修复：Standards 轴——RESULT 行事件名提取改为括号深度平衡匹配（原 `[^()]*` 正则遇元组/构造实参会静默 pending，源文件自带查询可能带此类实参）；App 与测试重复的事件角色推导提取为 core `deriveEventRoles(plan)`（App/测试共用同一实现）；CorrespondencePanel 改收 App 派生的共享 `plan`（消除计划双算与注释失实）；`metaFor` 收拢 pending 三元；parse.ts 格式回退修复；`CORRESPONDENCE_TIMEOUT_MS` 去导出。Spec 轴——缓存、双向联动、双击自反与 trace 入口的自动化覆盖缺口记录：web 测试基建为 renderToString（无交互环境），四项均经真浏览器验收（16 单元全映射 7/9、重跑请求数不变、旗标单击 4 表头高亮、双击自反单元详情为生成查询原文），不引入 DOM 测试框架补齐（10 票视口/联动测试一并评估）。评审确认的「结论 = 实心旗」与票面「实心圆点和斜旗」的差异已在 Comments 定稿为实心旗（无独立圆点）。修复后 31 文件 289 项全绿、typecheck/build 通过、浏览器复验与首验一致。
+
+另记：ticket 06 的 code-review 落实修复（selectionNotice、可读环标签、会话清除浏览器验证、CONTEXT 词条等）当时提交被 Mimosa 钩子拦截未单独成史，已随本票 5b972e1 一并入库——Spec 轴所见「scope creep」即该批已评审变更，非新增范围。

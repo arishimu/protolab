@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { buildCorrespondenceMatrix, createCorrespondencePlan, getSampleSource, parsePv } from '@pv-lens/core';
+import { buildCorrespondenceMatrix, createCorrespondencePlan, deriveEventRoles, getSampleSource, parsePv } from '@pv-lens/core';
 import type { VerificationResult } from '@pv-lens/core';
 import { CorrespondencePanel } from '../src/CorrespondencePanel';
 import { NarrativeView } from '../src/narrative/NarrativeView';
@@ -10,10 +10,9 @@ import type { EventCorrespondenceBinding } from '../src/narrative/NarrativeView'
 describe('ticket #08：事件标记与批量对应性查询（web）', () => {
   it('矩阵常驻可折叠：handshake-fixed 4 事件 16 有序对，初始全部未验证、自反单元可辨识', () => {
     const source = getSampleSource('handshake-fixed') ?? '';
-    const result = parsePv(source);
+    const plan = createCorrespondencePlan(source, parsePv(source));
     const html = renderToString(createElement(CorrespondencePanel, {
-      source,
-      parseResult: result,
+      plan,
       selectedEventId: null,
       onSelectEvent: () => {},
       selectedQueryId: null,
@@ -54,15 +53,7 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     const source = getSampleSource('handshake-fixed') ?? '';
     const result = parsePv(source);
     const plan = createCorrespondencePlan(source, result);
-    const rolesByOffset = new Map<number, { premise: boolean; conclusion: boolean }>();
-    plan.queries.forEach((query) => {
-      const from = rolesByOffset.get(query.from.span.start.offset) ?? { premise: false, conclusion: false };
-      from.premise = true;
-      rolesByOffset.set(query.from.span.start.offset, from);
-      const to = rolesByOffset.get(query.to.span.start.offset) ?? { premise: false, conclusion: false };
-      to.conclusion = true;
-      rolesByOffset.set(query.to.span.start.offset, to);
-    });
+    const rolesByOffset = deriveEventRoles(plan);
     const binding: EventCorrespondenceBinding = {
       rolesByOffset,
       selectedOffset: null,
@@ -80,10 +71,9 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
 
   it('无事件样例给出提示而不是空矩阵', () => {
     const source = getSampleSource('hello') ?? '';
-    const result = parsePv(source);
+    const plan = createCorrespondencePlan(source, parsePv(source));
     const html = renderToString(createElement(CorrespondencePanel, {
-      source,
-      parseResult: result,
+      plan,
       selectedEventId: null,
       onSelectEvent: () => {},
       selectedQueryId: null,

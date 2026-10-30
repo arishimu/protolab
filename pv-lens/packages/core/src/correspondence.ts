@@ -143,11 +143,58 @@ export function buildCorrespondenceMatrix(
   });
 }
 
-const INJ_PAIR_RE = /inj-event\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*\)\s*==>\s*inj-event\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*\)/;
-
-/** 从 RESULT 行的查询文本提取事件名有序对；非单射行 / 无法识别的行不参与映射。 */
+/**
+ * 从 RESULT 行的查询文本提取事件名有序对；非单射行 / 无法识别的行不参与映射。
+ * 事件实参可能嵌套括号（元组、构造子），不能只用 `[^()]*`——先按 inj-event 定位再
+ * 以括号深度平衡截取实参区间。
+ */
 function eventPairOfResultText(text: string): string | null {
-  const match = text.match(INJ_PAIR_RE);
-  if (match === null) return null;
-  return `${match[1] ?? ''}=>${match[2] ?? ''}`;
+  const names: string[] = [];
+  let index = 0;
+  while (names.length < 2) {
+    const hit = text.indexOf('inj-event(', index);
+    if (hit < 0) return null;
+    const nameStart = hit + 'inj-event('.length;
+    const nameMatch = text.slice(nameStart).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+    if (nameMatch === null) return null;
+    names.push(nameMatch[0]);
+    // 跳过实参的括号区（深度平衡），索引推进到其后。
+    const restOffset = text.slice(nameStart + nameMatch[0].length).indexOf('(');
+    if (restOffset < 0) return null;
+    const openAt = nameStart + nameMatch[0].length + restOffset;
+    let depth = 0;
+    let cursor = openAt;
+    while (cursor < text.length) {
+      const ch = text[cursor];
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+      cursor += 1;
+    }
+    if (depth !== 0) return null;
+    index = cursor + 1;
+  }
+  return pairOf(names);
+}
+
+function pairOf(names: readonly string[]): string {
+  return `${names[0]}=>${names[1]}`;
+}
+
+/** 事件在查询集中的角色：出现在某查询左侧为前提、右侧为结论（旗标形状共用，不两处各算）。 */
+export function deriveEventRoles(plan: CorrespondencePlan): ReadonlyMap<number, { premise: boolean; conclusion: boolean }> {
+  const roles = new Map<number, { premise: boolean; conclusion: boolean }>();
+  plan.queries.forEach((query) => {
+    const fromOffset = query.from.span.start.offset;
+    const from = roles.get(fromOffset) ?? { premise: false, conclusion: false };
+    from.premise = true;
+    roles.set(fromOffset, from);
+    const toOffset = query.to.span.start.offset;
+    const to = roles.get(toOffset) ?? { premise: false, conclusion: false };
+    to.conclusion = true;
+    roles.set(toOffset, to);
+  });
+  return roles;
 }
