@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { pairSteps, parsePv } from '@pv-lens/core';
+import { composeMessagePairings, parsePv } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
@@ -21,7 +21,7 @@ function render(result: ParseResult): string {
 
 /** 装配 App 实际传入的意图配对（ADR-0003），验证渲染端能画出连线。 */
 function renderWithPairings(result: ParseResult): string {
-  return renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
+  return renderToString(createElement(NarrativeView, { result, pairings: composeMessagePairings(result).pairings }));
 }
 
 describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {

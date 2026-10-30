@@ -401,3 +401,73 @@
   margin-right: 2px;
   vertical-align: baseline;
 }
+
+/* 人工配对点选（ticket 06）：未配对端点可选为声明端，选中发送端高亮。
+   bounding-box 让整段端点区域可命中——只点 1.8px 的线段对用户过难。
+   值层 / 文本层 / 折叠层不参与命中，端点线即使被方块视觉覆盖也可点选（扇出继续选同一发送端）。 */
+.structured-endpoint--selectable {
+  cursor: pointer;
+  pointer-events: bounding-box;
+}
+
+.structured-value-layer,
+.structured-node-layer,
+.structured-branch-fold-layer {
+  pointer-events: none;
+}
+
+.structured-branch-fold,
+.structured-branch-toggle {
+  pointer-events: auto;
+}
+
+.structured-endpoint--selectable:hover .structured-unpaired-dot {
+  stroke-width: 3;
+}
+
+.structured-endpoint--pending path {
+  stroke-width: 2.6;
+  stroke-dasharray: none;
+}
+
+.structured-endpoint--pending .structured-unpaired-dot {
+  fill: #fed7aa;
+  stroke-width: 3;
+}
+
+/* 合流抽头（ticket 06 / ADR-0008）：一个接收端被多条消息命中时的并排色点。 */
+.structured-merge-taps circle {
+  stroke: #ffffff;
+  stroke-width: 1.2;
+}
+
+/* 配对声明诊断（ticket 06）：顺序环为红、其余拒绝为琥珀。 */
+.narrative-pairing-warnings {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pairing-warning {
+  margin: 0 0 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.pairing-warning--order-cycle {
+  background: #fef2f2;
+  border: 1px solid #dc2626;
+  color: #991b1b;
+}
+
+.pairing-warning:not(.pairing-warning--order-cycle) {
+  background: #fffbeb;
+  border: 1px solid #d97706;
+  color: #92400e;
+}
+
+.narrative-pairing-hint {
+  margin: 0 0 0.5rem;
+  color: #1d4ed8;
+}

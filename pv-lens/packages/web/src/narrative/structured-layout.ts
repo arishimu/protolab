@@ -173,6 +173,8 @@ export interface MessagePillar {
   id: string;
   color: string;
   sequence: number;
+  /** 柱来源：自动配对或含人工声明（广播分组按发送端归并，ADR-0007）。 */
+  origin: 'automatic' | 'manual';
   channelName: string;
   channelX: number;
   top: number;
@@ -858,7 +860,11 @@ export function buildStructuredNarrativeLayout(
   const endpointByRef = new Map(endpoints.map((endpoint) => [refOf(endpoint.roleIndex, endpoint.stepIndex), endpoint]));
   const paired = new Set<string>();
   const pillars: MessagePillar[] = [];
-  (options.pairings ?? []).forEach((pairing, index) => {
+  // 广播扇出按发送端归并（ADR-0007 边界 4：分组是视图层派生，不进 IR）：
+  // 同一 out 的全部有效配对合成一根多端柱——一条发送段进信道、N 条接收段出信道；
+  // 合流是不同 out 组共享同一 in，各柱独立（信道是扇出/合流唯一结点，ADR-0008）。
+  const groups = new Map<string, { out: StructuredEndpoint; ins: StructuredEndpoint[]; manual: boolean }>();
+  (options.pairings ?? []).forEach((pairing) => {
     const out = endpointByRef.get(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex));
     const incoming = endpointByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
     if (out === undefined || incoming === undefined || out.channelName !== incoming.channelName) return;
@@ -866,23 +872,37 @@ export function buildStructuredNarrativeLayout(
     paired.add(incoming.id);
     const channel = channelColumns.get(out.channelName);
     if (channel === undefined) return;
+    const key = out.id;
+    const group = groups.get(key) ?? { out, ins: [], manual: false };
+    if (!group.ins.some((candidate) => candidate.id === incoming.id)) group.ins.push(incoming);
+    group.manual = group.manual || pairing.origin === 'manual';
+    groups.set(key, group);
+  });
+  [...groups.values()].forEach((group, index) => {
+    const channel = channelColumns.get(group.out.channelName);
+    if (channel === undefined) return;
     const channelX = channel.x + channel.width / 2;
-    // identity 接收去重时，接收绑定的值身份色转移到信道帧词项上（F5）。
-    const termValueColor = identityTermColorByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
+    const members = [group.out, ...group.ins];
+    // identity 接收去重的值身份色带（F5）：广播取第一个定义了 identity 色的接收端。
+    const termValueColor = group.ins.flatMap((incoming) => {
+      const color = identityTermColorByRef.get(refOf(incoming.roleIndex, incoming.stepIndex));
+      return color === undefined ? [] : [color];
+    })[0];
     pillars.push({
       id: `message-${String(index + 1)}`,
       color: MESSAGE_COLORS[index % MESSAGE_COLORS.length],
       sequence: index + 1,
-      channelName: out.channelName,
+      origin: group.manual ? 'manual' : 'automatic',
+      channelName: group.out.channelName,
       channelX,
-      top: Math.min(out.y, incoming.y),
-      bottom: Math.max(out.y, incoming.y),
-      termText: out.termText,
-      termPresentation: out.termPresentation,
+      top: Math.min(...members.map((member) => member.y)),
+      bottom: Math.max(...members.map((member) => member.y)),
+      termText: group.out.termText,
+      termPresentation: group.out.termPresentation,
       ...(termValueColor === undefined ? {} : { termValueColor }),
       // 帧对齐到发送端那一端：弧的走向固定（发出→信道→接收），帧不必浮在两端中间。
-      frameY: out.y,
-      endpoints: [out, incoming],
+      frameY: group.out.y,
+      endpoints: members,
     });
     maxTextRight = Math.max(maxTextRight, channelX + 35);
   });

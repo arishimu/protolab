@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { parsePv, coreSamples, pairSteps } from '@pv-lens/core';
+import { parsePv, coreSamples, composeMessagePairings } from '@pv-lens/core';
 import type { ParseResult, RoleItem } from '@pv-lens/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -219,7 +219,7 @@ describe('ticket #03 视觉合同：等值检查盒与臂道', () => {
     for (const sample of coreSamples) {
       const fileName = sample.pvFile.split('/').pop() ?? sample.pvFile;
       const result = coreFixture(fileName);
-      const html = renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
+      const html = renderToString(createElement(NarrativeView, { result, pairings: composeMessagePairings(result).pairings }));
       const svg = /<svg[\s\S]*<\/svg>/.exec(html)?.[0] ?? '';
       const groups = svg.match(/class="structured-endpoint[^"]*"[\s\S]*?<path d="[^"]+"/g) ?? [];
       expect(groups.length).toBeGreaterThan(0);

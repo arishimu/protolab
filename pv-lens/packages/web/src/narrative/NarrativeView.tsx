@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
-import type { ParseResult, StepPairing } from '@pv-lens/core';
+import type { MessagePairing, PairingDiagnostic, ParseResult } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   CHANNEL_STYLES,
@@ -8,21 +8,38 @@ import {
   UNPAIRED_COLOR,
   VALUE_COLORS,
   buildStructuredNarrativeLayout,
-  legacyPairingsToMessagePairings,
 } from './structured-layout';
-import type { StructuredNarrativeLayout, StructuredNode } from './structured-layout';
+import type {
+  MessagePillar,
+  StructuredNarrativeLayout,
+  StructuredNode,
+} from './structured-layout';
+import type { SelectableEndpoint } from './pairing-selection';
 import { Legend } from './Legend';
 import './v2.css';
 
 
 export interface NarrativeViewProps {
   result: ParseResult;
-  pairings?: readonly StepPairing[];
+  /** 统一配对 IR（自动 + 人工声明，`composeMessagePairings` 的输出）。 */
+  pairings?: readonly MessagePairing[];
   /** 初始即折叠的分支（分支标记 item id）；默认全部展开。 */
   initialCollapsedBranches?: readonly string[];
+  /** 人工配对诊断（拒绝与顺序环），渲染为画布旁的警告条。 */
+  manualDiagnostics?: readonly PairingDiagnostic[];
+  /** 人工配对点选：当前选中的未配对发送端 id。 */
+  pendingOutId?: string | null;
+  onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
 }
 
-export function NarrativeView({ result, pairings = [], initialCollapsedBranches = [] }: NarrativeViewProps) {
+export function NarrativeView({
+  result,
+  pairings = [],
+  initialCollapsedBranches = [],
+  manualDiagnostics = [],
+  pendingOutId = null,
+  onEndpointSelect,
+}: NarrativeViewProps) {
   const [compactness, setCompactness] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [collapsedBranches, setCollapsedBranches] = useState<readonly string[]>(initialCollapsedBranches);
@@ -33,13 +50,16 @@ export function NarrativeView({ result, pairings = [], initialCollapsedBranches 
   };
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
-      pairings: legacyPairingsToMessagePairings(pairings),
+      pairings,
       compactness,
       collapsedBranches,
     }),
     [result, pairings, compactness, collapsedBranches],
   );
-  const legacy = useMemo(() => buildNarrativeLayout(result, { pairings }), [result, pairings]);
+  const legacy = useMemo(
+    () => buildNarrativeLayout(result, { pairings: pairings.map((pairing) => ({ from: pairing.outEnd, to: pairing.inEnd })) }),
+    [result, pairings],
+  );
 
   return (
     <section className="narrative" aria-label="规范叙事视图">
@@ -70,7 +90,32 @@ export function NarrativeView({ result, pairings = [], initialCollapsedBranches 
             纵轴是每个角色自己的消息序，信道是共享空间锚点；颜色只表示消息和值，不表示信道或验证结论。
             跨角色连接表达设计意图，不代表攻击者模型下的可达性。
           </p>
-          <StructuredNarrativeCanvas layout={structured} zoom={zoom} legacy={legacy} onToggleBranch={toggleBranch} />
+          {pendingOutId !== null && (
+            <p className="hint narrative-pairing-hint" role="status">
+              已选中发送端：点同信道的未配对接收端即声明设计意图（再点同一发送端取消）；
+              重复选择同一发送端可继续广播扇出。声明只在本次会话内，不回写 `.pv`。
+            </p>
+          )}
+          {manualDiagnostics.length > 0 && (
+            <ul className="narrative-pairing-warnings" aria-label="配对声明诊断">
+              {manualDiagnostics.map((diagnostic, index) => (
+                <li
+                  key={`${diagnostic.kind}-${String(index)}`}
+                  className={`pairing-warning pairing-warning--${diagnostic.kind}`}
+                >
+                  {diagnostic.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          <StructuredNarrativeCanvas
+            layout={structured}
+            zoom={zoom}
+            legacy={legacy}
+            onToggleBranch={toggleBranch}
+            pendingOutId={pendingOutId}
+            onEndpointSelect={onEndpointSelect}
+          />
           <NarrativeDiagnostics result={result} />
           <Legend layout={structured} result={result} />
         </>
@@ -86,14 +131,26 @@ function StructuredNarrativeCanvas({
   zoom,
   legacy,
   onToggleBranch,
+  pendingOutId,
+  onEndpointSelect,
 }: {
   layout: StructuredNarrativeLayout;
   zoom: number;
   legacy: ReturnType<typeof buildNarrativeLayout>;
   onToggleBranch: (branchId: string) => void;
+  pendingOutId: string | null;
+  onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
 }) {
-  const pairedEndpointCount = layout.endpoints.filter((endpoint) => !endpoint.unpaired).length;
-  const messageCount = pairedEndpointCount / 2;
+  const messageCount = layout.pillars.length;
+  // 合流抽头（ADR-0008）：一个接收端被多条消息命中时，在信道侧并排画各消息色的抽头点。
+  const pillarsByEndpointId = new Map<string, MessagePillar[]>();
+  layout.pillars.forEach((pillar) => {
+    pillar.endpoints.forEach((endpoint) => {
+      const list = pillarsByEndpointId.get(endpoint.id) ?? [];
+      list.push(pillar);
+      pillarsByEndpointId.set(endpoint.id, list);
+    });
+  });
   return (
     <div className="narrative-canvas narrative-canvas--structured">
       <svg
@@ -116,7 +173,16 @@ function StructuredNarrativeCanvas({
         </g>
         <g className="structured-message-layer">
           {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
-          {layout.endpoints.map((endpoint) => <EndpointSvg key={endpoint.id} endpoint={endpoint} messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))} />)}
+          {layout.endpoints.map((endpoint) => (
+            <EndpointSvg
+              key={endpoint.id}
+              endpoint={endpoint}
+              messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))}
+              tapPillars={pillarsByEndpointId.get(endpoint.id) ?? []}
+              pending={pendingOutId === endpoint.id}
+              onSelect={onEndpointSelect}
+            />
+          ))}
         </g>
         <g className="structured-value-layer">
           {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} onToggleBranch={onToggleBranch} />)}
@@ -192,12 +258,13 @@ function StructuredColumns({ layout }: { layout: StructuredNarrativeLayout }) {
 
 function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pillars'][number] }) {
   const frameY = pillar.frameY;
+  const originLabel = pillar.origin === 'manual' ? ' · 人工声明' : '';
   return (
-    <g className="structured-message-pillar" data-identity={pillar.id} data-term={pillar.termText} aria-label={`消息 M${String(pillar.sequence)} · 信道 ${pillar.channelName} · ${pillar.termText}`}>
+    <g className="structured-message-pillar" data-identity={pillar.id} data-term={pillar.termText} aria-label={`消息 M${String(pillar.sequence)} · 信道 ${pillar.channelName} · ${pillar.termText}${originLabel}`}>
       <rect x={pillar.channelX - 5} y={pillar.top - 6} width="10" height={Math.max(12, pillar.bottom - pillar.top + 12)} fill={pillar.color} />
       <text x={pillar.channelX + 10} y={pillar.top + 4} fill={pillar.color}>M{pillar.sequence}</text>
       <g className="structured-message-frame">
-        <title>{pillar.termText}</title>
+        <title>{`${pillar.termText}${originLabel}`}</title>
         <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 28} y={frameY - 11} width="56" height="22" stroke={pillar.color} />
         {/* identity 接收去重（F5）：接收绑定的值身份色以帧内色带标注，泳道省略同名词块。 */}
         {pillar.termValueColor !== undefined && (
@@ -212,9 +279,16 @@ function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pilla
 function EndpointSvg({
   endpoint,
   messageIndex,
+  tapPillars,
+  pending,
+  onSelect,
 }: {
   endpoint: StructuredNarrativeLayout['endpoints'][number];
   messageIndex: number;
+  /** 命中该端点的消息柱：多于一条 = 合流端，并排抽头区分（ADR-0008）。 */
+  tapPillars: readonly MessagePillar[];
+  pending: boolean;
+  onSelect?: (endpoint: SelectableEndpoint) => void;
 }) {
   const color = messageIndex >= 0 ? MESSAGE_COLORS[messageIndex % MESSAGE_COLORS.length] : UNPAIRED_COLOR;
   const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
@@ -225,9 +299,26 @@ function EndpointSvg({
   // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
   // 接收段与未配对端（指向信道轨）才有箭头。
   const showArrow = endpoint.unpaired || endpoint.direction === 'in';
-  const startDot = !endpoint.unpaired && endpoint.direction === 'out';
+  const startDot = !endpoint.unpaired && endpoint.direction === 'out' && tapPillars.length <= 1;
+  // 可选 = 未配对或已人工配对（扇出/合流可追加声明，票 06 验收 1）；自动配对端不可选。
+  const manualPaired = tapPillars.some((pillar) => pillar.origin === 'manual');
+  const selectable = onSelect !== undefined && (endpoint.unpaired || manualPaired);
+  const pairingState = endpoint.unpaired ? 'unpaired' : manualPaired ? 'manual' : 'automatic';
   return (
-    <g className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}`} data-identity={endpoint.id} data-channel={endpoint.channelName} aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}`}>
+    <g
+      className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${pending ? ' structured-endpoint--pending' : ''}`}
+      data-identity={endpoint.id}
+      data-channel={endpoint.channelName}
+      aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}${selectable ? ' · 可选为人工配对端' : ''}`}
+      onClick={selectable ? () => onSelect?.({
+        id: endpoint.id,
+        roleIndex: endpoint.roleIndex,
+        stepIndex: endpoint.stepIndex,
+        direction: endpoint.direction,
+        channelName: endpoint.channelName,
+        pairingState,
+      }) : undefined}
+    >
       <path d={path} stroke={color} markerEnd={showArrow ? marker : undefined} />
       {startDot && (
         <circle
@@ -243,6 +334,19 @@ function EndpointSvg({
           <title>{endpoint.termText}</title>
           <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />
         </>
+      )}
+      {tapPillars.length > 1 && (
+        <g className="structured-merge-taps" aria-label={`合流端：命中 ${String(tapPillars.length)} 条消息`}>
+          {tapPillars.map((pillar, index) => (
+            <circle
+              key={pillar.id}
+              cx={endpoint.channelX + (index - (tapPillars.length - 1) / 2) * 9}
+              cy={endpoint.y}
+              r="4"
+              fill={pillar.color}
+            />
+          ))}
+        </g>
       )}
     </g>
   );

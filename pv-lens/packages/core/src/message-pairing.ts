@@ -1,4 +1,4 @@
-import type { MessageEndpoint, ParseResult, PvTerm } from './parser/model.js';
+import type { MessageEndpoint, ParseResult, PvTerm, RoleItem } from './parser/model.js';
 import { pairSteps, narrativeRoleOrder } from './pairing.js';
 
 export type PairingOrigin = 'automatic' | 'manual';
@@ -21,7 +21,7 @@ export interface PairingIntent {
 }
 
 export interface PairingDiagnostic {
-  kind: 'invalid-channel' | 'invalid-direction' | 'automatic-endpoint' | 'unknown-endpoint';
+  kind: 'invalid-channel' | 'invalid-direction' | 'automatic-endpoint' | 'unknown-endpoint' | 'order-cycle';
   message: string;
   outEnd?: MessageEndpointRef;
   inEnd?: MessageEndpointRef;
@@ -65,7 +65,79 @@ export function composeMessagePairings(
       pairings.push({ outEnd: intent.outEnd, inEnd: intent.inEnd, origin: 'manual', ...(warning === undefined ? {} : { warning }) });
     }
   }
-  return { pairings, diagnostics };
+  return { pairings, diagnostics: [...diagnostics, ...orderCycleDiagnostics(pairings, result)] };
+}
+
+/**
+ * 顺序环检测（ticket 06）：每条配对给出消息因果边 out → in，每条生命线上相邻消息步
+ * 给出本地序边；出现环即该声明集在任何局部梯子下都无法满足，显式标冲突，
+ * 不静默丢弃声明（ADR-0005：人工配对只产出顺序约束，约束不可满足时必须可见）。
+ */
+function orderCycleDiagnostics(pairings: readonly MessagePairing[], result: ParseResult): PairingDiagnostic[] {
+  const edges = new Map<string, Array<{ to: string; pairing?: MessagePairing }>>();
+  const addEdge = (from: string, to: string, pairing?: MessagePairing): void => {
+    const list = edges.get(from) ?? [];
+    if (!list.some((edge) => edge.to === to)) list.push({ to, pairing });
+    edges.set(from, list);
+  };
+  for (const pairing of pairings) {
+    addEdge(refKey(pairing.outEnd), refKey(pairing.inEnd), pairing);
+  }
+  narrativeRoleOrder(result).forEach((role, roleIndex) => {
+    const messageItems = role.items.filter((item): item is Extract<RoleItem, { kind: 'message' }> => item.kind === 'message');
+    for (let index = 0; index + 1 < messageItems.length; index += 1) {
+      addEdge(
+        refKey({ roleIndex, stepIndex: messageItems[index].endpoint.stepIndex }),
+        refKey({ roleIndex, stepIndex: messageItems[index + 1].endpoint.stepIndex }),
+      );
+    }
+  });
+
+  const state = new Map<string, 'visiting' | 'done'>();
+  const stack: string[] = [];
+  const diagnostics: PairingDiagnostic[] = [];
+  const visit = (vertex: string): void => {
+    if (diagnostics.length >= 3) return;
+    state.set(vertex, 'visiting');
+    stack.push(vertex);
+    for (const edge of edges.get(vertex) ?? []) {
+      if (diagnostics.length >= 3) break;
+      if (state.get(edge.to) === 'visiting') {
+        const cycleStart = stack.indexOf(edge.to);
+        const cycle = [...stack.slice(cycleStart), edge.to];
+        reportCycle(cycle, edges, diagnostics);
+        continue;
+      }
+      if (state.get(edge.to) === undefined) visit(edge.to);
+    }
+    stack.pop();
+    state.set(vertex, 'done');
+  };
+  for (const vertex of edges.keys()) {
+    if (state.get(vertex) === undefined) visit(vertex);
+  }
+  return diagnostics;
+}
+
+function reportCycle(
+  cycle: readonly string[],
+  edges: ReadonlyMap<string, Array<{ to: string; pairing?: MessagePairing }>>,
+  diagnostics: PairingDiagnostic[],
+): void {
+  // 环上第一条消息因果边作为诊断挂点；全为本地序边的环不涉及声明，不会出现。
+  let anchor: MessagePairing | undefined;
+  for (let index = 0; index + 1 < cycle.length; index += 1) {
+    const edge = (edges.get(cycle[index] ?? '') ?? []).find((candidate) => candidate.to === cycle[index + 1]);
+    if (edge?.pairing !== undefined) {
+      anchor = edge.pairing;
+      break;
+    }
+  }
+  diagnostics.push({
+    kind: 'order-cycle',
+    message: `消息顺序存在环：${cycle.join(' → ')}。该配对声明集在任何局部梯子下都无法同时满足，请调整声明。`,
+    ...(anchor === undefined ? {} : { outEnd: anchor.outEnd, inEnd: anchor.inEnd }),
+  });
 }
 
 function endpointMap(result: ParseResult): Map<string, MessageEndpoint> {

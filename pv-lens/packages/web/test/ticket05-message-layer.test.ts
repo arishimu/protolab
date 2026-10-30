@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { getSampleSource, pairSteps, parsePv } from '@pv-lens/core';
+import { getSampleSource, parsePv, composeMessagePairings } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
-import { buildStructuredNarrativeLayout, legacyPairingsToMessagePairings } from '../src/narrative/structured-layout';
+import { buildStructuredNarrativeLayout } from '../src/narrative/structured-layout';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
 const webDir = fileURLToPath(new URL('..', import.meta.url));
@@ -20,14 +20,14 @@ function render(result: ParseResult): string {
 }
 
 function renderPaired(result: ParseResult): string {
-  return renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
+  return renderToString(createElement(NarrativeView, { result, pairings: composeMessagePairings(result).pairings }));
 }
 
 describe('ticket #05：消息层与两方意图配对（web 视图）', () => {
   it('两方配对消息是同一身份：柱写发送 wire term，两端同色可追踪', () => {
     const result = parsePv(getSampleSource('handshake-fixed') ?? '');
     const layout = buildStructuredNarrativeLayout(result, {
-      pairings: legacyPairingsToMessagePairings(pairSteps(result)),
+      pairings: composeMessagePairings(result).pairings,
     });
     expect(layout.pillars).toHaveLength(3);
     for (const pillar of layout.pillars) {

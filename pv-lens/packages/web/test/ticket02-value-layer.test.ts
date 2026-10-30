@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { coreSamples, narrativeRoleOrder, pairSteps, parsePv } from '@pv-lens/core';
+import { coreSamples, composeMessagePairings, narrativeRoleOrder, pairSteps, parsePv } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -92,7 +92,7 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
 
   /** 按 App.tsx 的默认（自动配对）渲染成 SVG。 */
   function renderSvg(result: ParseResult): string {
-    const html = renderToString(createElement(NarrativeView, { result, pairings: pairSteps(result) }));
+    const html = renderToString(createElement(NarrativeView, { result, pairings: composeMessagePairings(result).pairings }));
     return /<svg[\s\S]*<\/svg>/.exec(html)?.[0] ?? '';
   }
 

@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
-import { pairSteps, parsePv } from '@pv-lens/core';
+import { useEffect, useMemo, useState } from 'react';
+import { composeMessagePairings, parsePv } from '@pv-lens/core';
+import type { PairingIntent } from '@pv-lens/core';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
 import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
 import { NarrativeView } from './narrative/NarrativeView';
+import { reducePairingSelection } from './narrative/pairing-selection';
+import type { PairingSelectionState, SelectableEndpoint } from './narrative/pairing-selection';
 import { VerifyPanel } from './VerifyPanel';
 import './styles.css';
 
@@ -13,8 +16,24 @@ function LoadedView() {
   // 解析是纯转换（不进 server）。在这里解析一次、按 source 记忆化，泳道图与验证面板共用，
   // 避免两处各解析一遍；`current` 为空时解析空串，随后立即返回（不在条件里调 hook）。
   const parseResult = useMemo(() => parsePv(current?.source ?? ''), [current?.source]);
-  // 设计意图配对（ADR-0003）：两方协议按类型 + 源码顺序给跨泳道连线；解析结果变则重算。
-  const pairings = useMemo(() => pairSteps(parseResult), [parseResult]);
+  // 人工配对是会话内存里的声明式意图边（ADR-0005/0007）：切换协议即清空，不回写 `.pv`。
+  const [manualIntents, setManualIntents] = useState<readonly PairingIntent[]>([]);
+  const [selection, setSelection] = useState<PairingSelectionState>({ pendingOut: null });
+  useEffect(() => {
+    setManualIntents([]);
+    setSelection({ pendingOut: null });
+  }, [current]);
+  // 统一 IR：自动配对 + 会话内人工声明合成，诊断驱动画布旁的配对警告条。
+  const pairingComposition = useMemo(
+    () => composeMessagePairings(parseResult, manualIntents),
+    [parseResult, manualIntents],
+  );
+  const handleEndpointSelect = (endpoint: SelectableEndpoint): void => {
+    const result = reducePairingSelection(selection, { kind: 'select', endpoint });
+    setSelection(result.state);
+    const intent = result.intent;
+    if (intent !== undefined) setManualIntents((currentIntents) => [...currentIntents, intent]);
+  };
   if (!current) return null;
 
   const originText =
@@ -33,7 +52,13 @@ function LoadedView() {
       </div>
       <p className="hint">{current.description}</p>
       <SourcePanel protocol={current} />
-      <NarrativeView result={parseResult} pairings={pairings} />
+      <NarrativeView
+        result={parseResult}
+        pairings={pairingComposition.pairings}
+        manualDiagnostics={pairingComposition.diagnostics}
+        pendingOutId={selection.pendingOut?.id ?? null}
+        onEndpointSelect={handleEndpointSelect}
+      />
       <VerifyPanel source={current.source} parseResult={parseResult} />
     </div>
   );
