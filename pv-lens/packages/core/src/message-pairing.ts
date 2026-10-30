@@ -74,6 +74,16 @@ export function composeMessagePairings(
  * 不静默丢弃声明（ADR-0005：人工配对只产出顺序约束，约束不可满足时必须可见）。
  */
 function orderCycleDiagnostics(pairings: readonly MessagePairing[], result: ParseResult): PairingDiagnostic[] {
+  // 诊断用可读端点标签（角色名 + 该角色的第几个消息步），不暴露内部 ref 键。
+  const labels = new Map<string, string>();
+  narrativeRoleOrder(result).forEach((role, roleIndex) => {
+    let seen = 0;
+    role.items.forEach((item) => {
+      if (item.kind !== 'message') return;
+      seen += 1;
+      labels.set(refKey({ roleIndex, stepIndex: item.endpoint.stepIndex }), `${role.name}·${item.endpoint.direction === 'out' ? '发' : '收'}${String(seen)}`);
+    });
+  });
   const edges = new Map<string, Array<{ to: string; pairing?: MessagePairing }>>();
   const addEdge = (from: string, to: string, pairing?: MessagePairing): void => {
     const list = edges.get(from) ?? [];
@@ -105,7 +115,7 @@ function orderCycleDiagnostics(pairings: readonly MessagePairing[], result: Pars
       if (state.get(edge.to) === 'visiting') {
         const cycleStart = stack.indexOf(edge.to);
         const cycle = [...stack.slice(cycleStart), edge.to];
-        reportCycle(cycle, edges, diagnostics);
+        reportCycle(cycle, edges, diagnostics, labels);
         continue;
       }
       if (state.get(edge.to) === undefined) visit(edge.to);
@@ -123,6 +133,7 @@ function reportCycle(
   cycle: readonly string[],
   edges: ReadonlyMap<string, Array<{ to: string; pairing?: MessagePairing }>>,
   diagnostics: PairingDiagnostic[],
+  labels: ReadonlyMap<string, string>,
 ): void {
   // 环上第一条消息因果边作为诊断挂点；全为本地序边的环不涉及声明，不会出现。
   let anchor: MessagePairing | undefined;
@@ -133,9 +144,10 @@ function reportCycle(
       break;
     }
   }
+  const readable = cycle.map((key) => labels.get(key) ?? key).join(' → ');
   diagnostics.push({
     kind: 'order-cycle',
-    message: `消息顺序存在环：${cycle.join(' → ')}。该配对声明集在任何局部梯子下都无法同时满足，请调整声明。`,
+    message: `消息顺序存在环：${readable}。该配对声明集在任何局部梯子下都无法同时满足，请调整声明。`,
     ...(anchor === undefined ? {} : { outEnd: anchor.outEnd, inEnd: anchor.inEnd }),
   });
 }

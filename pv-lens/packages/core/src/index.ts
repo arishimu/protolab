@@ -167,6 +167,7 @@ export type {
   DiagnosticSeverity,
   EqualityTerm,
   EventAnnotation,
+  EventDeclaration,
   EventItem,
   FreshName,
   FunctionSignature,

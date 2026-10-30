@@ -471,3 +471,18 @@
   margin: 0 0 0.5rem;
   color: #1d4ed8;
 }
+
+/* 事件旗标与对应性联动（ticket 08）：前提 = 填充菱形（琥珀），结论 = 实心旗（teal）。 */
+.structured-event-diamond {
+  fill: #b45309;
+  stroke: #b45309;
+}
+
+.structured-event--clickable {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.structured-event--selected path {
+  stroke-width: 2.4;
+}

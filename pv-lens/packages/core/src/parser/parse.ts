@@ -14,7 +14,7 @@
  *   顶层词项绑定 `let`）宽容解析：整体跳过，不建模、不报错。
  */
 
-import type { FunctionSignature, ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan, TypedName } from './model.js';
+import type { EventDeclaration, FunctionSignature, ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan, TypedName } from './model.js';
 import { tokenize, type Token } from './lexer.js';
 import {
   TokenCursor,
@@ -80,6 +80,7 @@ export function parsePv(source: string): ParseResult {
   const functions: FunctionSignature[] = [];
   const names: TypedName[] = [];
   const destructors: { name: string; span: SourceSpan }[] = [];
+  const eventDeclarations: EventDeclaration[] = [];
   let main: MutableRole | null = null;
 
   try {
@@ -99,6 +100,11 @@ export function parsePv(source: string): ParseResult {
       }
       if (cursor.atIdent('reduc')) {
         destructors.push(...parseReducDeclaration(cursor));
+        continue;
+      }
+      if (cursor.atIdent('event')) {
+        const declaration = parseEventDeclaration(cursor);
+        if (declaration !== null) eventDeclarations.push(declaration);
         continue;
       }
       if (cursor.atIdent('free') || cursor.atIdent('const')) {
@@ -129,6 +135,7 @@ export function parsePv(source: string): ParseResult {
     roles,
     mainProcess,
     queries,
+    events: eventDeclarations,
     functions,
     names,
     channels: names.filter((name) => name.typeName === 'channel').map((name) => ({
@@ -289,8 +296,46 @@ function skipDeclaration(cursor: TokenCursor): void {
   }
 }
 
-function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {
+/** `event name(t1, t2).` 声明：形参类型供对应性查询生成带类型的查询变量。 */
+function parseEventDeclaration(cursor: TokenCursor): EventDeclaration | null {
   const keyword = cursor.next();
+  const nameToken = cursor.peek();
+  if (nameToken.kind !== 'ident') {
+    cursor.error('`event` 后缺少事件名', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  cursor.next();
+  if (!cursor.match('(')) {
+    cursor.error('`event` 声明缺少参数列表 `(`', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  const argTypes: string[] = [];
+  if (!cursor.atPunct(')')) {
+    for (;;) {
+      const argToken = cursor.peek();
+      if (argToken.kind !== 'ident') {
+        cursor.error(`\`event\` 参数应为类型名，实际遇到 \`${argToken.text}\``, cursor.span(keyword.span.start));
+        recoverToDeclarationEnd(cursor);
+        return null;
+      }
+      cursor.next();
+      argTypes.push(argToken.text);
+      if (cursor.match(',')) continue;
+      break;
+    }
+  }
+  if (!cursor.match(')')) {
+    cursor.error('`event` 参数列表缺少结尾的 `)`', cursor.span(keyword.span.start));
+    recoverToDeclarationEnd(cursor);
+    return null;
+  }
+  if (!cursor.match('.')) recoverToDeclarationEnd(cursor);
+  return { name: nameToken.text, argTypes, span: nameToken.span };
+}
+
+function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {  const keyword = cursor.next();
   const stop = findTopLevelToken(cursor, cursor.position, ['.']);
   const end = stop < 0 ? cursor.tokens.length - 1 : stop;
   const result: { name: string; span: SourceSpan }[] = [];

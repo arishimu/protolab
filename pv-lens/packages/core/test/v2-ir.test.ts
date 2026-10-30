@@ -53,7 +53,8 @@ describe('v2 对应性 query 计划', () => {
     const plan = createCorrespondencePlan(source, result);
     expect(plan.events).toHaveLength(2);
     expect(plan.queries).toHaveLength(4);
-    expect(plan.verificationSource.indexOf('query inj-event(begin(x))')).toBeLessThan(
+    // 查询变量按事件声明的形参类型生成（ProVerif 要求查询自由变量带类型声明）。
+    expect(plan.verificationSource.indexOf('query x0:bitstring; inj-event(begin(x0)) ==> inj-event(begin(x0)).')).toBeLessThan(
       plan.verificationSource.indexOf('process'),
     );
     expect(plan.source).toBe(source);

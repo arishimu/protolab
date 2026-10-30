@@ -35,7 +35,9 @@ describe('ticket #06：人工配对、广播扇出与合流（core 合同）', (
     expect(pairings).toHaveLength(2);
     const cycle = diagnostics.filter((diagnostic) => diagnostic.kind === 'order-cycle');
     expect(cycle.length).toBeGreaterThanOrEqual(1);
-    expect(cycle[0]?.message).toContain('0:1');
+    // 可读端点标签（角色名 + 方向 + 角色内消息步序号），不暴露内部 ref 键。
+    expect(cycle[0]?.message).toContain('A·发2');
+    expect(cycle[0]?.message).toContain('B·收1');
     expect(cycle[0]?.message).toContain('→');
   });
 

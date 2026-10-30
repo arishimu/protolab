@@ -261,6 +261,13 @@ export interface DestructorDeclaration {
   span?: SourceSpan;
 }
 
+/** 事件声明 `event name(t1, t2).`：形参类型供对应性查询生成变量声明。 */
+export interface EventDeclaration {
+  name: string;
+  argTypes: readonly string[];
+  span: SourceSpan;
+}
+
 export interface PvQuery {
   text: string;
   variables: readonly string[];
@@ -282,6 +289,7 @@ export interface ParseResult {
   roles: readonly PvRole[];
   mainProcess: PvRole | null;
   queries: readonly PvQuery[];
+  events: readonly EventDeclaration[];
   functions: readonly FunctionSignature[];
   names: readonly TypedName[];
   channels: readonly ChannelDeclaration[];

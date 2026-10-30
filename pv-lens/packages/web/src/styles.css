@@ -755,3 +755,93 @@ body {
   color: #b91c1c;
   font-family: inherit;
 }
+
+/* —— 事件对应性矩阵（ticket 08）—— */
+
+.correspondence {
+  margin: 1.25rem 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: #fbfdff;
+}
+
+.correspondence-summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.correspondence-controls {
+  margin: 0.5rem 0;
+}
+
+.correspondence-matrix-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.correspondence-matrix {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.correspondence-head {
+  padding: 0.15rem 0.3rem;
+  text-align: center;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.correspondence-head--selected {
+  background: #eff6ff;
+  outline: 1.5px solid #2563eb;
+}
+
+.correspondence-head-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: #1f2937;
+  text-decoration: underline dotted;
+  padding: 0.05rem 0.2rem;
+}
+
+.correspondence-row--selected > .correspondence-head {
+  background: #eff6ff;
+}
+
+.correspondence-cell {
+  width: 30px;
+  height: 26px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  position: relative;
+}
+
+.correspondence-cell--true { background: #dcfce7; border-color: #16a34a; color: #14532d; }
+.correspondence-cell--false { background: #fee2e2; border-color: #dc2626; color: #7f1d1d; }
+.correspondence-cell--cannot-be-proved { background: #fef9c3; border-color: #d4a72c; color: #713f12; }
+.correspondence-cell--pending { background: #f8fafc; color: #94a3b8; }
+.correspondence-cell--selected { outline: 2px solid #1d4ed8; outline-offset: -2px; }
+
+.correspondence-reflexive-mark {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  font-size: 0.6rem;
+  color: #475569;
+}
+
+.correspondence-detail {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #2563eb;
+  background: #ffffff;
+}
+
+.correspondence-detail-query code {
+  font-size: 0.8rem;
+}

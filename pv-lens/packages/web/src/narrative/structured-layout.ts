@@ -3,12 +3,12 @@ import type {
   BranchItem,
   Condition,
   MessagePairing,
+  PairingOrigin,
   ParseResult,
   PvRole,
   PvTerm,
   RoleItem,
   SourceSpan,
-  StepPairing,
 } from '@pv-lens/core';
 import { narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
 import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
@@ -174,7 +174,7 @@ export interface MessagePillar {
   color: string;
   sequence: number;
   /** 柱来源：自动配对或含人工声明（广播分组按发送端归并，ADR-0007）。 */
-  origin: 'automatic' | 'manual';
+  origin: PairingOrigin;
   channelName: string;
   channelX: number;
   top: number;
@@ -1323,9 +1323,4 @@ function columnKey(node: HorizontalNode): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-/** 把旧 StepPairing 转为 v2 统一 IR，给迁移中的调用方使用。 */
-export function legacyPairingsToMessagePairings(pairings: readonly StepPairing[]): readonly MessagePairing[] {
-  return pairings.map((pairing) => ({ outEnd: pairing.from, inEnd: pairing.to, origin: 'automatic' }));
 }

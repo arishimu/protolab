@@ -4,7 +4,7 @@
  * 纯函数、不触 DOM——App 层接线，状态与意图都在会话内存，切换协议由调用方清空。
  */
 
-import type { PairingIntent } from '@pv-lens/core';
+import type { PairingIntent, PairingOrigin } from '@pv-lens/core';
 
 export interface SelectableEndpoint {
   id: string;
@@ -13,7 +13,7 @@ export interface SelectableEndpoint {
   direction: 'out' | 'in';
   channelName: string;
   /** 配对态：未配对 / 已人工配对（可追加声明，扇出与合流）/ 已自动配对（不可人工选择）。 */
-  pairingState: 'unpaired' | 'manual' | 'automatic';
+  pairingState: 'unpaired' | PairingOrigin;
 }
 
 export interface PairingSelectionState {

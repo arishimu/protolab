@@ -18,6 +18,17 @@ import type { SelectableEndpoint } from './pairing-selection';
 import { Legend } from './Legend';
 import './v2.css';
 
+/** 事件旗标与对应性矩阵的联动绑定（ticket 08）：形状按事件在查询中的角色区分。 */
+export interface EventCorrespondenceBinding {
+  /** 事件源码 offset → 前提（出现在某查询左侧）/ 结论（右侧）角色。 */
+  rolesByOffset: ReadonlyMap<number, { premise: boolean; conclusion: boolean }>;
+  selectedOffset: number | null;
+  /** 单击旗标：选中事件，矩阵高亮其行/列。 */
+  onSelect: (offset: number) => void;
+  /** 双击旗标：选中该事件的自反对应性单元。 */
+  onReflexive: (offset: number) => void;
+}
+
 
 export interface NarrativeViewProps {
   result: ParseResult;
@@ -29,7 +40,11 @@ export interface NarrativeViewProps {
   manualDiagnostics?: readonly PairingDiagnostic[];
   /** 人工配对点选：当前选中的未配对发送端 id。 */
   pendingOutId?: string | null;
+  /** 点选被拒的即时提示（自动端 / 未选发送端 / 跨信道），由 App 传入。 */
+  selectionNotice?: string | null;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
+  /** 事件旗标与对应性矩阵联动（ticket 08）；缺省时旗标为普通标记。 */
+  eventCorrespondence?: EventCorrespondenceBinding;
 }
 
 export function NarrativeView({
@@ -38,7 +53,9 @@ export function NarrativeView({
   initialCollapsedBranches = [],
   manualDiagnostics = [],
   pendingOutId = null,
+  selectionNotice = null,
   onEndpointSelect,
+  eventCorrespondence,
 }: NarrativeViewProps) {
   const [compactness, setCompactness] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -96,6 +113,9 @@ export function NarrativeView({
               重复选择同一发送端可继续广播扇出。声明只在本次会话内，不回写 `.pv`。
             </p>
           )}
+          {selectionNotice !== null && (
+            <p className="pairing-warning pairing-warning--selection" role="status">{selectionNotice}</p>
+          )}
           {manualDiagnostics.length > 0 && (
             <ul className="narrative-pairing-warnings" aria-label="配对声明诊断">
               {manualDiagnostics.map((diagnostic, index) => (
@@ -115,6 +135,7 @@ export function NarrativeView({
             onToggleBranch={toggleBranch}
             pendingOutId={pendingOutId}
             onEndpointSelect={onEndpointSelect}
+            eventCorrespondence={eventCorrespondence}
           />
           <NarrativeDiagnostics result={result} />
           <Legend layout={structured} result={result} />
@@ -133,6 +154,7 @@ function StructuredNarrativeCanvas({
   onToggleBranch,
   pendingOutId,
   onEndpointSelect,
+  eventCorrespondence,
 }: {
   layout: StructuredNarrativeLayout;
   zoom: number;
@@ -140,6 +162,7 @@ function StructuredNarrativeCanvas({
   onToggleBranch: (branchId: string) => void;
   pendingOutId: string | null;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
+  eventCorrespondence?: EventCorrespondenceBinding;
 }) {
   const messageCount = layout.pillars.length;
   // 合流抽头（ADR-0008）：一个接收端被多条消息命中时，在信道侧并排画各消息色的抽头点。
@@ -173,16 +196,19 @@ function StructuredNarrativeCanvas({
         </g>
         <g className="structured-message-layer">
           {layout.pillars.map((pillar) => <MessagePillarSvg key={pillar.id} pillar={pillar} />)}
-          {layout.endpoints.map((endpoint) => (
-            <EndpointSvg
-              key={endpoint.id}
-              endpoint={endpoint}
-              messageIndex={layout.pillars.findIndex((pillar) => pillar.endpoints.some((candidate) => candidate.id === endpoint.id))}
-              tapPillars={pillarsByEndpointId.get(endpoint.id) ?? []}
-              pending={pendingOutId === endpoint.id}
-              onSelect={onEndpointSelect}
-            />
-          ))}
+          {layout.endpoints.map((endpoint) => {
+            const tapPillars = pillarsByEndpointId.get(endpoint.id) ?? [];
+            return (
+              <EndpointSvg
+                key={endpoint.id}
+                endpoint={endpoint}
+                messageIndex={tapPillars[0] === undefined ? -1 : layout.pillars.indexOf(tapPillars[0])}
+                tapPillars={tapPillars}
+                pending={pendingOutId === endpoint.id}
+                onSelect={onEndpointSelect}
+              />
+            );
+          })}
         </g>
         <g className="structured-value-layer">
           {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} onToggleBranch={onToggleBranch} />)}
@@ -199,7 +225,18 @@ function StructuredNarrativeCanvas({
         <g className="structured-node-layer">
           {layout.nodes
             .filter((node) => node.kind !== 'message' && node.kind !== 'branch' && (node.kind !== 'local' || node.bindingIds.length === 0))
-            .map((node) => <StructuredNodeSvg key={node.id} node={node} />)}
+            .map((node) => (
+              <StructuredNodeSvg
+                key={node.id}
+                node={node}
+                eventBinding={eventCorrespondence === undefined || node.kind !== 'event' ? undefined : {
+                  roles: eventCorrespondence.rolesByOffset.get(node.span.start.offset),
+                  selected: eventCorrespondence.selectedOffset === node.span.start.offset,
+                  onSelect: () => eventCorrespondence.onSelect(node.span.start.offset),
+                  onReflexive: () => eventCorrespondence.onReflexive(node.span.start.offset),
+                }}
+              />
+            ))}
         </g>
         {layout.conflicts.map((conflict) => (
           <g key={conflict.id} className="structured-conflict" aria-label={conflict.message}>
@@ -299,7 +336,7 @@ function EndpointSvg({
   // 箭头只指向「抵达目标」：配对消息的发送段不画箭头（在发送端画起点圆点），
   // 接收段与未配对端（指向信道轨）才有箭头。
   const showArrow = endpoint.unpaired || endpoint.direction === 'in';
-  const startDot = !endpoint.unpaired && endpoint.direction === 'out' && tapPillars.length <= 1;
+  const startDot = !endpoint.unpaired && endpoint.direction === 'out';
   // 可选 = 未配对或已人工配对（扇出/合流可追加声明，票 06 验收 1）；自动配对端不可选。
   const manualPaired = tapPillars.some((pillar) => pillar.origin === 'manual');
   const selectable = onSelect !== undefined && (endpoint.unpaired || manualPaired);
@@ -352,7 +389,13 @@ function EndpointSvg({
   );
 }
 
-function StructuredNodeSvg({ node }: { node: StructuredNode }) {
+function StructuredNodeSvg({
+  node,
+  eventBinding,
+}: {
+  node: StructuredNode;
+  eventBinding?: { roles?: { premise: boolean; conclusion: boolean }; selected: boolean; onSelect: () => void; onReflexive: () => void };
+}) {
   const label = truncate(node.label, node.labelMaxChars);
   // 置顶标签配不透明底（F4）：跨泳道消息线从文字背后穿过，而不是划穿文字。
   const labelWidth = label.length * 6.2 + 8;
@@ -360,11 +403,22 @@ function StructuredNodeSvg({ node }: { node: StructuredNode }) {
     <rect className="structured-label-bg" x={node.labelX - 4} y={baselineY - 11} width={labelWidth} height="14" rx="3" />
   );
   if (node.kind === 'event') {
-    // 事件旗标：生命线上的实心旗 + 右侧标签（前提/结论区分归 #08）。
+    // 事件旗标（ticket 08）：结论端 = 实心旗，前提端 = 填充菱形，两者皆是则并排。
+    // 单击选中（矩阵高亮其行/列）、双击选中该事件的自反对应性单元。
+    const premise = eventBinding?.roles?.premise === true;
+    const conclusion = eventBinding === undefined || eventBinding.roles?.conclusion !== false;
+    const cx = node.x + node.width / 2;
     return (
-      <g className="structured-event" data-source-offset={node.span.start.offset} aria-label={node.label}>
-        <title>{node.label}</title>
-        <path d={`M ${node.x + node.width / 2} ${node.y + 7} l 12 6 l -12 6 z`} />
+      <g
+        className={`structured-event${premise ? ' structured-event--premise' : ''}${conclusion ? ' structured-event--conclusion' : ''}${eventBinding?.selected === true ? ' structured-event--selected' : ''}${eventBinding !== undefined ? ' structured-event--clickable' : ''}`}
+        data-source-offset={node.span.start.offset}
+        aria-label={node.label}
+        onClick={eventBinding?.onSelect}
+        onDoubleClick={eventBinding?.onReflexive}
+      >
+        <title>{`${node.label}${premise ? ' · 前提' : ''}${conclusion ? ' · 结论' : ''}（单击选中行列，双击查自反对应性）`}</title>
+        {conclusion && <path d={`M ${cx} ${node.y + 7} l 12 6 l -12 6 z`} />}
+        {premise && <path className="structured-event-diamond" d={`M ${cx - (conclusion ? 9 : 0)} ${node.y + 1} l 5 6 l -5 6 l -5 -6 z`} />}
         {labelBg(node.y + 18)}
         <text x={node.labelX} y={node.y + 18} textAnchor={node.labelAnchor}>{label}</text>
       </g>

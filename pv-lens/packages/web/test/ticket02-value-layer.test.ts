@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { coreSamples, composeMessagePairings, narrativeRoleOrder, pairSteps, parsePv } from '@pv-lens/core';
+import { coreSamples, composeMessagePairings, narrativeRoleOrder, parsePv } from '@pv-lens/core';
 import type { ParseResult } from '@pv-lens/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildStructuredNarrativeLayout, legacyPairingsToMessagePairings } from '../src/narrative/structured-layout';
+import { buildStructuredNarrativeLayout } from '../src/narrative/structured-layout';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
 const webDir = fileURLToPath(new URL('..', import.meta.url));
@@ -114,8 +114,8 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
 
   it('长标签在画布内截断并保留全文 title', () => {
     const svg = renderSvg(coreFixture('pv/handshake-fixed.pv'));
-    // 事件标签含全文 title，且可见文字被截断过（画布容不下时就以 … 结尾）。
-    expect(svg).toContain('<title>event acceptsServer(k,pkX)</title>');
+    // 事件标签含全文 title（ticket 08 起后缀事件角色与联动操作说明），且可见文字被截断过。
+    expect(svg).toContain('<title>event acceptsServer(k,pkX)');
     expect(svg).toContain('event acceptsServer(k,pkX)');
   });
 
@@ -142,7 +142,7 @@ describe('ticket #02 视觉合同（P0/P1 回归）', () => {
   it('一条配对消息只在信道帧里写一次词项，未配对端才各自带芯片', () => {
     const result = coreFixture('pv/handshake-fixed.pv');
     const layout = buildStructuredNarrativeLayout(result, {
-      pairings: legacyPairingsToMessagePairings(pairSteps(result)),
+      pairings: composeMessagePairings(result).pairings,
     });
     const svg = renderSvg(result);
     const frames = (svg.match(/structured-message-frame/g) ?? []).length;
