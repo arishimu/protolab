@@ -13,6 +13,8 @@ import type {
   MessagePillar,
   StructuredNarrativeLayout,
   StructuredNode,
+  StructuredOperatorClusterFold,
+  StructuredValueBlock,
 } from './structured-layout';
 import type { SelectableEndpoint } from './pairing-selection';
 import { Legend } from './Legend';
@@ -36,6 +38,8 @@ export interface NarrativeViewProps {
   pairings?: readonly MessagePairing[];
   /** 初始即折叠的分支（分支标记 item id）；默认全部展开。 */
   initialCollapsedBranches?: readonly string[];
+  /** 初始即展开的算子簇（07b / spec 51：簇默认折叠，此 prop 供测试与外层控制初始态）。 */
+  initialExpandedClusters?: readonly string[];
   /** 人工配对诊断（拒绝与顺序环），渲染为画布旁的警告条。 */
   manualDiagnostics?: readonly PairingDiagnostic[];
   /** 人工配对点选：当前选中的未配对发送端 id。 */
@@ -51,6 +55,7 @@ export function NarrativeView({
   result,
   pairings = [],
   initialCollapsedBranches = [],
+  initialExpandedClusters = [],
   manualDiagnostics = [],
   pendingOutId = null,
   selectionNotice = null,
@@ -65,13 +70,21 @@ export function NarrativeView({
       ? current.filter((id) => id !== branchId)
       : [...current, branchId]);
   };
+  // 高密度算子簇默认折叠（spec 51，与分支相反）；集合语义 = 用户已点开的簇。
+  const [expandedClusters, setExpandedClusters] = useState<readonly string[]>(initialExpandedClusters);
+  const toggleOperatorCluster = (clusterId: string): void => {
+    setExpandedClusters((current) => current.includes(clusterId)
+      ? current.filter((id) => id !== clusterId)
+      : [...current, clusterId]);
+  };
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
       pairings,
       compactness,
       collapsedBranches,
+      expandedOperatorClusters: expandedClusters,
     }),
-    [result, pairings, compactness, collapsedBranches],
+    [result, pairings, compactness, collapsedBranches, expandedClusters],
   );
   const legacy = useMemo(
     () => buildNarrativeLayout(result, { pairings: pairings.map((pairing) => ({ from: pairing.outEnd, to: pairing.inEnd })) }),
@@ -133,6 +146,7 @@ export function NarrativeView({
             zoom={zoom}
             legacy={legacy}
             onToggleBranch={toggleBranch}
+            onToggleCluster={toggleOperatorCluster}
             pendingOutId={pendingOutId}
             onEndpointSelect={onEndpointSelect}
             eventCorrespondence={eventCorrespondence}
@@ -152,6 +166,7 @@ function StructuredNarrativeCanvas({
   zoom,
   legacy,
   onToggleBranch,
+  onToggleCluster,
   pendingOutId,
   onEndpointSelect,
   eventCorrespondence,
@@ -160,6 +175,7 @@ function StructuredNarrativeCanvas({
   zoom: number;
   legacy: ReturnType<typeof buildNarrativeLayout>;
   onToggleBranch: (branchId: string) => void;
+  onToggleCluster: (clusterId: string) => void;
   pendingOutId: string | null;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
   eventCorrespondence?: EventCorrespondenceBinding;
@@ -219,6 +235,12 @@ function StructuredNarrativeCanvas({
         <g className="structured-branch-fold-layer">
           {layout.branchFolds.map((fold) => (
             <BranchFoldSvg key={fold.branchId} fold={fold} onToggleBranch={onToggleBranch} />
+          ))}
+        </g>
+        {/* 折叠算子簇（07b / spec 51）：同分支折叠条，压在值层之上保证文字可见。 */}
+        <g className="structured-operator-fold-layer">
+          {layout.operatorFolds.map((fold) => (
+            <OperatorClusterFoldSvg key={fold.clusterId} fold={fold} onToggleCluster={onToggleCluster} />
           ))}
         </g>
         {/* 文本节点置顶（F4）：事件/分支/本地标签永远盖住线与芯片，不被虚线划穿。 */}
@@ -349,7 +371,7 @@ function EndpointSvg({
   const pairingState = endpoint.unpaired ? 'unpaired' : manualPaired ? 'manual' : 'automatic';
   return (
     <g
-      className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${pending ? ' structured-endpoint--pending' : ''}`}
+      className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${pending ? ' structured-endpoint--pending' : ''}${!endpoint.unpaired && manualPaired ? ' structured-endpoint--manual' : ''}`}
       data-identity={endpoint.id}
       data-channel={endpoint.channelName}
       aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}${selectable ? ' · 可选为人工配对端' : ''}`}
@@ -377,6 +399,10 @@ function EndpointSvg({
           <title>{endpoint.termText}</title>
           <circle className="structured-unpaired-dot" cx={endpoint.channelX} cy={endpoint.y} r="5" />
         </>
+      )}
+      {/* 已配对端点的命中提示（ticket 06 移交）：hover 提示 + 可点选视觉，声明扇出/合流有明确落点。 */}
+      {!endpoint.unpaired && manualPaired && (
+        <title>{`已人工配对（M${String(messageIndex + 1)}）：点选可作为${endpoint.direction === 'out' ? '扇出源' : '合流端'}追加声明`}</title>
       )}
       {tapPillars.length > 1 && (
         <g className="structured-merge-taps" aria-label={`合流端：命中 ${String(tapPillars.length)} 条消息`}>
@@ -583,6 +609,42 @@ function BranchFoldSvg({
   );
 }
 
+/** 折叠算子簇条（07b / spec 51–53）：表面列主导算子名与数量，悬停浮卡列内含算子与幽灵值，点开还原。 */
+function OperatorClusterFoldSvg({
+  fold,
+  onToggleCluster,
+}: {
+  fold: StructuredOperatorClusterFold;
+  onToggleCluster: (clusterId: string) => void;
+}) {
+  const ghostText = fold.ghostLabels.length > 0
+    ? `；仍被后续引用的值：${fold.ghostLabels.join('、')}`
+    : '';
+  return (
+    <g
+      className="structured-operator-fold"
+      role="button"
+      tabIndex={0}
+      data-cluster-id={fold.clusterId}
+      aria-label={`展开算子簇 ${fold.label}（隐藏 ${String(fold.hiddenCount)} 步）`}
+      onClick={() => onToggleCluster(fold.clusterId)}
+      onKeyDown={(event) => activateOnKey(event, () => onToggleCluster(fold.clusterId))}
+    >
+      <title>{`算子：${fold.memberLabels.join('、')}${ghostText}`}</title>
+      <rect
+        x={fold.x - fold.width / 2}
+        y={fold.y - fold.height / 2}
+        width={fold.width}
+        height={fold.height}
+        rx={fold.height / 2}
+      />
+      <text x={fold.x} y={fold.y + 4} textAnchor="middle">
+        {truncate(fold.label, Math.max(4, Math.floor((fold.width - 12) / 6.2)))}
+      </text>
+    </g>
+  );
+}
+
 /** 让 role="button" 的 SVG 元素像真按钮一样响应 Enter / Space。 */
 function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): void {
   if (event.key === 'Enter' || event.key === ' ') {
@@ -591,12 +653,33 @@ function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): v
   }
 }
 
-function StructuredValueBlockSvg({ block }: { block: StructuredNarrativeLayout['valueBlocks'][number] }) {
+function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
   const occurrenceLabel = block.occurrence === 'binding'
     ? '绑定'
     : block.occurrence === 'equality'
       ? '等值复制'
       : '引用';
+  // 幽灵值块（spec 52）：折叠算子簇下方仍被后续引用的产出，虚线描边区分常规方块。
+  if (block.ghost === true) {
+    return (
+      <g
+        className="structured-value-block structured-value-block--binding structured-value-block--ghost"
+        data-binding-id={block.bindingId}
+        data-source-offset={block.sourceSpan.start.offset}
+        aria-label={`折叠簇引用值 ${block.label}`}
+      >
+        <title>{`折叠算子簇仍被后续引用的值：${block.label}`}</title>
+        <rect
+          x={block.x - block.width / 2}
+          y={block.y - block.height / 2}
+          width={block.width}
+          height={block.height}
+          fill={block.color}
+        />
+        <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 8)}</text>
+      </g>
+    );
+  }
   return (
     <g
       className={`structured-value-block structured-value-block--${block.occurrence}`}

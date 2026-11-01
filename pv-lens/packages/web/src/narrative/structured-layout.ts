@@ -76,6 +76,8 @@ export interface StructuredValueBlock {
   y: number;
   width: number;
   height: number;
+  /** 折叠算子簇的幽灵值块（spec 52）：虚线描边，表示折叠区仍被后续引用的产出。 */
+  ghost?: boolean;
   sourceSpan: SourceSpan;
 }
 
@@ -156,6 +158,32 @@ export interface StructuredBranchFold {
   sourceSpan: SourceSpan;
 }
 
+/** 高密度算子簇阈值（spec 故事 51）：角色内连续的算子步骤达到该数量即默认折叠为一格。 */
+export const OPERATOR_CLUSTER_MIN = 3;
+
+/**
+ * 折叠后的算子簇条（spec 51–53）：一格列出主导算子名与算子数，点击展开；
+ * 悬停浮卡（title）列全部内含算子与仍被后续引用的值；簇下方是虚线幽灵值块。
+ */
+export interface StructuredOperatorClusterFold {
+  /** 折叠键：`opcluster:{roleIndex}:{firstItemIndex}`。 */
+  clusterId: string;
+  roleIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** 折叠条全文：`主导算子名 ×算子数`。 */
+  label: string;
+  /** 内含算子标签清单（hover 全文与测试断言用）。 */
+  memberLabels: readonly string[];
+  /** 仍被簇外后续引用的产出绑定名（虚线幽灵值块清单）。 */
+  ghostLabels: readonly string[];
+  /** 被折叠隐藏的步骤数。 */
+  hiddenCount: number;
+  sourceSpan: SourceSpan;
+}
+
 export interface StructuredEndpoint {
   roleIndex: number;
   stepIndex: number;
@@ -205,6 +233,7 @@ export interface StructuredNarrativeLayout {
   chips: readonly StructuredChip[];
   armRuns: readonly StructuredArmRun[];
   branchFolds: readonly StructuredBranchFold[];
+  operatorFolds: readonly StructuredOperatorClusterFold[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
@@ -222,6 +251,11 @@ export interface StructuredLayoutOptions {
   compactness?: number;
   /** 已折叠的分支（按分支标记 item id）；折叠只作显式开关，默认展开。 */
   collapsedBranches?: readonly string[];
+  /**
+   * 显式展开的算子簇（spec 51 与分支相反）：高密度算子簇默认折叠，
+   * 集合语义为「用户已点开的簇」，缺省为空 = 全部折叠。
+   */
+  expandedOperatorClusters?: readonly string[];
 }
 
 const METRICS = {
@@ -258,6 +292,8 @@ const METRICS = {
   /** 折叠分支条的高度与最大宽度。 */
   branchFoldHeight: 22,
   branchFoldMaxWidth: 200,
+  /** 折叠算子簇格的高度（spec 51：一格列算子名与数量）。 */
+  operatorFoldHeight: 24,
   chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
@@ -325,6 +361,7 @@ export function buildStructuredNarrativeLayout(
   const chips: StructuredChip[] = [];
   const armRuns: StructuredArmRun[] = [];
   const branchFolds: StructuredBranchFold[] = [];
+  const operatorFolds: StructuredOperatorClusterFold[] = [];
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
@@ -408,7 +445,7 @@ export function buildStructuredNarrativeLayout(
     return crossed;
   };
 
-  interface RowMeta { chain: readonly ChainEntry[]; rowHeight: number; chip: boolean }
+  interface RowMeta { chain: readonly ChainEntry[]; rowHeight: number; chip: boolean; refs: readonly string[] }
   /**
    * 三段式（ticket 07）：一次遍历构建每角色的布局单元（参数簇 / 行 / 芯片 / 折叠条），
    * 交给 core 的 `solveSpacing` 分配 y（三层档位、禁置带收敛、显式冲突都在解算器内），
@@ -416,8 +453,114 @@ export function buildStructuredNarrativeLayout(
    * 独立 tight 单元（decision 08 把芯片列为闭集单元，不并入行高）；群组边界
    * （参数簇后首行 / join 后 / 折叠条后）用 group 档。动作区起点全图统一：
    * 所有角色的首行 top = max(各角色参数簇底) + group 档（decision 08 §4）。
+   *
+   * 07b 密度折叠：行元数据先全部预算（chain 只算一遍），再识别高密度算子簇并按
+   * `expandedOperatorClusters` 决策折叠——折叠簇在组装与发射两个阶段都以
+   * 「折叠格 + 幽灵值单元」替换簇内全部行。
    */
   const rowMetaByKey = new Map<string, RowMeta>();
+  roles.forEach((role, roleIndex) => {
+    role.items.forEach((item, itemIndex) => {
+      const chain = chainOfItem(item, roleIndex);
+      const rowHeight = Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
+      rowMetaByKey.set(rowKeyOf(roleIndex, itemIndex), {
+        chain,
+        rowHeight,
+        chip: wireChipOf(item, roleIndex),
+        refs: chainBindingIds(chain),
+      });
+    });
+  });
+
+  // —— 07b 算子簇识别与折叠决策（spec 51–53）——
+  interface ClusterRange {
+    clusterId: string;
+    roleIndex: number;
+    startIndex: number;
+    endIndex: number;
+    /** 每个成员的算子标签（method 的 label / check 的 op）。 */
+    memberLabels: readonly string[];
+    /** 折叠条全文：主导算子名 ×算子数。 */
+    label: string;
+    /** 簇产出且簇外仍引用的绑定 id（幽灵值块，按绑定全局序）。 */
+    ghostBindingIds: readonly string[];
+  }
+  const expandedClusters = new Set(options.expandedOperatorClusters ?? []);
+  const foldedClusterByStart = new Map<string, ClusterRange>();
+  // 绑定全局序（assignBindingColors 的插入序）：幽灵值块按它排列，稳定且与值身份色同源。
+  const globalBindingOrder = new Map([...bindingColors.keys()].map((id, index) => [id, index] as const));
+  const allRefs = new Set<string>();
+  rowMetaByKey.forEach((meta) => meta.refs.forEach((id) => allRefs.add(id)));
+  roles.forEach((role, roleIndex) => {
+    let branchDepth = 0;
+    let run: number[] = [];
+    const flushRun = (): void => {
+      if (run.length >= OPERATOR_CLUSTER_MIN) {
+        const startIndex = run[0] ?? 0;
+        const endIndex = run[run.length - 1] ?? 0;
+        const memberLabels = run.flatMap((itemIndex) => {
+          const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
+          return (meta?.chain ?? []).flatMap((entry) => entry.kind === 'method' ? [entry.label] : entry.kind === 'check' ? [entry.op] : []);
+        });
+        // 主导算子名：出现最多者，并列取先出现者；数量按算子盒总数（spec 51）。
+        const counts = new Map<string, number>();
+        memberLabels.forEach((label) => counts.set(label, (counts.get(label) ?? 0) + 1));
+        let dominant = memberLabels[0] ?? '算子';
+        let bestCount = 0;
+        counts.forEach((count, name) => {
+          if (count > bestCount) {
+            bestCount = count;
+            dominant = name;
+          }
+        });
+        const clusterId = `opcluster:${String(roleIndex)}:${String(startIndex)}`;
+        // 幽灵值（spec 52）：产出绑定中仍被簇外引用者，按绑定全局序排列。
+        const produced: string[] = [];
+        const innerRefs = new Set<string>();
+        for (let index = startIndex; index <= endIndex; index += 1) {
+          const item = role.items[index];
+          if (item !== undefined && item.kind === 'local') produced.push(...item.bindingIds);
+          rowMetaByKey.get(rowKeyOf(roleIndex, index))?.refs.forEach((id) => innerRefs.add(id));
+        }
+        const ghostBindingIds = produced
+          .filter((id, index) => produced.indexOf(id) === index)
+          .filter((id) => !innerRefs.has(id) && allRefs.has(id))
+          .sort((a, b) => (globalBindingOrder.get(a) ?? 0) - (globalBindingOrder.get(b) ?? 0));
+        if (!expandedClusters.has(clusterId)) {
+          foldedClusterByStart.set(`${String(roleIndex)}:${String(startIndex)}`, {
+            clusterId,
+            roleIndex,
+            startIndex,
+            endIndex,
+            memberLabels,
+            label: `${dominant} ×${String(memberLabels.length)}`,
+            ghostBindingIds,
+          });
+        }
+      }
+      run = [];
+    };
+    role.items.forEach((item, itemIndex) => {
+      if (item.kind === 'branch') {
+        if (item.marker === 'branch') branchDepth += 1;
+        else if (item.marker === 'join') branchDepth = Math.max(0, branchDepth - 1);
+        flushRun();
+        return;
+      }
+      // 分支内部与被折叠分支吞掉的区间都不参与成簇；非算子本地步骤（new/insert/纯绑定）断簇。
+      const inFoldedBranch = branchDepth > 0;
+      const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
+      const hasBox = (meta?.chain ?? []).some((entry) => entry.kind === 'method' || entry.kind === 'check');
+      if (!inFoldedBranch && item.kind === 'local' && hasBox) {
+        run.push(itemIndex);
+        return;
+      }
+      flushRun();
+    });
+    flushRun();
+  });
+  const foldedClusterAt = (roleIndex: number, itemIndex: number): ClusterRange | undefined =>
+    foldedClusterByStart.get(`${String(roleIndex)}:${String(itemIndex)}`);
   const unitsByRole: SpacingUnit[][] = roles.map(() => []);
   const parameterClusterHeight = roles.reduce(
     (max, role) => Math.max(max, role.bindings.filter((binding) => binding.kind === 'parameter').length * METRICS.valuePitch),
@@ -445,7 +588,11 @@ export function buildStructuredNarrativeLayout(
     }
     let foldedDepth = 0;
     let prevIsBoundary = parameterCount > 0;
+    // 07b：折叠算子簇吞掉 `[start, end]` 区间——区间内的行不进单元序列（forEach 无法跳区间，
+    // 用哨兵变量把区间内 item 短路成空操作）。
+    let clusterSkipUntil = -1;
     role.items.forEach((item, itemIndex) => {
+      if (itemIndex <= clusterSkipUntil) return;
       if (foldedDepth > 0) {
         if (isBranchStart(item)) foldedDepth += 1;
         else if (isBranchJoin(item)) foldedDepth -= 1;
@@ -465,9 +612,38 @@ export function buildStructuredNarrativeLayout(
         foldedDepth = 1;
         return;
       }
-      const chain = chainOfItem(item, roleIndex);
-      const rowHeight = Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
-      const chip = wireChipOf(item, roleIndex);
+      const foldedCluster = foldedClusterAt(roleIndex, itemIndex);
+      if (foldedCluster !== undefined) {
+        // 折叠算子簇（spec 51）：一格 rigid 折叠团；下方幽灵值块仍是后续引用的数据流
+        // （spec 52），作为独立刚性单元紧跟其后。折叠不改消息行距——簇内没有消息行。
+        units.push({
+          id: foldedCluster.clusterId,
+          roleIndex,
+          kind: 'fold-group',
+          height: METRICS.operatorFoldHeight,
+          rigid: true,
+          messageEndpoint: false,
+          gapTier: prevIsBoundary ? 'group' : 'row',
+        });
+        if (foldedCluster.ghostBindingIds.length > 0) {
+          units.push({
+            id: `${foldedCluster.clusterId}:ghost`,
+            roleIndex,
+            kind: 'row',
+            height: foldedCluster.ghostBindingIds.length * METRICS.valuePitch,
+            rigid: true,
+            messageEndpoint: false,
+            gapTier: 'tight',
+          });
+        }
+        prevIsBoundary = true;
+        clusterSkipUntil = foldedCluster.endIndex;
+        return;
+      }
+      const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
+      const chain = meta?.chain ?? chainOfItem(item, roleIndex);
+      const rowHeight = meta?.rowHeight ?? Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
+      const chip = meta?.chip ?? wireChipOf(item, roleIndex);
       const message = item.kind === 'message';
       const key = rowKeyOf(roleIndex, itemIndex);
       units.push({
@@ -494,7 +670,6 @@ export function buildStructuredNarrativeLayout(
           gapTier: 'tight',
         });
       }
-      rowMetaByKey.set(key, { chain, rowHeight, chip });
       prevIsBoundary = item.kind === 'branch' && item.marker === 'join';
     });
   });
@@ -535,8 +710,11 @@ export function buildStructuredNarrativeLayout(
     const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
 
     // 折叠分支时跳过 `branch…join` 的整个区间；`foldedDepth` 记录剩余要吞掉的嵌套层数。
+    // 07b：折叠算子簇同样以哨兵短路区间内的常规发射，簇本身在首 item 处一次发射。
     let foldedDepth = 0;
+    let clusterSkipUntil = -1;
     role.items.forEach((item, itemIndex) => {
+      if (itemIndex <= clusterSkipUntil) return;
       if (foldedDepth > 0) {
         if (isBranchStart(item)) foldedDepth += 1;
         else if (isBranchJoin(item)) foldedDepth -= 1;
@@ -563,6 +741,44 @@ export function buildStructuredNarrativeLayout(
         });
         maxTextRight = Math.max(maxTextRight, lifelineX + width / 2);
         foldedDepth = 1;
+        return;
+      }
+
+      const emittingCluster = foldedClusterAt(roleIndex, itemIndex);
+      if (emittingCluster !== undefined) {
+        const y = rowYOf(emittingCluster.clusterId, startOffsets[roleIndex] ?? margin);
+        // 折叠条封在自身泳道内（同分支折叠条 F8 口径），宽随文字截断。
+        const width = Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + emittingCluster.label.length * CHAR_WIDTH);
+        operatorFolds.push({
+          clusterId: emittingCluster.clusterId,
+          roleIndex,
+          x: lifelineX,
+          y,
+          width,
+          height: METRICS.operatorFoldHeight,
+          label: emittingCluster.label,
+          memberLabels: emittingCluster.memberLabels,
+          ghostLabels: emittingCluster.ghostBindingIds.flatMap((bindingId) => {
+            const binding = bindingById.get(bindingId);
+            return binding === undefined ? [] : [binding.name];
+          }),
+          hiddenCount: emittingCluster.endIndex - emittingCluster.startIndex + 1,
+          sourceSpan: role.items[emittingCluster.startIndex]?.span ?? item.span,
+        });
+        maxTextRight = Math.max(maxTextRight, lifelineX + width / 2);
+        // 幽灵值块（spec 52）：虚线描边，从幽灵单元中心按值槽距对称展开。
+        const ghostCount = emittingCluster.ghostBindingIds.length;
+        if (ghostCount > 0) {
+          const ghostY = rowYOf(`${emittingCluster.clusterId}:ghost`, y + METRICS.operatorFoldHeight);
+          emittingCluster.ghostBindingIds.forEach((bindingId, ghostIndex) => {
+            const binding = bindingById.get(bindingId);
+            if (binding === undefined) return;
+            const blockY = ghostY - ((ghostCount - 1) * METRICS.valuePitch) / 2 + ghostIndex * METRICS.valuePitch;
+            valueBlocks.push({ ...valueBlockOf(binding, roleIndex, lifelineX, blockY, 'binding', bindingColors, valueBlocks.length), ghost: true });
+          });
+          maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
+        }
+        clusterSkipUntil = emittingCluster.endIndex;
         return;
       }
 
@@ -940,6 +1156,7 @@ export function buildStructuredNarrativeLayout(
     chips,
     armRuns,
     branchFolds,
+    operatorFolds,
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,
@@ -1137,6 +1354,27 @@ function chainHeightOf(chain: readonly ChainEntry[]): number {
     if (entry.kind === 'check') return total + METRICS.checkPitch;
     return total + METRICS.valuePitch;
   }, 0);
+}
+
+/**
+ * 一条值层链「引用」到的绑定 id（幽灵值判定用）：引用/等值 value 条目、检查盒操作数与
+ * 盒的输入。产出（binding 条目、盒的输出）不是引用——产出是否被引用由其他行决定，
+ * 计入会让簇内自产自销的中间值误判为「仍被引用」。
+ */
+function chainBindingIds(chain: readonly ChainEntry[]): string[] {
+  const ids: string[] = [];
+  chain.forEach((entry) => {
+    if (entry.kind === 'value') {
+      if (entry.occurrence !== 'binding') ids.push(entry.bindingId);
+    } else if (entry.kind === 'check') {
+      entry.operands.forEach((operand) => {
+        if (operand.kind === 'value') ids.push(operand.bindingId);
+      });
+    } else if (entry.kind === 'method') {
+      ids.push(...entry.inputBindingIds);
+    }
+  });
+  return ids;
 }
 
 function termBindingRefs(term: PvTerm, equality = false): TermBindingRef[] {

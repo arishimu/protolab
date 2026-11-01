@@ -250,6 +250,49 @@
   stroke-width: 1.8;
 }
 
+/* 折叠算子簇条（07b / spec 51–53）：石板色系与分支折叠条（蓝）区分，同为可点按钮。 */
+.structured-operator-fold {
+  cursor: pointer;
+}
+
+.structured-operator-fold rect {
+  fill: #f1f5f9;
+  stroke: #475569;
+  stroke-width: 1.2;
+}
+
+.structured-operator-fold text {
+  fill: #334155;
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 650;
+}
+
+.structured-operator-fold:hover rect {
+  fill: #e2e8f0;
+  stroke-width: 1.6;
+}
+
+.structured-operator-fold:focus-visible {
+  outline: none;
+}
+
+.structured-operator-fold:focus-visible rect {
+  stroke-width: 1.8;
+}
+
+/* 幽灵值块（spec 52）：折叠簇下方仍被引用的产出，虚线描边与常规方块区分。 */
+.structured-value-block--ghost rect {
+  fill-opacity: 0.55;
+  stroke: #64748b;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.structured-value-block--ghost text {
+  fill: #475569;
+}
+
 .structured-method--construct polygon {
   stroke-linejoin: bevel;
 }
@@ -412,13 +455,20 @@
 
 .structured-value-layer,
 .structured-node-layer,
-.structured-branch-fold-layer {
+.structured-branch-fold-layer,
+.structured-operator-fold-layer {
   pointer-events: none;
 }
 
 .structured-branch-fold,
-.structured-branch-toggle {
+.structured-branch-toggle,
+.structured-operator-fold {
   pointer-events: auto;
+}
+
+/* 已人工配对端点的命中提示（ticket 06 移交）：hover 加粗消息线，与可点选光标呼应。 */
+.structured-endpoint--manual:hover path {
+  stroke-width: 2.6;
 }
 
 .structured-endpoint--selectable:hover .structured-unpaired-dot {

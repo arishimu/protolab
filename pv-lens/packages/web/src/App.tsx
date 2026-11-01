@@ -15,7 +15,7 @@ import './styles.css';
 /** 点选被拒时的用户可见文案（拒绝原因 → 提示）。 */
 const SELECTION_REASONS: Readonly<Record<string, string>> = {
   'automatic-endpoint': '自动配对好的端点不能人工配对；请点未配对的发送端。',
-  'in-without-pending': '请先点选一个未配对的发送端，再点接收端。',
+  'in-without-pending': '请先点选一个发送端（未配对或已人工配对的扇出源），再点接收端声明设计意图。',
   'channel-mismatch': '人工配对必须使用同一信道；请点同一信道上的接收端。',
 };
 
