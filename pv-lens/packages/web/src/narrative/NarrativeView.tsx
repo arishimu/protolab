@@ -238,12 +238,18 @@ function StructuredNarrativeCanvas({
               />
             ))}
         </g>
-        {layout.conflicts.map((conflict) => (
-          <g key={conflict.id} className="structured-conflict" aria-label={conflict.message}>
-            <path d={`M ${layout.width - 42} ${conflict.y - 10} l 10 20 h -20 z`} />
-            <text x={layout.width - 26} y={conflict.y + 4}>{conflict.message}</text>
+        {/* 解算器冲突（ticket 07）：显式标记 + title 全文；长文案不进文本层（会越出画布右缘）。 */}
+        {layout.conflicts.length > 0 && (
+          <g
+            className="structured-conflict"
+            role="alert"
+            aria-label={`布局冲突 ${String(layout.conflicts.length)} 处：${layout.conflicts.map((conflict) => conflict.message).join(' ')}`}
+          >
+            <title>{layout.conflicts.map((conflict) => conflict.message).join('\n')}</title>
+            <path d={`M ${layout.width - 42} ${layout.conflicts[0].y - 10} l 10 20 h -20 z`} />
+            <text x={layout.width - 26} y={layout.conflicts[0].y + 4}>!{layout.conflicts.length}</text>
           </g>
-        ))}
+        )}
         {/* 兼容旧 DOM 查询：旧布局数据不参与可见几何。 */}
         <title>{legacy.hasLanes ? 'v2 结构化叙事布局' : '无角色结构'}</title>
       </svg>

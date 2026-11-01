@@ -220,6 +220,8 @@ export { solveHorizontalSequence, collectChannels } from './horizontal-sequence.
 export type { HorizontalNode, HorizontalOrderConstraint, HorizontalSequence } from './horizontal-sequence.js';
 export { composeMessagePairings } from './message-pairing.js';
 export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles } from './correspondence.js';
+export { solveSpacing, gapUnitOf, gapOf } from './spacing.js';
+export type { GapTier, SpacingUnit, SpacingRequest, SpacingConflict, SpacingSolution } from './spacing.js';
 export type {
   CorrespondenceCell,
   CorrespondencePlan,
