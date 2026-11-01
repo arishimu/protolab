@@ -25,6 +25,17 @@ const refOf = (roleIndex: number, stepIndex: number): string => `${roleIndex}:${
 
 /** 行键：角色下标 + item 下标（预计算与正式放置之间按它对行 y 达成一致）。 */
 const rowKeyOf = (roleIndex: number, itemIndex: number): string => `${roleIndex}:${String(itemIndex)}`;
+/** 算子簇键：折叠决策（内部 Map）与公开 clusterId 共用同一拼装（07b）。 */
+const clusterKeyOf = (roleIndex: number, itemIndex: number): string => `opcluster:${String(roleIndex)}:${String(itemIndex)}`;
+/** 折叠条宽度：封在自身泳道内，随文字截断（分支折叠条与算子折叠条同式，F8 口径）。 */
+function foldBarWidthOf(label: string): number {
+  return Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
+}
+
+/** 折叠条内文字的截断预算（与 foldBarWidthOf 的宽度公式同源；渲染方 SVG 用）。 */
+export function foldLabelBudgetOf(width: number): number {
+  return Math.max(4, Math.floor((width - 12) / CHAR_WIDTH));
+}
 export const CHANNEL_STYLES = ['solid', 'long-dash', 'dot'] as const;
 
 /** 粗略字宽，仅用于估算标签占用与画布宽度（不做像素级排版）。 */
@@ -489,6 +500,9 @@ export function buildStructuredNarrativeLayout(
   const foldedClusterByStart = new Map<string, ClusterRange>();
   // 绑定全局序（assignBindingColors 的插入序）：幽灵值块按它排列，稳定且与值身份色同源。
   const globalBindingOrder = new Map([...bindingColors.keys()].map((id, index) => [id, index] as const));
+  // 「仍被后续引用」判定（spec 52）：绑定是角色本地的（id 带角色前缀），角色内 item 按源码序
+  // 展开，对某绑定的引用只可能出现在引入它的 item 之上（源码序之后）——因此「全图引用集」
+  // 与「簇外后续引用」等价，无需按位置过滤。
   const allRefs = new Set<string>();
   rowMetaByKey.forEach((meta) => meta.refs.forEach((id) => allRefs.add(id)));
   roles.forEach((role, roleIndex) => {
@@ -513,7 +527,7 @@ export function buildStructuredNarrativeLayout(
             dominant = name;
           }
         });
-        const clusterId = `opcluster:${String(roleIndex)}:${String(startIndex)}`;
+        const clusterId = clusterKeyOf(roleIndex, startIndex);
         // 幽灵值（spec 52）：产出绑定中仍被簇外引用者，按绑定全局序排列。
         const produced: string[] = [];
         const innerRefs = new Set<string>();
@@ -527,7 +541,7 @@ export function buildStructuredNarrativeLayout(
           .filter((id) => !innerRefs.has(id) && allRefs.has(id))
           .sort((a, b) => (globalBindingOrder.get(a) ?? 0) - (globalBindingOrder.get(b) ?? 0));
         if (!expandedClusters.has(clusterId)) {
-          foldedClusterByStart.set(`${String(roleIndex)}:${String(startIndex)}`, {
+          foldedClusterByStart.set(clusterKeyOf(roleIndex, startIndex), {
             clusterId,
             roleIndex,
             startIndex,
@@ -560,7 +574,7 @@ export function buildStructuredNarrativeLayout(
     flushRun();
   });
   const foldedClusterAt = (roleIndex: number, itemIndex: number): ClusterRange | undefined =>
-    foldedClusterByStart.get(`${String(roleIndex)}:${String(itemIndex)}`);
+    foldedClusterByStart.get(clusterKeyOf(roleIndex, itemIndex));
   const unitsByRole: SpacingUnit[][] = roles.map(() => []);
   const parameterClusterHeight = roles.reduce(
     (max, role) => Math.max(max, role.bindings.filter((binding) => binding.kind === 'parameter').length * METRICS.valuePitch),
@@ -726,7 +740,7 @@ export function buildStructuredNarrativeLayout(
         const y = rowYOf(`fold:${item.id}`, startOffsets[roleIndex] ?? margin);
         const label = `▸ ${branchLabel(item)} · +${String(hiddenCount)}`;
         // 折叠条封在自身泳道内（F8）：不再越列压到邻列元素，文字随宽截断。
-        const width = Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
+        const width = foldBarWidthOf(label);
         branchFolds.push({
           branchId: item.id,
           roleIndex,
@@ -748,7 +762,7 @@ export function buildStructuredNarrativeLayout(
       if (emittingCluster !== undefined) {
         const y = rowYOf(emittingCluster.clusterId, startOffsets[roleIndex] ?? margin);
         // 折叠条封在自身泳道内（同分支折叠条 F8 口径），宽随文字截断。
-        const width = Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + emittingCluster.label.length * CHAR_WIDTH);
+        const width = foldBarWidthOf(emittingCluster.label);
         operatorFolds.push({
           clusterId: emittingCluster.clusterId,
           roleIndex,
@@ -783,10 +797,10 @@ export function buildStructuredNarrativeLayout(
       }
 
       const stepItem = item.kind === 'message' ? item : undefined;
-      // 行几何来自单元构建缓存（chain 只算一遍），y 来自 core 解算器；兜底路径仅防御解算缺项。
+      // 行几何来自预算缓存（07b 起预计算覆盖全部 item，chain 只算一遍），y 来自 core 解算器。
       const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
-      const chain = meta?.chain ?? chainOfItem(item, roleIndex);
-      const rowHeight = meta?.rowHeight ?? Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
+      if (meta === undefined) return;
+      const { chain, rowHeight, chip } = meta;
       const y = rowYOf(rowKeyOf(roleIndex, itemIndex), startOffsets[roleIndex] ?? margin);
 
       if (item.kind === 'branch') {
@@ -1058,7 +1072,7 @@ export function buildStructuredNarrativeLayout(
           }
           // 未配对端的线上词项芯片（F2）：独立的 tight 单元（ticket 07），y 由解算器分配，
           // 宽度按文字估算；描边用未配对橙与虚线/空心点同色。
-          if (meta?.chip === true && stepItem !== undefined) {
+          if (chip && stepItem !== undefined) {
             const text = renderTerm(stepItem.endpoint.term);
             const chipWidth = Math.min(METRICS.wireChipMaxWidth, 20 + text.length * CAPTION_CHAR_WIDTH);
             chips.push({

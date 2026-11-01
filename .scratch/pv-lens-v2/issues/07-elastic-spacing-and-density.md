@@ -44,3 +44,8 @@
 - 端点命中提示（06 移交）：已人工配对端点加 `structured-endpoint--manual`（hover 消息线加粗）+ title「已人工配对（Mn）：点选可作为扇出源/合流端追加声明」；`in-without-pending` 拒绝文案改写为涵盖已配对端追加合流的情形。
 - 验收：33 文件 308 项全绿（07b 新增 10 项：阈值、默认折叠、展开还原、幽灵值过滤、hover 全文、他角色行不动、无交叠且高度收缩、水平序列不变、ns-mutual-auth 基线不受影响、命中提示渲染）、typecheck/build 通过；playwright 浏览器验收——四基准样例 operator-folds=0（基线不变），密集样例折叠格点击后方法盒 0→3、ghost=1、折叠/展开双态截图入 `07-screenshots/`（dense-folded.png / dense-expanded.png + 四样例）。
 - 范围外发现（既有问题，非本票引入，07b 前后各 8 条一致）：ns 系复合守卫渲染 React duplicate key 警告——检查盒操作数芯片 id（`${item.id}:operand:${index}`）不含检查行索引，跨子句重复；建议后续票 triage。
+
+2026-11-01，07b code-review（两轴子代理）落实：
+
+- Standards 轴（7 项判断性，全部处理）：折叠条宽度公式提取 `foldBarWidthOf` + 渲染侧截断预算 `foldLabelBudgetOf`（删魔数 6.2 复现）；算子簇键统一 `clusterKeyOf`；发射段删不可达兜底（07b 预计算已覆盖全部 item，兜底复算违背「chain 只算一遍」契约）；分支/算子折叠状态机提取 `useToggleSet`；`StructuredValueBlockSvg` 幽灵/常规分支合并为单 JSX（occurrence class 由数据驱动）。不落实记录：`ghost?: boolean` 旗标的 Primitive Obsession——幽灵块是常规方块的呈现变体而非独立类目，独立 occurrence 值会让解算器/图例多分支，保留旗标。
+- Spec 轴（3 项，1 修复 2 裁定）：浮卡形态裁定——全画布 hover 机制统一为 SVG `<title>`（词项、冲突、长标签同源），spec 53 的「浮卡」按既有记法口径落实为 title + aria-label（aria 已含内含算子清单，键盘可达），不另制 tooltip 组件；spec 52「后续」口径——补注释证明「全图引用集 ≡ 簇外后续引用」（绑定带角色前缀为角色本地、角色内 item 按源码序、引用只可能出现在引入之后）；spec 54 测试口径——「不改变消息行距」按故事原意（其他角色不跳动）断言他角色端点 y 折叠前后相等，被折叠角色自身行上移正是折叠目的。修复后 33 文件 308 项全绿、typecheck 通过。

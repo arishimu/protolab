@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
+import { useToggleSet } from './toggle-set';
 import type { MessagePairing, PairingDiagnostic, ParseResult } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
@@ -8,6 +9,7 @@ import {
   UNPAIRED_COLOR,
   VALUE_COLORS,
   buildStructuredNarrativeLayout,
+  foldLabelBudgetOf,
 } from './structured-layout';
 import type {
   MessagePillar,
@@ -64,19 +66,9 @@ export function NarrativeView({
 }: NarrativeViewProps) {
   const [compactness, setCompactness] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [collapsedBranches, setCollapsedBranches] = useState<readonly string[]>(initialCollapsedBranches);
-  const toggleBranch = (branchId: string): void => {
-    setCollapsedBranches((current) => current.includes(branchId)
-      ? current.filter((id) => id !== branchId)
-      : [...current, branchId]);
-  };
+  const [collapsedBranches, toggleBranch] = useToggleSet(initialCollapsedBranches);
   // 高密度算子簇默认折叠（spec 51，与分支相反）；集合语义 = 用户已点开的簇。
-  const [expandedClusters, setExpandedClusters] = useState<readonly string[]>(initialExpandedClusters);
-  const toggleOperatorCluster = (clusterId: string): void => {
-    setExpandedClusters((current) => current.includes(clusterId)
-      ? current.filter((id) => id !== clusterId)
-      : [...current, clusterId]);
-  };
+  const [expandedClusters, toggleOperatorCluster] = useToggleSet(initialExpandedClusters);
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
       pairings,
@@ -603,7 +595,7 @@ function BranchFoldSvg({
         rx={fold.height / 2}
       />
       <text x={fold.x} y={fold.y + 4} textAnchor="middle">
-        {truncate(fold.label, Math.max(4, Math.floor((fold.width - 12) / 6.2)))}
+        {truncate(fold.label, foldLabelBudgetOf(fold.width))}
       </text>
     </g>
   );
@@ -626,7 +618,7 @@ function OperatorClusterFoldSvg({
       role="button"
       tabIndex={0}
       data-cluster-id={fold.clusterId}
-      aria-label={`展开算子簇 ${fold.label}（隐藏 ${String(fold.hiddenCount)} 步）`}
+      aria-label={`展开算子簇 ${fold.label}（隐藏 ${String(fold.hiddenCount)} 步；内含 ${fold.memberLabels.join('、')}）`}
       onClick={() => onToggleCluster(fold.clusterId)}
       onKeyDown={(event) => activateOnKey(event, () => onToggleCluster(fold.clusterId))}
     >
@@ -639,7 +631,7 @@ function OperatorClusterFoldSvg({
         rx={fold.height / 2}
       />
       <text x={fold.x} y={fold.y + 4} textAnchor="middle">
-        {truncate(fold.label, Math.max(4, Math.floor((fold.width - 12) / 6.2)))}
+        {truncate(fold.label, foldLabelBudgetOf(fold.width))}
       </text>
     </g>
   );
@@ -654,39 +646,23 @@ function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): v
 }
 
 function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
-  const occurrenceLabel = block.occurrence === 'binding'
-    ? '绑定'
-    : block.occurrence === 'equality'
-      ? '等值复制'
-      : '引用';
-  // 幽灵值块（spec 52）：折叠算子簇下方仍被后续引用的产出，虚线描边区分常规方块。
-  if (block.ghost === true) {
-    return (
-      <g
-        className="structured-value-block structured-value-block--binding structured-value-block--ghost"
-        data-binding-id={block.bindingId}
-        data-source-offset={block.sourceSpan.start.offset}
-        aria-label={`折叠簇引用值 ${block.label}`}
-      >
-        <title>{`折叠算子簇仍被后续引用的值：${block.label}`}</title>
-        <rect
-          x={block.x - block.width / 2}
-          y={block.y - block.height / 2}
-          width={block.width}
-          height={block.height}
-          fill={block.color}
-        />
-        <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 8)}</text>
-      </g>
-    );
-  }
+  // 幽灵值块（spec 52）：折叠算子簇下方仍被后续引用的产出；文案/样式区分，几何与常规方块同式。
+  const ghost = block.ghost === true;
+  const label = ghost
+    ? `折叠簇引用值 ${block.label}`
+    : block.occurrence === 'binding'
+      ? `绑定 ${block.label}`
+      : block.occurrence === 'equality'
+        ? `等值复制 ${block.label}`
+        : `引用 ${block.label}`;
   return (
     <g
-      className={`structured-value-block structured-value-block--${block.occurrence}`}
+      className={`structured-value-block structured-value-block--${block.occurrence}${ghost ? ' structured-value-block--ghost' : ''}`}
       data-binding-id={block.bindingId}
       data-source-offset={block.sourceSpan.start.offset}
-      aria-label={`${occurrenceLabel} ${block.label}`}
+      aria-label={label}
     >
+      {ghost && <title>{`折叠算子簇仍被后续引用的值：${block.label}`}</title>}
       <rect
         x={block.x - block.width / 2}
         y={block.y - block.height / 2}
