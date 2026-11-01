@@ -28,3 +28,8 @@
 - 视口：`−`/`100%`/`+`/适合宽度控件与 60%–180% 步长 10% 此前已达成（08/11 期间），本票补边界固化（60/180 clamp + fit=100%）与双向滚动容器复验（`.narrative-canvas--structured { overflow:auto }` 既有）。
 - 验收：35 文件 327 项全绿（新增 9 项：行结构与行号、半开高亮、重叠纯函数、同名区分渲染、消息行选中、角色内诊断条 + 未归属各一次、无角色兜底、视口控件）；playwright 端到端——图→源码（值块点击 → L45 高亮滚入视口）、源码→图（L46 → 2 对象反向高亮）、同名区分、角色内诊断点击联动（L4）、缩放边界（60%/180%/fit 100%）、真 ProVerif 验证链路（握手 3 查询全「成立」）与六样例联动抽查全部通过；截图入 `10-screenshots/`（graph-to-source / same-name-reverse / in-role-diagnostics / verify）。
 - 移交项处置：11 移交的「长标签常显全文」以源码联动承担（点选任意对象即定位原文行，title 仍有 hover 全文）；「07 间距落地后标签预算复测」在 07a review 与本票六样例截图复验中均未出现越列回归。
+
+2026-11-01，10 code-review（两轴子代理）落实：
+
+- Standards 轴：诊断条几何收口到布局——`StructuredRoleDiagnostics` 改携带逐条 `entries {y, text, textBudget, fullText}`（chip y 与截断预算由布局按 `METRICS.diagnosticPitch`/`CAPTION_CHAR_WIDTH` 算好，渲染器删字面量 18/16/5.6 只画）；归属只算一次——`attributeDiagnostics` 结果随布局输出 `unassignedDiagnostics`，画布下方平铺直取（删 NarrativeDiagnostics 里的第二次调用，v1 `diagnosticInRole` 为遗留模块不动）；画布 8 处 `sourceSelected/onSourceSelect` 重复收敛为 `sourcePropsOf(span)` 展开；App 直传 `setSelectedSpan` 并补 `SourceLinkBinding` 类型。
+- Spec 轴：反向重叠升级为列级——`spanOverlapsSelected` 半开区间（end 行首剔除，与 SourcePanel 口径统一）+ 单行选中按列相交（同名声明同行不同列不串选，测试含相邻半开边界）；角色内诊断条可见文字补全——降级 `降级诊断 L:col 原文`、错误 `错误诊断 L:col 中文消息`（spec 71/72 分口径，title/aria 带全文），浏览器复验「降级诊断 L4:6 … 点击联动 L4」；事件旗标在仅传 sourceLink 时也可命中（`--clickable` 不再依赖 eventCorrespondence）；缩放行为断言入库——`ZOOM_MIN/MAX/STEP` + `nextZoomOf` 纯函数，60/180 clamp 与显示取整有提交内测试。裁定记录：playwright 端到端脚本按仓库惯例不入库（07/08/09/10 同口径，验收结论记录于票面）；`100%` 为非交互 `<output>`、由「适合宽度」兼任复位（既有 08/11 实现，票面控件清单的读法以实施记录为准）；折叠条点击顺带源码选择超出票面对象清单但无害且有用，保留。修复后 35 文件 329 项全绿、build 通过。

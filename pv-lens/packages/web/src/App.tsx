@@ -6,7 +6,7 @@ import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolCo
 import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
 import { NarrativeView } from './narrative/NarrativeView';
-import type { EventCorrespondenceBinding } from './narrative/NarrativeView';
+import type { EventCorrespondenceBinding, SourceLinkBinding } from './narrative/NarrativeView';
 import { reducePairingSelection } from './narrative/pairing-selection';
 import type { PairingSelectionState, SelectableEndpoint } from './narrative/pairing-selection';
 import { VerifyPanel } from './VerifyPanel';
@@ -95,9 +95,9 @@ function LoadedView() {
   useEffect(() => {
     setSelectedSpan(null);
   }, [current]);
-  const sourceLink = useMemo(() => ({
+  const sourceLink = useMemo<SourceLinkBinding>(() => ({
     selectedSpan,
-    onSelectSpan: (span: SourceSpan) => setSelectedSpan(span),
+    onSelectSpan: setSelectedSpan,
   }), [selectedSpan]);
 
   const originText =

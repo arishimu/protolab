@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { composeMessagePairings, narrativeRoleOrder, parsePv } from '@pv-lens/core';
 import type { SourceSpan } from '@pv-lens/core';
 import { attributeDiagnostics, buildStructuredNarrativeLayout } from '../src/narrative/structured-layout';
-import { NarrativeView, spanOverlapsSelected } from '../src/narrative/NarrativeView';
+import { NarrativeView, ZOOM_MAX, ZOOM_MIN, nextZoomOf, spanOverlapsSelected } from '../src/narrative/NarrativeView';
 import { SourcePanel } from '../src/SourcePanel';
 import type { LoadedProtocol } from '../src/protocol';
 
@@ -86,7 +86,7 @@ describe('ticket #10：SourcePanel 行结构化与高亮', () => {
   });
 });
 
-describe('ticket #10：span 行级重叠（反向高亮判定，纯函数）', () => {
+describe('ticket #10：span 重叠（反向高亮判定，纯函数）', () => {
   it('同行重叠、跨行包含、异行不重叠', () => {
     const objectSpan: SourceSpan = {
       start: { offset: 0, line: 6, column: 2 },
@@ -99,6 +99,30 @@ describe('ticket #10：span 行级重叠（反向高亮判定，纯函数）', (
       end: { offset: 0, line: 12, column: 1 },
     })).toBe(true);
     expect(spanOverlapsSelected(objectSpan, lineSpan(SAME_NAME_SOURCE, 7))).toBe(false);
+  });
+
+  it('单行选中按列相交：同行不同列的声明不串选（半开区间，相邻不重叠）', () => {
+    const first: SourceSpan = {
+      start: { offset: 0, line: 3, column: 1 },
+      end: { offset: 9, line: 3, column: 10 },
+    };
+    const overlapping: SourceSpan = {
+      start: { offset: 4, line: 3, column: 5 },
+      end: { offset: 7, line: 3, column: 8 },
+    };
+    expect(spanOverlapsSelected(first, overlapping)).toBe(true);
+    // 半开：区间起点恰为 first 的终点列（10）→ 相邻不重叠。
+    const adjacent: SourceSpan = {
+      start: { offset: 9, line: 3, column: 10 },
+      end: { offset: 14, line: 3, column: 15 },
+    };
+    expect(spanOverlapsSelected(first, adjacent)).toBe(false);
+    // 同行更远的声明完全不重叠。
+    const far: SourceSpan = {
+      start: { offset: 20, line: 3, column: 21 },
+      end: { offset: 29, line: 3, column: 30 },
+    };
+    expect(spanOverlapsSelected(first, far)).toBe(false);
   });
 });
 
@@ -153,7 +177,7 @@ function fixtureSource(name: string): string {
 }
 
 describe('ticket #10：诊断按角色归属入泳道、未归属各一次', () => {
-  it('角色内诊断画进泳道（带位置标注段），无未归属时下方平铺不渲染', () => {
+  it('角色内诊断画进泳道（降级带原文标注段、错误带中文消息），无未归属时下方平铺不渲染', () => {
     const result = parsePv(IN_ROLE_DIAGNOSTIC_SOURCE);
     const { byRole, unassigned } = attributeDiagnostics(narrativeRoleOrder(result), result.diagnostics);
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
@@ -162,11 +186,14 @@ describe('ticket #10：诊断按角色归属入泳道、未归属各一次', () 
     const layout = buildStructuredNarrativeLayout(result);
     expect(layout.roleDiagnostics).toHaveLength(1);
     expect(layout.roleDiagnostics[0]?.roleIndex).toBe(0);
+    expect(layout.roleDiagnostics[0]?.entries[0]?.text).toContain('降级诊断 L4:6');
     const html = renderToString(createElement(NarrativeView, { result }));
     expect(html).toContain('structured-role-diagnostics');
     expect(html).toContain('structured-diagnostic-chip--degraded');
-    expect(html).toContain('L4:6');
+    expect(html).toContain('降级诊断 L4:6');
     expect(html).not.toContain('解析诊断（未归属角色）');
+    // 布局输出未归属集合（归属只算一次，供下方平铺直接消费）。
+    expect(layout.unassignedDiagnostics).toHaveLength(0);
   });
 
   it('未归属诊断保留画布下方平铺且只出现一次（multi-channel 主进程诊断）', () => {
@@ -194,5 +221,19 @@ describe('ticket #10：视口控件与措辞收尾', () => {
     ['缩小画布', '放大画布', '适合宽度', '当前缩放'].forEach((label) => {
       expect(html).toContain(label);
     });
+  });
+
+  it('缩放步进 clamp 到 60%–180%（行为断言，非仅标签）', () => {
+    expect(ZOOM_MIN).toBe(0.6);
+    expect(ZOOM_MAX).toBe(1.8);
+    let zoom = 1;
+    for (let step = 0; step < 12; step += 1) zoom = nextZoomOf(zoom, -1);
+    expect(zoom).toBeCloseTo(ZOOM_MIN, 9);
+    expect(nextZoomOf(zoom, -1)).toBeCloseTo(ZOOM_MIN, 9);
+    for (let step = 0; step < 30; step += 1) zoom = nextZoomOf(zoom, 1);
+    expect(zoom).toBeCloseTo(ZOOM_MAX, 9);
+    expect(nextZoomOf(zoom, 1)).toBeCloseTo(ZOOM_MAX, 9);
+    // display 取整：clamp 尾差在界内显示为整百分比。
+    expect(Math.round(nextZoomOf(0.65, -1) * 100)).toBe(60);
   });
 });

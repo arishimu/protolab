@@ -12,6 +12,7 @@ import type {
   SourceSpan,
 } from '@pv-lens/core';
 import { narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
+import { diagnosticSeverityLabel } from './layout';
 import { gapUnitOf, solveSpacing } from '@pv-lens/core';
 import type { SpacingUnit } from '@pv-lens/core';
 import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
@@ -261,14 +262,25 @@ export interface StructuredConflict {
 /**
  * 角色内诊断条（ticket 10 / spec 71）：按源码区间归属该角色的降级/错误诊断，
  * 以带位置的原文标注段画在角色泳道顶部（参数簇之下、首行之上）。
+ * 每条 chip 的 y 与文字预算由布局给出，渲染器只画（几何单一来源）。
  */
+export interface StructuredRoleDiagnosticEntry {
+  diagnostic: PvDiagnostic;
+  /** chip 中心 y。 */
+  y: number;
+  /** 可见文字（降级带原文、错误带中文消息；severity 与行列前缀由布局拼好）。 */
+  text: string;
+  /** 文字截断预算（按 CAPTION_CHAR_WIDTH 派生）。 */
+  textBudget: number;
+  /** title/aria 全文（中文消息 + 原文）。 */
+  fullText: string;
+}
+
 export interface StructuredRoleDiagnostics {
   roleIndex: number;
   x: number;
-  y: number;
   width: number;
-  height: number;
-  diagnostics: readonly PvDiagnostic[];
+  entries: readonly StructuredRoleDiagnosticEntry[];
 }
 
 export interface StructuredNarrativeLayout {
@@ -284,6 +296,8 @@ export interface StructuredNarrativeLayout {
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
+  /** 未归属任何角色的诊断（画布下方平铺；每条诊断「角色内或未归属」只出现一次）。 */
+  unassignedDiagnostics: readonly PvDiagnostic[];
   horizontal: HorizontalSequence;
   width: number;
   height: number;
@@ -442,7 +456,9 @@ export function buildStructuredNarrativeLayout(
   const branchFolds: StructuredBranchFold[] = [];
   const operatorFolds: StructuredOperatorClusterFold[] = [];
   const roleDiagnostics: StructuredRoleDiagnostics[] = [];
-  const diagnosticsByRole = attributeDiagnostics(roles, result.diagnostics).byRole;
+  // 归属只算一次（byRole 供泳道内诊断条，unassigned 随布局输出供画布下方平铺）。
+  const diagnosticAttribution = attributeDiagnostics(roles, result.diagnostics);
+  const diagnosticsByRole = diagnosticAttribution.byRole;
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
@@ -810,17 +826,31 @@ export function buildStructuredNarrativeLayout(
     });
     const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
 
-    // 角色内诊断条（ticket 10）：y 取解算输出（单元中心），条内按 pitch 逐条铺开。
+    // 角色内诊断条（ticket 10）：y 取解算输出（单元中心），条内按 pitch 逐条铺开；
+    // 每条的可见文字（降级带原文、错误带中文消息，spec 71/72）与截断预算都在布局拼好。
     const roleDiagList = diagnosticsByRole.get(roleIndex);
     if (roleDiagList !== undefined && roleDiagList.length > 0) {
-      const stripHeight = roleDiagList.length * METRICS.diagnosticPitch;
+      const width = Math.min(METRICS.diagnosticStripMaxWidth, METRICS.columnWidth - 8);
+      const centerY = rowYOf(`diag:${String(roleIndex)}`, startOffsets[roleIndex] ?? margin);
       roleDiagnostics.push({
         roleIndex,
         x: lifelineX,
-        y: rowYOf(`diag:${String(roleIndex)}`, startOffsets[roleIndex] ?? margin),
-        width: Math.min(METRICS.diagnosticStripMaxWidth, METRICS.columnWidth - 8),
-        height: stripHeight,
-        diagnostics: roleDiagList,
+        width,
+        entries: roleDiagList.map((diagnostic, index) => {
+          const position = `L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`;
+          const severityLabel = diagnosticSeverityLabel(diagnostic.severity);
+          // 降级以原文标注段呈现（spec 71）；错误显示中文消息（spec 72），两者 title/aria 都带全文。
+          const text = diagnostic.severity === 'error'
+            ? `${severityLabel} ${position} ${diagnostic.message}`
+            : `${severityLabel} ${position} ${diagnostic.sourceText}`;
+          return {
+            diagnostic,
+            y: centerY - ((roleDiagList.length - 1) * METRICS.diagnosticPitch) / 2 + index * METRICS.diagnosticPitch,
+            text,
+            textBudget: Math.floor((width - 8) / CAPTION_CHAR_WIDTH),
+            fullText: `${severityLabel} ${position} ${diagnostic.message}（${diagnostic.sourceText}）`,
+          };
+        }),
       });
     }
 
@@ -1279,6 +1309,7 @@ export function buildStructuredNarrativeLayout(
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,
+    unassignedDiagnostics: diagnosticAttribution.unassigned,
     horizontal,
     width,
     height: maxBottom + margin,

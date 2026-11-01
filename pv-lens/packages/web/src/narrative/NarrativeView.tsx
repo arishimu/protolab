@@ -1,15 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useToggleSet } from './toggle-set';
-import type { MessagePairing, PairingDiagnostic, ParseResult, SourceSpan } from '@pv-lens/core';
-import { narrativeRoleOrder } from '@pv-lens/core';
+import type { MessagePairing, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   CHANNEL_STYLES,
   MESSAGE_COLORS,
   UNPAIRED_COLOR,
   VALUE_COLORS,
-  attributeDiagnostics,
   buildStructuredNarrativeLayout,
   foldLabelBudgetOf,
   frameLabelBudgetOf,
@@ -46,10 +44,20 @@ export interface SourceLinkBinding {
   onSelectSpan: (span: SourceSpan) => void;
 }
 
-/** 对象区间与选中区间按行级重叠判定（反向高亮；span 半开，列不参与行级判定）。 */
+/**
+ * 对象区间与选中区间是否重叠（反向高亮判定）。span 半开：end 落在行首（column ≤ 1）
+ * 时该行不计入（与 SourcePanel 的高亮口径一致）。选中区间为单行时进一步按列相交判定，
+ * 同行不同列的同名声明不串选；跨行区间按行级判定。
+ */
 export function spanOverlapsSelected(span: SourceSpan, selected: SourceSpan | null): boolean {
   if (selected === null) return false;
-  return span.start.line <= selected.end.line && span.end.line >= selected.start.line;
+  const selectedEndLine = selected.end.column <= 1 ? selected.end.line - 1 : selected.end.line;
+  const selectedSingleLine = selected.start.line === selectedEndLine;
+  if (span.start.line > selectedEndLine || span.end.line < selected.start.line) return false;
+  if (!selectedSingleLine) return true;
+  // 选中区间单行：对象跨该行（多行 span）视为整行命中，否则按列区间相交。
+  if (span.end.line > span.start.line) return true;
+  return span.start.column < selected.end.column && span.end.column > selected.start.column;
 }
 
 
@@ -122,9 +130,9 @@ export function NarrativeView({
               onChange={(event) => setCompactness(Number(event.target.value))}
             />
           </label>
-          <button type="button" className="icon-btn" aria-label="缩小画布" title="缩小画布" onClick={() => setZoom((value) => Math.max(0.6, value - 0.1))}>−</button>
+          <button type="button" className="icon-btn" aria-label="缩小画布" title="缩小画布" onClick={() => setZoom((value) => nextZoomOf(value, -1))}>−</button>
           <output aria-label="当前缩放">{Math.round(zoom * 100)}%</output>
-          <button type="button" className="icon-btn" aria-label="放大画布" title="放大画布" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))}>+</button>
+          <button type="button" className="icon-btn" aria-label="放大画布" title="放大画布" onClick={() => setZoom((value) => nextZoomOf(value, 1))}>+</button>
           <button type="button" className="icon-btn icon-btn--wide" aria-label="适合宽度" title="适合宽度" onClick={() => setZoom(1)}>适合宽度</button>
         </div>
       </div>
@@ -166,7 +174,7 @@ export function NarrativeView({
             eventCorrespondence={eventCorrespondence}
             sourceLink={sourceLink}
           />
-          <NarrativeDiagnostics result={result} />
+          <NarrativeDiagnostics unassigned={structured.unassignedDiagnostics} />
           <Legend layout={structured} result={result} />
         </>
       ) : (
@@ -198,6 +206,14 @@ function StructuredNarrativeCanvas({
   sourceLink?: SourceLinkBinding;
 }) {
   const messageCount = layout.pillars.length;
+  /** 源码联动 props 的统一拼装（图→源码选中态 + 点击回调），八个对象类别共用。 */
+  const sourcePropsOf = (span: SourceSpan): { sourceSelected: boolean; onSourceSelect?: () => void } =>
+    sourceLink === undefined
+      ? { sourceSelected: false }
+      : {
+          sourceSelected: spanOverlapsSelected(span, sourceLink.selectedSpan),
+          onSourceSelect: () => sourceLink.onSelectSpan(span),
+        };
   // 合流抽头（ADR-0008）：一个接收端被多条消息命中时，在信道侧并排画各消息色的抽头点。
   const pillarsByEndpointId = new Map<string, MessagePillar[]>();
   layout.pillars.forEach((pillar) => {
@@ -239,8 +255,7 @@ function StructuredNarrativeCanvas({
                 tapPillars={tapPillars}
                 pending={pendingOutId === endpoint.id}
                 onSelect={onEndpointSelect}
-                sourceSelected={sourceLink !== undefined && spanOverlapsSelected(endpoint.sourceSpan, sourceLink.selectedSpan)}
-                onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(endpoint.sourceSpan)}
+                {...sourcePropsOf(endpoint.sourceSpan)}
               />
             );
           })}
@@ -251,24 +266,21 @@ function StructuredNarrativeCanvas({
               key={method.id}
               method={method}
               onToggleBranch={onToggleBranch}
-              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(method.sourceSpan, sourceLink.selectedSpan)}
-              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(method.sourceSpan)}
+              {...sourcePropsOf(method.sourceSpan)}
             />
           ))}
           {layout.chips.map((chip) => (
             <StructuredChipSvg
               key={chip.id}
               chip={chip}
-              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(chip.sourceSpan, sourceLink.selectedSpan)}
-              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(chip.sourceSpan)}
+              {...sourcePropsOf(chip.sourceSpan)}
             />
           ))}
           {layout.valueBlocks.map((block) => (
             <StructuredValueBlockSvg
               key={block.id}
               block={block}
-              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(block.sourceSpan, sourceLink.selectedSpan)}
-              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(block.sourceSpan)}
+              {...sourcePropsOf(block.sourceSpan)}
             />
           ))}
         </g>
@@ -288,8 +300,7 @@ function StructuredNarrativeCanvas({
               key={fold.branchId}
               fold={fold}
               onToggleBranch={onToggleBranch}
-              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(fold.sourceSpan, sourceLink.selectedSpan)}
-              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(fold.sourceSpan)}
+              {...sourcePropsOf(fold.sourceSpan)}
             />
           ))}
         </g>
@@ -300,8 +311,7 @@ function StructuredNarrativeCanvas({
               key={fold.clusterId}
               fold={fold}
               onToggleCluster={onToggleCluster}
-              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(fold.sourceSpan, sourceLink.selectedSpan)}
-              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(fold.sourceSpan)}
+              {...sourcePropsOf(fold.sourceSpan)}
             />
           ))}
         </g>
@@ -319,8 +329,7 @@ function StructuredNarrativeCanvas({
                   onSelect: () => eventCorrespondence.onSelect(node.span.start.offset),
                   onReflexive: () => eventCorrespondence.onReflexive(node.span.start.offset),
                 }}
-                sourceSelected={sourceLink !== undefined && spanOverlapsSelected(node.span, sourceLink.selectedSpan)}
-                onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(node.span)}
+                {...sourcePropsOf(node.span)}
               />
             ))}
         </g>
@@ -527,7 +536,7 @@ function StructuredNodeSvg({
     const cx = node.x + node.width / 2;
     return (
       <g
-        className={`structured-event${premise ? ' structured-event--premise' : ''}${conclusion ? ' structured-event--conclusion' : ''}${eventBinding?.selected === true ? ' structured-event--selected' : ''}${eventBinding !== undefined ? ' structured-event--clickable' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
+        className={`structured-event${premise ? ' structured-event--premise' : ''}${conclusion ? ' structured-event--conclusion' : ''}${eventBinding?.selected === true ? ' structured-event--selected' : ''}${eventBinding !== undefined || onSourceSelect !== undefined ? ' structured-event--clickable' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
         data-source-offset={node.span.start.offset}
         aria-label={node.label}
         onClick={() => {
@@ -768,8 +777,9 @@ function OperatorClusterFoldSvg({
 }
 
 /**
- * 角色内诊断条（ticket 10 / spec 71）：归属该角色的降级/错误诊断以带位置的原文
- * 标注段画在泳道顶部；点选任意一条联动源码高亮（onSelectSpan）。
+ * 角色内诊断条（ticket 10 / spec 71–72）：归属该角色的诊断以带位置的标注段画在泳道顶部
+ * ——降级带原文、错误带中文消息（几何与文字预算由布局给出，此处只画）；
+ * 点选任意一条联动源码高亮（onSelectSpan）。
  */
 function RoleDiagnosticsSvg({
   strip,
@@ -780,28 +790,33 @@ function RoleDiagnosticsSvg({
   selectedSpan: SourceSpan | null;
   onSelectSpan?: (span: SourceSpan) => void;
 }) {
-  const top = strip.y - strip.height / 2;
   return (
-    <g className="structured-role-diagnostics" role="group" aria-label={`角色内解析诊断 ${String(strip.diagnostics.length)} 条`}>
-      {strip.diagnostics.map((diagnostic, index) => {
-        const chipY = top + index * 18 + 9;
-        const text = `L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.sourceText}`;
-        return (
-          <g
-            key={`${diagnostic.span.start.offset}-${String(index)}`}
-            className={`structured-diagnostic-chip structured-diagnostic-chip--${diagnostic.severity}${spanOverlapsSelected(diagnostic.span, selectedSpan) ? ' structured-source-selected' : ''}`}
-            data-source-offset={diagnostic.span.start.offset}
-            aria-label={`${diagnosticSeverityLabel(diagnostic.severity)} L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.message}`}
-            onClick={onSelectSpan === undefined ? undefined : () => onSelectSpan(diagnostic.span)}
-          >
-            <title>{`${diagnosticSeverityLabel(diagnostic.severity)} L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.message}`}</title>
-            <rect x={strip.x - strip.width / 2} y={chipY - 8} width={strip.width} height="16" rx="3" />
-            <text x={strip.x - strip.width / 2 + 5} y={chipY + 3}>{truncate(text, Math.floor((strip.width - 8) / 5.6))}</text>
-          </g>
-        );
-      })}
+    <g className="structured-role-diagnostics" role="group" aria-label={`角色内解析诊断 ${String(strip.entries.length)} 条`}>
+      {strip.entries.map((entry) => (
+        <g
+          key={`${entry.diagnostic.span.start.offset}-${entry.text}`}
+          className={`structured-diagnostic-chip structured-diagnostic-chip--${entry.diagnostic.severity}${spanOverlapsSelected(entry.diagnostic.span, selectedSpan) ? ' structured-source-selected' : ''}`}
+          data-source-offset={entry.diagnostic.span.start.offset}
+          aria-label={entry.fullText}
+          onClick={onSelectSpan === undefined ? undefined : () => onSelectSpan(entry.diagnostic.span)}
+        >
+          <title>{entry.fullText}</title>
+          <rect x={strip.x - strip.width / 2} y={entry.y - 8} width={strip.width} height="16" rx="3" />
+          <text x={strip.x - strip.width / 2 + 5} y={entry.y + 3}>{truncate(entry.text, entry.textBudget)}</text>
+        </g>
+      ))}
     </g>
   );
+}
+
+/** 视口缩放边界与步长（ticket 10 票面：60%–180%、步长 10%；「适合宽度」复位 100%）。 */
+export const ZOOM_MIN = 0.6;
+export const ZOOM_MAX = 1.8;
+export const ZOOM_STEP = 0.1;
+
+/** 缩放步进（纯函数）：±步长并 clamp 到边界；display 侧按 Math.round(zoom*100)% 取整。 */
+export function nextZoomOf(current: number, direction: -1 | 1): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, current + direction * ZOOM_STEP));
 }
 
 /** 让 role="button" 的 SVG 元素像真按钮一样响应 Enter / Space。 */
@@ -916,13 +931,9 @@ function channelGlyph(index: number): string {
   return ['①', '②', '③', '④', '⑤'][index] ?? `(${String(index + 1)})`;
 }
 
-function NarrativeDiagnostics({ result }: { result: ParseResult }) {
-  // ticket 10：归属角色的诊断已画进泳道（structured 布局），这里只保留未归属的——
-  // 每条诊断「角色内或未归属」只出现一次；无未归属时整段不渲染。
-  const { unassigned } = useMemo(
-    () => attributeDiagnostics(narrativeRoleOrder(result), result.diagnostics),
-    [result],
-  );
+function NarrativeDiagnostics({ unassigned }: { unassigned: readonly PvDiagnostic[] }) {
+  // ticket 10：归属角色的诊断已画进泳道（布局的 roleDiagnostics），这里只保留未归属的
+  // （布局的 unassignedDiagnostics，归属只算一次）——每条诊断「角色内或未归属」只出现一次。
   if (unassigned.length === 0) return null;
   return (
     <section className="narrative-diagnostics" aria-label="解析诊断">
