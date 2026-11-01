@@ -26,3 +26,8 @@
 - F7 右邻信道列标签预算：维持 ticket 11 的省略号 + title 方案，多信道样例复验长标签（`event beginA(nA)` 等）不越列；常显全文交互归 ticket 10 源码联动。
 - 验收：34 文件 317 项全绿（新增 9 项：三信道字形/线型/无身份色、aria 冒烟、单信道退化、消息/值 token 对照、三方无配对缺省、超八序号唯一、帧宽公式、基准不截断、不越列）；playwright 截图——handshake（M1–M3 全词项 + 图例消息/值对照）、multi-channel（三信道 + 13 值序号角标）、灰度滤波复验（序号/线型/形状仍可辨），存 `09-screenshots/`。
 - 口径记录：multi-channel 为三方协议，自动配对默认关闭（ADR-0005），画布全部端点未配对、图例消息 token 缺省——「同信道配对可通过语义标签辨识」由未配对橙点 + 信道挂轨 + 人工配对入口承担，符合票面与 ADR 口径。channelGlyph 五字形与 CHANNEL_STYLES 三线型第 6+/第 4+ 条回卷（`(n)`/solid），当前样例（≤3 信道）不触达，视觉语法细节层（字形全集）按 map 口径留 `/to-spec`。
+
+2026-11-01，09 code-review（两轴子代理）落实：
+
+- Standards 轴：帧宽 56/132/14 三常量入 METRICS（messageFrameMinWidth/MaxWidth/Pad，对齐 foldBarWidthOf 的具名常量惯例）；图例两段 token JSX 提取 `LegendTokenList` 组件；`maxTextRight` 复用已算 `frameWidth`（不再重算公式）；测试的帧内预算断言改用导出的 `frameLabelBudgetOf`（帧宽公式常数保留字面量，视为合同固化，同 07a 口径）；`ordinalOf` 的 -1 兜底补注释（不可达防御）。不落实记录：`valueBlockOf` 8 位置参数的 Data Clumps——与既有 7 参数签名及全部调用点同风格，折参数对象属跨票重构，留后续统一。
+- Spec 轴：冒烟补值/事件 aria 断言（`绑定 kA（值 1）`、`event beginA(nA)`）与两方握手样例的消息柱 aria（三方样例无自动配对、消息断言原本空转）；值块 aria 加「（值 n）」后缀与图例 token 数字对齐（读屏可关联）。裁定记录：超八「线型」通道——值方块的线型变体（binding/reference/equality 描边差异）是既有身份记法，绑定级的新线型轮转属视觉语法细节层（map 口径留 /to-spec），本票以序号通道收窄并如实记录；灰度可读性按票面「不使用像素黄金图」约束以人工截图为验收媒介。修复后 34 文件 318 项全绿。

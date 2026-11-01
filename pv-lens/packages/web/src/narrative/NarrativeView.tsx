@@ -656,13 +656,14 @@ function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): v
 function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
   // 幽灵值块（spec 52）：折叠算子簇下方仍被后续引用的产出；文案/样式区分，几何与常规方块同式。
   const ghost = block.ghost === true;
+  // aria 带值身份序号（09）：读屏者以「值 n」与图例 token 列表（序号 + 绑定名）对齐。
   const label = ghost
-    ? `折叠簇引用值 ${block.label}`
+    ? `折叠簇引用值 ${block.label}（值 ${String(block.ordinal)}）`
     : block.occurrence === 'binding'
-      ? `绑定 ${block.label}`
+      ? `绑定 ${block.label}（值 ${String(block.ordinal)}）`
       : block.occurrence === 'equality'
-        ? `等值复制 ${block.label}`
-        : `引用 ${block.label}`;
+        ? `等值复制 ${block.label}（值 ${String(block.ordinal)}）`
+        : `引用 ${block.label}（值 ${String(block.ordinal)}）`;
   return (
     <g
       className={`structured-value-block structured-value-block--${block.occurrence}${ghost ? ' structured-value-block--ghost' : ''}`}

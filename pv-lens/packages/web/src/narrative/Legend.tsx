@@ -145,6 +145,27 @@ function collectTermUsage(result: ParseResult): TermUsage {
   return usage;
 }
 
+/** 图例内的实际身份 token 列表（09）：消息与值共用同一渲染（色样 + token 文本）。 */
+function LegendTokenList({
+  tokens,
+  ariaLabel,
+}: {
+  tokens: readonly { key: string; text: string; color: string }[];
+  ariaLabel: string;
+}) {
+  if (tokens.length === 0) return null;
+  return (
+    <span className="legend-token-list" aria-label={ariaLabel}>
+      {tokens.map((token) => (
+        <span key={token.key} className="legend-token">
+          <span className="legend-token-swatch" style={{ background: token.color }} aria-hidden="true" />
+          {token.text}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; result: ParseResult }) {
   const content = legendContentFor(layout, result);
   const present = new Set(content.keys);
@@ -194,16 +215,14 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               </dt>
               <dd>
                 值方块（含 `new` 与角色参数引入的绑定）：一种颜色对应一个角色本地绑定，同色再现表示同一绑定的引用或等值复制；方块右缘数字是值身份序号，颜色八色轮转超八后靠序号区分
-                {content.values.length > 0 && (
-                  <span className="legend-token-list" aria-label="本图值序号">
-                    {content.values.map((token) => (
-                      <span key={`v-${String(token.ordinal)}`} className="legend-token">
-                        <span className="legend-token-swatch" style={{ background: token.color }} aria-hidden="true" />
-                        {String(token.ordinal)} {token.label}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                <LegendTokenList
+                  ariaLabel="本图值序号"
+                  tokens={content.values.map((token) => ({
+                    key: `v-${String(token.ordinal)}`,
+                    text: `${String(token.ordinal)} ${token.label}`,
+                    color: token.color,
+                  }))}
+                />
               </dd>
             </div>
           )}
@@ -246,16 +265,14 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               </dt>
               <dd>
                 消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准
-                {content.messages.length > 0 && (
-                  <span className="legend-token-list" aria-label="本图消息序号">
-                    {content.messages.map((token) => (
-                      <span key={`m-${String(token.sequence)}`} className="legend-token">
-                        <span className="legend-token-swatch" style={{ background: token.color }} aria-hidden="true" />
-                        M{String(token.sequence)} {token.termText}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                <LegendTokenList
+                  ariaLabel="本图消息序号"
+                  tokens={content.messages.map((token) => ({
+                    key: `m-${String(token.sequence)}`,
+                    text: `M${String(token.sequence)} ${token.termText}`,
+                    color: token.color,
+                  }))}
+                />
               </dd>
             </div>
           )}

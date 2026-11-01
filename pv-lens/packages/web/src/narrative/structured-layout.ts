@@ -38,12 +38,15 @@ export function foldLabelBudgetOf(width: number): number {
 }
 
 /**
- * 信道帧宽度（09，ticket 11 移交项）：随词项长度在 [56, 132] 内伸缩——56 是原定稿下限，
- * 132 与线上芯片同上限；帧居信道中轴，列间距 38 可容纳 132/2=66 的外扩不触邻列生命线
- * （最近邻生命线距信道中轴 ≥113）。
+ * 信道帧宽度（09，ticket 11 移交项）：随词项长度伸缩，[56, 132]（METRICS 具名常量）——
+ * 56 沿用 ticket02 定稿下限，132 与线上芯片同上限；帧居信道中轴，列间距 38 可容纳
+ * 132/2=66 的外扩不触邻列生命线（最近邻生命线距信道中轴 ≥113）。
  */
 export function messageFrameWidthOf(termText: string): number {
-  return Math.min(132, Math.max(56, 14 + termText.length * CAPTION_CHAR_WIDTH));
+  return Math.min(
+    METRICS.messageFrameMaxWidth,
+    Math.max(METRICS.messageFrameMinWidth, METRICS.messageFramePad + termText.length * CAPTION_CHAR_WIDTH),
+  );
 }
 
 /** 信道帧内词项的截断预算（渲染方 SVG 用；与 messageFrameWidthOf 同源）。 */
@@ -335,6 +338,10 @@ const METRICS = {
   wireChipMaxWidth: 132,
   /** 跨泳道消息线的禁置带半高：线两侧该范围内不放本列值层元素。 */
   crossReserveHalf: 11,
+  /** 信道帧宽度的下限 / 上限与文字内边距（09：下限沿用 ticket02 定稿 56，上限与线上芯片同宽）。 */
+  messageFrameMinWidth: 56,
+  messageFrameMaxWidth: 132,
+  messageFramePad: 14,
 } as const;
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
@@ -519,6 +526,7 @@ export function buildStructuredNarrativeLayout(
   // 绑定全局序（assignBindingColors 的插入序）：幽灵值块按它排列，稳定且与值身份色同源。
   const globalBindingOrder = new Map([...bindingColors.keys()].map((id, index) => [id, index] as const));
   // 值身份序号（09 / spec 65）：绑定全局序 1 起，色与序号双通道（超八色同名靠序号区分）。
+  // ?? -1 是防御性兜底：调用方传入的绑定都来自 role.bindings（与 assignBindingColors 同源），不可达。
   const ordinalOf = (bindingId: string): number => (globalBindingOrder.get(bindingId) ?? -1) + 1;
   // 「仍被后续引用」判定（spec 52）：绑定是角色本地的（id 带角色前缀），角色内 item 按源码序
   // 展开，对某绑定的引用只可能出现在引入它的 item 之上（源码序之后）——因此「全图引用集」
@@ -1144,6 +1152,7 @@ export function buildStructuredNarrativeLayout(
     if (channel === undefined) return;
     const channelX = channel.x + channel.width / 2;
     const members = [group.out, ...group.ins];
+    const frameWidth = messageFrameWidthOf(group.out.termText);
     // identity 接收去重的值身份色带（F5）：广播取第一个定义了 identity 色的接收端。
     const termValueColor = group.ins.flatMap((incoming) => {
       const color = identityTermColorByRef.get(refOf(incoming.roleIndex, incoming.stepIndex));
@@ -1161,12 +1170,12 @@ export function buildStructuredNarrativeLayout(
       termText: group.out.termText,
       termPresentation: group.out.termPresentation,
       ...(termValueColor === undefined ? {} : { termValueColor }),
-      frameWidth: messageFrameWidthOf(group.out.termText),
+      frameWidth,
       // 帧对齐到发送端那一端：弧的走向固定（发出→信道→接收），帧不必浮在两端中间。
       frameY: group.out.y,
       endpoints: members,
     });
-    maxTextRight = Math.max(maxTextRight, channelX + messageFrameWidthOf(group.out.termText) / 2);
+    maxTextRight = Math.max(maxTextRight, channelX + frameWidth / 2);
   });
   const finalEndpoints = endpoints.map((endpoint) => ({ ...endpoint, unpaired: !paired.has(endpoint.id) }));
   const finalPillars = pillars.map((pillar) => ({

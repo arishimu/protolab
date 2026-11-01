@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeMessagePairings, getSampleSource, parsePv } from '@pv-lens/core';
-import { buildStructuredNarrativeLayout, messageFrameWidthOf } from '../src/narrative/structured-layout';
+import { buildStructuredNarrativeLayout, frameLabelBudgetOf, messageFrameWidthOf } from '../src/narrative/structured-layout';
 import { legendContentFor } from '../src/narrative/Legend';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
@@ -54,10 +54,23 @@ describe('ticket #09：多信道视觉语法（multi-channel 三信道样例）'
     ['信道 c1', '信道 c2', '信道 c3', 'processA', 'processB', 'processS'].forEach((name) => {
       expect(rendered).toContain(name);
     });
+    // 值与事件的可访问名称带身份序号 / 事件原文（票面第 6 条：值/事件也在断言之列）。
+    expect(rendered).toContain('aria-label="绑定 kA（值 1）"');
+    expect(rendered).toContain('aria-label="引用 kA（值 1）"');
+    expect(rendered).toContain('aria-label="event beginA(nA)"');
+    expect(rendered).toContain('aria-label="event endB(nB)"');
+    expect(rendered).toContain('aria-label="图例"');
+  });
+
+  it('两方样例（握手）消息柱 aria 按 M 序号可寻（三方样例无自动配对，消息断言落在此处）', () => {
+    const result = fixture('handshake-fixed.pv');
+    const pairings = composeMessagePairings(result).pairings;
+    const layout = buildStructuredNarrativeLayout(result, { pairings });
+    const rendered = renderToString(createElement(NarrativeView, { result, pairings }));
+    expect(layout.pillars.length).toBeGreaterThan(0);
     layout.pillars.forEach((pillar) => {
       expect(rendered).toContain(`消息 M${String(pillar.sequence)} · 信道`);
     });
-    expect(rendered).toContain('aria-label="图例"');
   });
 
   it('单信道样例退化自然：一条信道、① 字形、solid 线型', () => {
@@ -157,7 +170,7 @@ describe('ticket #09：信道帧动态加宽（ticket 11 移交项）', () => {
       layout.pillars.forEach((pillar) => {
         expect(pillar.frameWidth).toBeGreaterThanOrEqual(56);
         // 帧内文本预算足以容纳整个词项（基准样例最长词项 132 内放得下）。
-        expect(Math.floor((pillar.frameWidth - 10) / 5.6)).toBeGreaterThanOrEqual(pillar.termText.length);
+        expect(frameLabelBudgetOf(pillar.frameWidth)).toBeGreaterThanOrEqual(pillar.termText.length);
       });
       frames.forEach((frame) => {
         expect(frame).not.toContain('…');
