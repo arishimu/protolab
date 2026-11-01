@@ -5,6 +5,7 @@ import type {
   MessagePairing,
   PairingOrigin,
   ParseResult,
+  PvDiagnostic,
   PvRole,
   PvTerm,
   RoleItem,
@@ -257,6 +258,19 @@ export interface StructuredConflict {
   roleIndex?: number;
 }
 
+/**
+ * 角色内诊断条（ticket 10 / spec 71）：按源码区间归属该角色的降级/错误诊断，
+ * 以带位置的原文标注段画在角色泳道顶部（参数簇之下、首行之上）。
+ */
+export interface StructuredRoleDiagnostics {
+  roleIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  diagnostics: readonly PvDiagnostic[];
+}
+
 export interface StructuredNarrativeLayout {
   columns: readonly StructuredColumn[];
   nodes: readonly StructuredNode[];
@@ -266,6 +280,7 @@ export interface StructuredNarrativeLayout {
   armRuns: readonly StructuredArmRun[];
   branchFolds: readonly StructuredBranchFold[];
   operatorFolds: readonly StructuredOperatorClusterFold[];
+  roleDiagnostics: readonly StructuredRoleDiagnostics[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
   conflicts: readonly StructuredConflict[];
@@ -275,6 +290,31 @@ export interface StructuredNarrativeLayout {
   hasLanes: boolean;
   compactness: number;
   gapUnit: number;
+}
+
+/**
+ * 诊断的角色归属（ticket 10，与 v1 `diagnosticInRole` 同语义）：按诊断 span 起点
+ * offset 落在哪个角色的源码区间判定（前闭后开）；命中的进角色内标注段，
+ * 其余为未归属（保留画布下方平铺，各诊断只出现一次）。
+ */
+export function attributeDiagnostics(
+  roles: readonly PvRole[],
+  diagnostics: readonly PvDiagnostic[],
+): { byRole: ReadonlyMap<number, PvDiagnostic[]>; unassigned: readonly PvDiagnostic[] } {
+  const byRole = new Map<number, PvDiagnostic[]>();
+  const unassigned: PvDiagnostic[] = [];
+  diagnostics.forEach((diagnostic) => {
+    const offset = diagnostic.span.start.offset;
+    const roleIndex = roles.findIndex(
+      (role) => offset >= role.span.start.offset && offset < role.span.end.offset,
+    );
+    if (roleIndex < 0) {
+      unassigned.push(diagnostic);
+      return;
+    }
+    byRole.set(roleIndex, [...(byRole.get(roleIndex) ?? []), diagnostic]);
+  });
+  return { byRole, unassigned };
 }
 
 export interface StructuredLayoutOptions {
@@ -342,6 +382,9 @@ const METRICS = {
   messageFrameMinWidth: 56,
   messageFrameMaxWidth: 132,
   messageFramePad: 14,
+  /** 角色内诊断条（10）：每条诊断的行距与整条最大宽度（封在自身泳道内）。 */
+  diagnosticPitch: 18,
+  diagnosticStripMaxWidth: 200,
 } as const;
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
@@ -398,6 +441,8 @@ export function buildStructuredNarrativeLayout(
   const armRuns: StructuredArmRun[] = [];
   const branchFolds: StructuredBranchFold[] = [];
   const operatorFolds: StructuredOperatorClusterFold[] = [];
+  const roleDiagnostics: StructuredRoleDiagnostics[] = [];
+  const diagnosticsByRole = attributeDiagnostics(roles, result.diagnostics).byRole;
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
@@ -628,6 +673,19 @@ export function buildStructuredNarrativeLayout(
         gapTier: 'tight',
       });
     }
+    // 角色内诊断条（ticket 10）：归属本角色的诊断整组占一个单元，紧随参数簇。
+    const roleDiagList = diagnosticsByRole.get(roleIndex);
+    if (roleDiagList !== undefined && roleDiagList.length > 0) {
+      units.push({
+        id: `diag:${String(roleIndex)}`,
+        roleIndex,
+        kind: 'row',
+        height: roleDiagList.length * METRICS.diagnosticPitch,
+        rigid: false,
+        messageEndpoint: false,
+        gapTier: 'row',
+      });
+    }
     let foldedDepth = 0;
     let prevIsBoundary = parameterCount > 0;
     // 07b：折叠算子簇吞掉 `[start, end]` 区间——区间内的行不进单元序列（forEach 无法跳区间，
@@ -751,6 +809,20 @@ export function buildStructuredNarrativeLayout(
       ));
     });
     const armStack: Array<{ runIndex: number; lane: number; enclosingElse: number }> = [];
+
+    // 角色内诊断条（ticket 10）：y 取解算输出（单元中心），条内按 pitch 逐条铺开。
+    const roleDiagList = diagnosticsByRole.get(roleIndex);
+    if (roleDiagList !== undefined && roleDiagList.length > 0) {
+      const stripHeight = roleDiagList.length * METRICS.diagnosticPitch;
+      roleDiagnostics.push({
+        roleIndex,
+        x: lifelineX,
+        y: rowYOf(`diag:${String(roleIndex)}`, startOffsets[roleIndex] ?? margin),
+        width: Math.min(METRICS.diagnosticStripMaxWidth, METRICS.columnWidth - 8),
+        height: stripHeight,
+        diagnostics: roleDiagList,
+      });
+    }
 
     // 折叠分支时跳过 `branch…join` 的整个区间；`foldedDepth` 记录剩余要吞掉的嵌套层数。
     // 07b：折叠算子簇同样以哨兵短路区间内的常规发射，簇本身在首 item 处一次发射。
@@ -1203,6 +1275,7 @@ export function buildStructuredNarrativeLayout(
     armRuns,
     branchFolds,
     operatorFolds,
+    roleDiagnostics,
     endpoints: finalEndpoints,
     pillars: finalPillars,
     conflicts,

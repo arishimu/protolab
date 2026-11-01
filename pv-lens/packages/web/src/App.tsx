@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { composeMessagePairings, createCorrespondencePlan, deriveEventRoles, parsePv } from '@pv-lens/core';
-import type { PairingIntent } from '@pv-lens/core';
+import type { PairingIntent, SourceSpan } from '@pv-lens/core';
 import { CorrespondencePanel } from './CorrespondencePanel';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
 import { Home } from './Home';
@@ -89,6 +89,17 @@ function LoadedView() {
     },
   }), [eventRolesByOffset, eventByOffset, offsetByEventId, selectedEventId]);
 
+  // 图↔源码双向联动（ticket 10）：选中 span 是唯一共享状态——点画布对象高亮源码区间，
+  // 点源码行反向高亮画布对象；同名绑定因 span 不同天然只命中其一。
+  const [selectedSpan, setSelectedSpan] = useState<SourceSpan | null>(null);
+  useEffect(() => {
+    setSelectedSpan(null);
+  }, [current]);
+  const sourceLink = useMemo(() => ({
+    selectedSpan,
+    onSelectSpan: (span: SourceSpan) => setSelectedSpan(span),
+  }), [selectedSpan]);
+
   const originText =
     current.origin.kind === 'builtin'
       ? `内置样例 · ${current.origin.sampleId}`
@@ -104,7 +115,11 @@ function LoadedView() {
         <span className="origin">{originText}</span>
       </div>
       <p className="hint">{current.description}</p>
-      <SourcePanel protocol={current} />
+      <SourcePanel
+        protocol={current}
+        highlightSpan={selectedSpan}
+        onSelectLine={setSelectedSpan}
+      />
       <NarrativeView
         result={parseResult}
         pairings={pairingComposition.pairings}
@@ -113,6 +128,7 @@ function LoadedView() {
         selectionNotice={selectionNotice}
         onEndpointSelect={handleEndpointSelect}
         eventCorrespondence={eventCorrespondence}
+        sourceLink={sourceLink}
       />
       <CorrespondencePanel
         plan={correspondencePlan}

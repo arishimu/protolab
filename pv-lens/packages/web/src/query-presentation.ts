@@ -16,9 +16,9 @@ export type VerdictTone = 'positive' | 'negative' | 'unknown';
 
 export interface VerdictMeta {
   /** 中文判定标签，对照归一化语义：`is true` / `is false` / `cannot be proved`。 */
-  label: '成立' | '被证伪' | '未能证明';
+  label: '成立' | '被证伪' | '未证出';
   tone: VerdictTone;
-  /** 中文解释（「未能证明不等于不成立」的措辞纪律在这一条里落地）。 */
+  /** 中文解释（「未证出不等于不成立」的措辞纪律在这一条里落地）。 */
   explanation: string;
 }
 
@@ -36,11 +36,11 @@ export const VERDICT_META: Record<Verdict, VerdictMeta> = {
       'ProVerif 找到反例（归一化输出里的 `is false`）：该查询不成立，攻击路径见下方的反例 trace。',
   },
   'cannot-be-proved': {
-    label: '未能证明',
+    label: '未证出',
     tone: 'unknown',
     explanation:
       'ProVerif 未能证明该查询，也未能证伪它（归一化输出里的 `cannot be proved`）——'
-      + '「未能证明」不等于「不成立」：可能是模型太复杂、缺少必要假设，或该性质确实需要人工判断。',
+      + '「未证出」不等于「不成立」：可能是模型太复杂、缺少必要假设，或该性质确实需要人工判断。',
   },
 };
 

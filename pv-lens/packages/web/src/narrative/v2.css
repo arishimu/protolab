@@ -499,6 +499,56 @@
   pointer-events: auto;
 }
 
+/* 源码联动命中（ticket 10）：值层/文本层/诊断条的对象可点选源码区间。与 ticket 06 的
+   「端点线被方块覆盖也可点选」契约的取舍：重叠区（方块正覆盖线端处）让位给方块本身，
+   线的其余区段仍可点选配对——方块是更具体的语义对象，点击它的意图更明确。 */
+.structured-value-layer .structured-value-block,
+.structured-value-layer .structured-method,
+.structured-value-layer .structured-chip,
+.structured-node-layer .structured-node,
+.structured-role-diagnostics .structured-diagnostic-chip {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 反向/正向选中态（ticket 10）：琥珀描边 + 轻微放大，灰度下靠描边宽度仍可辨。 */
+.structured-source-selected > rect,
+.structured-source-selected > polygon,
+.structured-source-selected > path,
+.structured-source-selected > circle {
+  stroke: #b45309;
+  stroke-width: 2.4;
+}
+
+.structured-node.structured-source-selected > rect {
+  fill: #fef3c7;
+}
+
+/* 角色内诊断条（ticket 10 / spec 71）：带位置的原文标注段，降级琥珀、错误红。 */
+.structured-diagnostic-chip rect {
+  stroke-width: 1.1;
+}
+
+.structured-diagnostic-chip--degraded rect {
+  fill: #fffbeb;
+  stroke: #d97706;
+}
+
+.structured-diagnostic-chip--error rect {
+  fill: #fef2f2;
+  stroke: #dc2626;
+}
+
+.structured-diagnostic-chip text {
+  fill: #78350f;
+  font-size: 8.5px;
+  font-family: var(--mono);
+}
+
+.structured-diagnostic-chip--error text {
+  fill: #7f1d1d;
+}
+
 /* 已人工配对端点的命中提示（ticket 06 移交）：hover 加粗消息线，与可点选光标呼应。 */
 .structured-endpoint--manual:hover path {
   stroke-width: 2.6;

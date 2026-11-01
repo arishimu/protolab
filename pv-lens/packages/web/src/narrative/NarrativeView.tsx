@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useToggleSet } from './toggle-set';
-import type { MessagePairing, PairingDiagnostic, ParseResult } from '@pv-lens/core';
+import type { MessagePairing, PairingDiagnostic, ParseResult, SourceSpan } from '@pv-lens/core';
+import { narrativeRoleOrder } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   CHANNEL_STYLES,
   MESSAGE_COLORS,
   UNPAIRED_COLOR,
   VALUE_COLORS,
+  attributeDiagnostics,
   buildStructuredNarrativeLayout,
   foldLabelBudgetOf,
   frameLabelBudgetOf,
@@ -34,6 +36,22 @@ export interface EventCorrespondenceBinding {
   onReflexive: (offset: number) => void;
 }
 
+/**
+ * 图↔源码双向联动（ticket 10 / spec 67–68）：选中 span 是唯一共享状态——
+ * 点画布对象选其 span（图→源码滚动高亮）；点源码行选该行区间（源码→图反向高亮，
+ * 同名绑定因 span 不同天然只命中其一，不跨角色合并）。
+ */
+export interface SourceLinkBinding {
+  selectedSpan: SourceSpan | null;
+  onSelectSpan: (span: SourceSpan) => void;
+}
+
+/** 对象区间与选中区间按行级重叠判定（反向高亮；span 半开，列不参与行级判定）。 */
+export function spanOverlapsSelected(span: SourceSpan, selected: SourceSpan | null): boolean {
+  if (selected === null) return false;
+  return span.start.line <= selected.end.line && span.end.line >= selected.start.line;
+}
+
 
 export interface NarrativeViewProps {
   result: ParseResult;
@@ -52,6 +70,8 @@ export interface NarrativeViewProps {
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
   /** 事件旗标与对应性矩阵联动（ticket 08）；缺省时旗标为普通标记。 */
   eventCorrespondence?: EventCorrespondenceBinding;
+  /** 图↔源码双向联动（ticket 10）；缺省时画布对象不带源码联动。 */
+  sourceLink?: SourceLinkBinding;
 }
 
 export function NarrativeView({
@@ -64,6 +84,7 @@ export function NarrativeView({
   selectionNotice = null,
   onEndpointSelect,
   eventCorrespondence,
+  sourceLink,
 }: NarrativeViewProps) {
   const [compactness, setCompactness] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -143,6 +164,7 @@ export function NarrativeView({
             pendingOutId={pendingOutId}
             onEndpointSelect={onEndpointSelect}
             eventCorrespondence={eventCorrespondence}
+            sourceLink={sourceLink}
           />
           <NarrativeDiagnostics result={result} />
           <Legend layout={structured} result={result} />
@@ -163,6 +185,7 @@ function StructuredNarrativeCanvas({
   pendingOutId,
   onEndpointSelect,
   eventCorrespondence,
+  sourceLink,
 }: {
   layout: StructuredNarrativeLayout;
   zoom: number;
@@ -172,6 +195,7 @@ function StructuredNarrativeCanvas({
   pendingOutId: string | null;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
   eventCorrespondence?: EventCorrespondenceBinding;
+  sourceLink?: SourceLinkBinding;
 }) {
   const messageCount = layout.pillars.length;
   // 合流抽头（ADR-0008）：一个接收端被多条消息命中时，在信道侧并排画各消息色的抽头点。
@@ -215,25 +239,70 @@ function StructuredNarrativeCanvas({
                 tapPillars={tapPillars}
                 pending={pendingOutId === endpoint.id}
                 onSelect={onEndpointSelect}
+                sourceSelected={sourceLink !== undefined && spanOverlapsSelected(endpoint.sourceSpan, sourceLink.selectedSpan)}
+                onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(endpoint.sourceSpan)}
               />
             );
           })}
         </g>
         <g className="structured-value-layer">
-          {layout.methods.map((method) => <StructuredMethodSvg key={method.id} method={method} onToggleBranch={onToggleBranch} />)}
-          {layout.chips.map((chip) => <StructuredChipSvg key={chip.id} chip={chip} />)}
-          {layout.valueBlocks.map((block) => <StructuredValueBlockSvg key={block.id} block={block} />)}
+          {layout.methods.map((method) => (
+            <StructuredMethodSvg
+              key={method.id}
+              method={method}
+              onToggleBranch={onToggleBranch}
+              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(method.sourceSpan, sourceLink.selectedSpan)}
+              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(method.sourceSpan)}
+            />
+          ))}
+          {layout.chips.map((chip) => (
+            <StructuredChipSvg
+              key={chip.id}
+              chip={chip}
+              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(chip.sourceSpan, sourceLink.selectedSpan)}
+              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(chip.sourceSpan)}
+            />
+          ))}
+          {layout.valueBlocks.map((block) => (
+            <StructuredValueBlockSvg
+              key={block.id}
+              block={block}
+              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(block.sourceSpan, sourceLink.selectedSpan)}
+              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(block.sourceSpan)}
+            />
+          ))}
         </g>
+        {/* 角色内诊断条（ticket 10 / spec 71）：带位置的原文标注段入泳道，点选联动源码。 */}
+        {layout.roleDiagnostics.map((strip) => (
+          <RoleDiagnosticsSvg
+            key={`diag-${String(strip.roleIndex)}`}
+            strip={strip}
+            selectedSpan={sourceLink?.selectedSpan ?? null}
+            onSelectSpan={sourceLink?.onSelectSpan}
+          />
+        ))}
         {/* 折叠条压在值层之上（F8）：折叠态文字永远可见；臂道轨道从折叠条背后穿过。 */}
         <g className="structured-branch-fold-layer">
           {layout.branchFolds.map((fold) => (
-            <BranchFoldSvg key={fold.branchId} fold={fold} onToggleBranch={onToggleBranch} />
+            <BranchFoldSvg
+              key={fold.branchId}
+              fold={fold}
+              onToggleBranch={onToggleBranch}
+              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(fold.sourceSpan, sourceLink.selectedSpan)}
+              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(fold.sourceSpan)}
+            />
           ))}
         </g>
         {/* 折叠算子簇（07b / spec 51）：同分支折叠条，压在值层之上保证文字可见。 */}
         <g className="structured-operator-fold-layer">
           {layout.operatorFolds.map((fold) => (
-            <OperatorClusterFoldSvg key={fold.clusterId} fold={fold} onToggleCluster={onToggleCluster} />
+            <OperatorClusterFoldSvg
+              key={fold.clusterId}
+              fold={fold}
+              onToggleCluster={onToggleCluster}
+              sourceSelected={sourceLink !== undefined && spanOverlapsSelected(fold.sourceSpan, sourceLink.selectedSpan)}
+              onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(fold.sourceSpan)}
+            />
           ))}
         </g>
         {/* 文本节点置顶（F4）：事件/分支/本地标签永远盖住线与芯片，不被虚线划穿。 */}
@@ -250,6 +319,8 @@ function StructuredNarrativeCanvas({
                   onSelect: () => eventCorrespondence.onSelect(node.span.start.offset),
                   onReflexive: () => eventCorrespondence.onReflexive(node.span.start.offset),
                 }}
+                sourceSelected={sourceLink !== undefined && spanOverlapsSelected(node.span, sourceLink.selectedSpan)}
+                onSourceSelect={sourceLink === undefined ? undefined : () => sourceLink.onSelectSpan(node.span)}
               />
             ))}
         </g>
@@ -347,6 +418,8 @@ function EndpointSvg({
   tapPillars,
   pending,
   onSelect,
+  sourceSelected,
+  onSourceSelect,
 }: {
   endpoint: StructuredNarrativeLayout['endpoints'][number];
   messageIndex: number;
@@ -354,6 +427,8 @@ function EndpointSvg({
   tapPillars: readonly MessagePillar[];
   pending: boolean;
   onSelect?: (endpoint: SelectableEndpoint) => void;
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
 }) {
   const color = messageIndex >= 0 ? MESSAGE_COLORS[messageIndex % MESSAGE_COLORS.length] : UNPAIRED_COLOR;
   const marker = messageIndex >= 0 ? `url(#message-arrow-${String(messageIndex % MESSAGE_COLORS.length)})` : undefined;
@@ -371,18 +446,24 @@ function EndpointSvg({
   const pairingState = endpoint.unpaired ? 'unpaired' : manualPaired ? 'manual' : 'automatic';
   return (
     <g
-      className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${pending ? ' structured-endpoint--pending' : ''}${!endpoint.unpaired && manualPaired ? ' structured-endpoint--manual' : ''}`}
+      className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${pending ? ' structured-endpoint--pending' : ''}${!endpoint.unpaired && manualPaired ? ' structured-endpoint--manual' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
       data-identity={endpoint.id}
       data-channel={endpoint.channelName}
       aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}${selectable ? ' · 可选为人工配对端' : ''}`}
-      onClick={selectable ? () => onSelect?.({
-        id: endpoint.id,
-        roleIndex: endpoint.roleIndex,
-        stepIndex: endpoint.stepIndex,
-        direction: endpoint.direction,
-        channelName: endpoint.channelName,
-        pairingState,
-      }) : undefined}
+      onClick={selectable || onSourceSelect !== undefined ? () => {
+        // 配对点选（可选端）与源码联动（一切端点）并存：点线即选配对端并高亮其源码。
+        if (selectable) {
+          onSelect?.({
+            id: endpoint.id,
+            roleIndex: endpoint.roleIndex,
+            stepIndex: endpoint.stepIndex,
+            direction: endpoint.direction,
+            channelName: endpoint.channelName,
+            pairingState,
+          });
+        }
+        onSourceSelect?.();
+      } : undefined}
     >
       <path d={path} stroke={color} markerEnd={showArrow ? marker : undefined} />
       {startDot && (
@@ -424,9 +505,13 @@ function EndpointSvg({
 function StructuredNodeSvg({
   node,
   eventBinding,
+  sourceSelected,
+  onSourceSelect,
 }: {
   node: StructuredNode;
   eventBinding?: { roles?: { premise: boolean; conclusion: boolean }; selected: boolean; onSelect: () => void; onReflexive: () => void };
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
 }) {
   const label = truncate(node.label, node.labelMaxChars);
   // 置顶标签配不透明底（F4）：跨泳道消息线从文字背后穿过，而不是划穿文字。
@@ -442,10 +527,14 @@ function StructuredNodeSvg({
     const cx = node.x + node.width / 2;
     return (
       <g
-        className={`structured-event${premise ? ' structured-event--premise' : ''}${conclusion ? ' structured-event--conclusion' : ''}${eventBinding?.selected === true ? ' structured-event--selected' : ''}${eventBinding !== undefined ? ' structured-event--clickable' : ''}`}
+        className={`structured-event${premise ? ' structured-event--premise' : ''}${conclusion ? ' structured-event--conclusion' : ''}${eventBinding?.selected === true ? ' structured-event--selected' : ''}${eventBinding !== undefined ? ' structured-event--clickable' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
         data-source-offset={node.span.start.offset}
         aria-label={node.label}
-        onClick={eventBinding?.onSelect}
+        onClick={() => {
+          // 对应性联动（ticket 08）与源码联动（ticket 10）并存：单击同时选中矩阵行列与源码区间。
+          eventBinding?.onSelect();
+          onSourceSelect?.();
+        }}
         onDoubleClick={eventBinding?.onReflexive}
       >
         <title>{`${node.label}${premise ? ' · 前提' : ''}${conclusion ? ' · 结论' : ''}（单击选中行列，双击查自反对应性）`}</title>
@@ -459,7 +548,12 @@ function StructuredNodeSvg({
   if (node.kind === 'branch') {
     // 分支占位：生命线上的横 tick + 守卫原文（#03 会换成等值检查盒 + 臂道）。
     return (
-      <g className="structured-node structured-node--branch" data-source-offset={node.span.start.offset} aria-label={node.label}>
+      <g
+        className={`structured-node structured-node--branch${sourceSelected === true ? ' structured-source-selected' : ''}`}
+        data-source-offset={node.span.start.offset}
+        aria-label={node.label}
+        onClick={onSourceSelect}
+      >
         <title>{node.label}</title>
         <line x1={node.x + 8} x2={node.x + node.width - 8} y1={node.y + node.height / 2} y2={node.y + node.height / 2} />
         {labelBg(node.y + node.height / 2 + 4)}
@@ -468,7 +562,12 @@ function StructuredNodeSvg({
     );
   }
   return (
-    <g className={`structured-node structured-node--${node.kind}`} data-source-offset={node.span.start.offset} aria-label={node.label}>
+    <g
+      className={`structured-node structured-node--${node.kind}${sourceSelected === true ? ' structured-source-selected' : ''}`}
+      data-source-offset={node.span.start.offset}
+      aria-label={node.label}
+      onClick={onSourceSelect}
+    >
       <title>{node.label}</title>
       <rect x={node.x} y={node.y} width={node.width} height={node.height} />
       <text
@@ -485,9 +584,13 @@ function StructuredNodeSvg({
 function StructuredMethodSvg({
   method,
   onToggleBranch,
+  sourceSelected,
+  onSourceSelect,
 }: {
   method: StructuredNarrativeLayout['methods'][number];
   onToggleBranch: (branchId: string) => void;
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
 }) {
   const halfWidth = method.width / 2;
   const halfHeight = method.height / 2;
@@ -524,9 +627,10 @@ function StructuredMethodSvg({
         : '选择';
   return (
     <g
-      className={`structured-method structured-method--${method.direction}`}
+      className={`structured-method structured-method--${method.direction}${sourceSelected === true ? ' structured-source-selected' : ''}`}
       data-source-offset={method.sourceSpan.start.offset}
       aria-label={`${directionLabel}方法 ${method.label}`}
+      onClick={onSourceSelect}
     >
       <polygon points={points.map(([x, y]) => `${String(x)},${String(y)}`).join(' ')} />
       <text x={method.x} y={method.y + 4} textAnchor="middle">{truncate(method.label, 10)}</text>
@@ -567,7 +671,11 @@ function BranchToggleSvg({
       tabIndex={0}
       data-branch-id={branchId}
       aria-label={`折叠分支 ${branchText}`}
-      onClick={() => onToggleBranch(branchId)}
+      onClick={(event) => {
+        // 开关是嵌在方法盒（可点选源码联动）内的独立按钮：只做折叠，不冒泡成源码选择。
+        event.stopPropagation();
+        onToggleBranch(branchId);
+      }}
       onKeyDown={(event) => activateOnKey(event, () => onToggleBranch(branchId))}
     >
       <title>{`折叠分支 ${branchText}`}</title>
@@ -580,18 +688,25 @@ function BranchToggleSvg({
 function BranchFoldSvg({
   fold,
   onToggleBranch,
+  sourceSelected,
+  onSourceSelect,
 }: {
   fold: StructuredNarrativeLayout['branchFolds'][number];
   onToggleBranch: (branchId: string) => void;
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
 }) {
   return (
     <g
-      className="structured-branch-fold"
+      className={`structured-branch-fold${sourceSelected === true ? ' structured-source-selected' : ''}`}
       role="button"
       tabIndex={0}
       data-branch-id={fold.branchId}
       aria-label={`展开分支 ${fold.guardText}（隐藏 ${String(fold.hiddenCount)} 步）`}
-      onClick={() => onToggleBranch(fold.branchId)}
+      onClick={() => {
+        onToggleBranch(fold.branchId);
+        onSourceSelect?.();
+      }}
       onKeyDown={(event) => activateOnKey(event, () => onToggleBranch(fold.branchId))}
     >
       <title>{fold.label}</title>
@@ -613,21 +728,28 @@ function BranchFoldSvg({
 function OperatorClusterFoldSvg({
   fold,
   onToggleCluster,
+  sourceSelected,
+  onSourceSelect,
 }: {
   fold: StructuredOperatorClusterFold;
   onToggleCluster: (clusterId: string) => void;
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
 }) {
   const ghostText = fold.ghostLabels.length > 0
     ? `；仍被后续引用的值：${fold.ghostLabels.join('、')}`
     : '';
   return (
     <g
-      className="structured-operator-fold"
+      className={`structured-operator-fold${sourceSelected === true ? ' structured-source-selected' : ''}`}
       role="button"
       tabIndex={0}
       data-cluster-id={fold.clusterId}
       aria-label={`展开算子簇 ${fold.label}（隐藏 ${String(fold.hiddenCount)} 步；内含 ${fold.memberLabels.join('、')}）`}
-      onClick={() => onToggleCluster(fold.clusterId)}
+      onClick={() => {
+        onToggleCluster(fold.clusterId);
+        onSourceSelect?.();
+      }}
       onKeyDown={(event) => activateOnKey(event, () => onToggleCluster(fold.clusterId))}
     >
       <title>{`算子：${fold.memberLabels.join('、')}${ghostText}`}</title>
@@ -645,6 +767,43 @@ function OperatorClusterFoldSvg({
   );
 }
 
+/**
+ * 角色内诊断条（ticket 10 / spec 71）：归属该角色的降级/错误诊断以带位置的原文
+ * 标注段画在泳道顶部；点选任意一条联动源码高亮（onSelectSpan）。
+ */
+function RoleDiagnosticsSvg({
+  strip,
+  selectedSpan,
+  onSelectSpan,
+}: {
+  strip: StructuredNarrativeLayout['roleDiagnostics'][number];
+  selectedSpan: SourceSpan | null;
+  onSelectSpan?: (span: SourceSpan) => void;
+}) {
+  const top = strip.y - strip.height / 2;
+  return (
+    <g className="structured-role-diagnostics" role="group" aria-label={`角色内解析诊断 ${String(strip.diagnostics.length)} 条`}>
+      {strip.diagnostics.map((diagnostic, index) => {
+        const chipY = top + index * 18 + 9;
+        const text = `L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.sourceText}`;
+        return (
+          <g
+            key={`${diagnostic.span.start.offset}-${String(index)}`}
+            className={`structured-diagnostic-chip structured-diagnostic-chip--${diagnostic.severity}${spanOverlapsSelected(diagnostic.span, selectedSpan) ? ' structured-source-selected' : ''}`}
+            data-source-offset={diagnostic.span.start.offset}
+            aria-label={`${diagnosticSeverityLabel(diagnostic.severity)} L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.message}`}
+            onClick={onSelectSpan === undefined ? undefined : () => onSelectSpan(diagnostic.span)}
+          >
+            <title>{`${diagnosticSeverityLabel(diagnostic.severity)} L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)} ${diagnostic.message}`}</title>
+            <rect x={strip.x - strip.width / 2} y={chipY - 8} width={strip.width} height="16" rx="3" />
+            <text x={strip.x - strip.width / 2 + 5} y={chipY + 3}>{truncate(text, Math.floor((strip.width - 8) / 5.6))}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 /** 让 role="button" 的 SVG 元素像真按钮一样响应 Enter / Space。 */
 function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): void {
   if (event.key === 'Enter' || event.key === ' ') {
@@ -653,7 +812,15 @@ function activateOnKey(event: KeyboardEvent<SVGGElement>, action: () => void): v
   }
 }
 
-function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
+function StructuredValueBlockSvg({
+  block,
+  sourceSelected,
+  onSourceSelect,
+}: {
+  block: StructuredValueBlock;
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
+}) {
   // 幽灵值块（spec 52）：折叠算子簇下方仍被后续引用的产出；文案/样式区分，几何与常规方块同式。
   const ghost = block.ghost === true;
   // aria 带值身份序号（09）：读屏者以「值 n」与图例 token 列表（序号 + 绑定名）对齐。
@@ -666,10 +833,11 @@ function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
         : `引用 ${block.label}（值 ${String(block.ordinal)}）`;
   return (
     <g
-      className={`structured-value-block structured-value-block--${block.occurrence}${ghost ? ' structured-value-block--ghost' : ''}`}
+      className={`structured-value-block structured-value-block--${block.occurrence}${ghost ? ' structured-value-block--ghost' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
       data-binding-id={block.bindingId}
       data-source-offset={block.sourceSpan.start.offset}
       aria-label={label}
+      onClick={onSourceSelect}
     >
       {ghost && <title>{`折叠算子簇仍被后续引用的值：${block.label}`}</title>}
       <rect
@@ -708,7 +876,15 @@ function ArmRunSvg({ run }: { run: StructuredNarrativeLayout['armRuns'][number] 
   );
 }
 
-function StructuredChipSvg({ chip }: { chip: StructuredNarrativeLayout['chips'][number] }) {
+function StructuredChipSvg({
+  chip,
+  sourceSelected,
+  onSourceSelect,
+}: {
+  chip: StructuredNarrativeLayout['chips'][number];
+  sourceSelected?: boolean;
+  onSourceSelect?: () => void;
+}) {
   const kindLabel = chip.kind === 'derived'
     ? '派生芯片'
     : chip.kind === 'condition'
@@ -719,7 +895,12 @@ function StructuredChipSvg({ chip }: { chip: StructuredNarrativeLayout['chips'][
   // 宽度由布局按文字估算（F2）：截断预算跟随芯片宽度，不再固定 9 字符。
   const maxChars = chip.kind === 'wire' ? Math.max(3, Math.floor((chip.width - 8) / 5.6)) : 9;
   return (
-    <g className={`structured-chip structured-chip--${chip.kind}`} data-source-offset={chip.sourceSpan.start.offset} aria-label={`${kindLabel} ${chip.text}`}>
+    <g
+      className={`structured-chip structured-chip--${chip.kind}${sourceSelected === true ? ' structured-source-selected' : ''}`}
+      data-source-offset={chip.sourceSpan.start.offset}
+      aria-label={`${kindLabel} ${chip.text}`}
+      onClick={onSourceSelect}
+    >
       <title>{chip.text}</title>
       <rect x={chip.x - chip.width / 2} y={chip.y - chip.height / 2} width={chip.width} height={chip.height} rx="4" stroke={chip.color} />
       <text x={chip.x} y={chip.y + 4} textAnchor="middle">{truncate(chip.text, maxChars)}</text>
@@ -736,12 +917,18 @@ function channelGlyph(index: number): string {
 }
 
 function NarrativeDiagnostics({ result }: { result: ParseResult }) {
-  if (result.diagnostics.length === 0) return null;
+  // ticket 10：归属角色的诊断已画进泳道（structured 布局），这里只保留未归属的——
+  // 每条诊断「角色内或未归属」只出现一次；无未归属时整段不渲染。
+  const { unassigned } = useMemo(
+    () => attributeDiagnostics(narrativeRoleOrder(result), result.diagnostics),
+    [result],
+  );
+  if (unassigned.length === 0) return null;
   return (
     <section className="narrative-diagnostics" aria-label="解析诊断">
-      <h4>解析诊断</h4>
+      <h4>解析诊断（未归属角色）</h4>
       <ul className="diagnostic-list">
-        {result.diagnostics.map((diagnostic, index) => (
+        {unassigned.map((diagnostic, index) => (
           <li key={`${diagnostic.span.start.offset}-${index}`} className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}>
             <span className="diagnostic-severity">{diagnosticSeverityLabel(diagnostic.severity)}</span>
             <span className="diagnostic-line">{`L${String(diagnostic.span.start.line)}:${String(diagnostic.span.start.column)}`}</span>

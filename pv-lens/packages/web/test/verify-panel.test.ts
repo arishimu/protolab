@@ -47,7 +47,7 @@ describe('VerifyPanel 冒烟（ticket 08）', () => {
     expect(html).toContain('is true');
     expect(html).toContain('is false');
     expect(html).toContain('cannot be proved');
-    expect(html).toContain('未能证明');
+    expect(html).toContain('未证出');
   });
 
   it('解析无误时不显示降级/错误提示条', () => {

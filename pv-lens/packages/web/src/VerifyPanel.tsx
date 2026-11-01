@@ -68,7 +68,7 @@ export function VerifyPanel({ source, parseResult }: VerifyPanelProps) {
       <p className="hint">
         把当前 `.pv` 原文交给本机 ProVerif 运行一次（`POST /api/verify`）。结果按查询逐条列出：
         查询原文 + 判定 + 解释；被证伪时可展开反例 trace 原文。判定措辞对照归一化语义
-        （`is true` → 成立 / `is false` → 被证伪 / `cannot be proved` → 未能证明）。
+        （`is true` → 成立 / `is false` → 被证伪 / `cannot be proved` → 未证出）。
       </p>
 
       <ParseNotices parseResult={parseResult} />

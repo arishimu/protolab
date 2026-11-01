@@ -237,6 +237,31 @@ body {
   font-family: inherit;
 }
 
+/* ---- 源码行结构化与双向联动高亮（ticket 10） ---- */
+.source-line {
+  display: block;
+  min-height: 1.5em;
+  cursor: pointer;
+}
+
+.source-line:hover {
+  background: #f1f5f9;
+}
+
+.source-line-number {
+  display: inline-block;
+  width: 3em;
+  margin-right: 0.75em;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.source-line--highlight {
+  background: #fef3c7;
+  box-shadow: inset 2px 0 0 #d97706;
+}
+
 /* ---- 规范叙事视图（泳道图，ticket 04） ---- */
 .narrative {
   margin-top: 1.5rem;

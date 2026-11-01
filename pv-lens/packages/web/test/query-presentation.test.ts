@@ -107,7 +107,7 @@ describe('query-presentation：四样例黄金映射', () => {
 });
 
 describe('query-presentation：cannot be proved', () => {
-  it('人工 fixture → 未能证明、无 trace（假推导不算反例）', () => {
+  it('人工 fixture → 未证出、无 trace（假推导不算反例）', () => {
     const results = parseVerifyStdout(readFixture(join('proverif', 'cannot-be-proved.stdout.txt')));
     const queries = parsePv('query attacker(s).\nquery attacker(k).\n').queries;
     expect(queries).toHaveLength(2);
@@ -117,7 +117,7 @@ describe('query-presentation：cannot be proved', () => {
 
     expect(views[0].normalizedQuery).toBe('not attacker(s[])');
     expect(views[0].verdict).toBe('cannot-be-proved');
-    expect(views[0].verdictLabel).toBe('未能证明');
+    expect(views[0].verdictLabel).toBe('未证出');
     expect(views[0].counterexampleTrace).toBeNull();
     expect(views[0].userText).toBe('attacker(s)');
 
@@ -128,7 +128,7 @@ describe('query-presentation：cannot be proved', () => {
 
   it('`cannot be proved` 的解释明确「不等于不成立」', () => {
     expect(VERDICT_META['cannot-be-proved'].explanation).toContain('不等于');
-    expect(VERDICT_META['cannot-be-proved'].label).toBe('未能证明');
+    expect(VERDICT_META['cannot-be-proved'].label).toBe('未证出');
     expect(VERDICT_META.true.label).toBe('成立');
     expect(VERDICT_META.false.label).toBe('被证伪');
   });
