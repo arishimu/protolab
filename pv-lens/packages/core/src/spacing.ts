@@ -13,10 +13,11 @@ export type GapTier = 'tight' | 'row' | 'group';
 export interface SpacingUnit {
   id: string;
   roleIndex: number;
-  /** 单元类别；行（含消息行/事件/本地步骤/链）由调用方合并为 row 单元。 */
+  /** 单元类别；解算器不按 kind 分支（高度不透明即刚性）——kind 供 07b 折叠团与调试定位。 */
   kind: 'parameter-cluster' | 'row' | 'branch-fold' | 'fold-group';
   height: number;
-  /** 刚性单元（参数簇/折叠团）：内部间距已计入 height，只整体放置，绝不压缩。 */
+  /** 刚性声明（参数簇/折叠团）：内部间距已计入 height；解算器对任何单元都只整体放置，
+   *  flag 是调用方契约自述，供读取方识别「该高度不可再分解」。 */
   rigid: boolean;
   /** 消息端行：y 进入全局唯一域，并对 crossedRoles 列产生禁置带。 */
   messageEndpoint: boolean;
@@ -73,19 +74,58 @@ const SEPARATION_STEP = 4;
 const BAND_MARGIN = 2;
 
 /**
- * 解算纵向布局。禁置带依赖消息端 y、消息端 y 又依赖禁置带，故内部做三遍迭代
- * （第一遍无带求初始线位，随后每遍用最新带重放）；输入确定则输出确定。
+ * 解算纵向布局。禁置带依赖消息端 y、消息端 y 又依赖禁置带，故迭代至带集合稳定
+ * （每遍用最新带重放；稳定 = 放置所用带与解自身导出的带一致，即自洽），上限 6 遍；
+ * 输入确定则输出确定。互穿线过度约束、残留带命中时由 placeUnits 记为显式冲突。
  */
 export function solveSpacing(request: SpacingRequest): SpacingSolution {
   const unit = gapUnitOf(request.compactness);
   const reserveHalf = request.reserveHalf ?? 11;
   let reserved = new Map<number, number[]>();
   let solution = placeUnits(request, unit, reserveHalf, reserved);
-  for (let pass = 0; pass < 2; pass += 1) {
-    reserved = deriveReservations(request, solution);
+  for (let pass = 0; pass < 6; pass += 1) {
+    const next = deriveReservations(request, solution);
+    if (sameBands(next, reserved)) break;
+    reserved = next;
     solution = placeUnits(request, unit, reserveHalf, reserved);
   }
-  return { ...solution, reservedByRole: deriveReservations(request, solution) };
+  // 终检：互穿线 + 全局唯一性的贪心迭代可能周期振荡（稳定解存在但该路径找不到）。
+  // 放置带与最终带不一致的残留命中必须显式标记，不静默重叠。
+  const finalReserved = deriveReservations(request, solution);
+  const residual: SpacingConflict[] = [];
+  request.unitsByRole.forEach((units, roleIndex) => {
+    const bands = finalReserved.get(roleIndex) ?? [];
+    units.forEach((spacingUnit) => {
+      const y = solution.yByUnitId.get(spacingUnit.id);
+      if (y === undefined) return;
+      const clashing = bands.some((bandY) =>
+        y - spacingUnit.height / 2 - BAND_MARGIN < bandY + reserveHalf && y + spacingUnit.height / 2 + BAND_MARGIN > bandY - reserveHalf);
+      if (clashing) {
+        residual.push({
+          id: `spacing-band:${spacingUnit.id}`,
+          roleIndex,
+          y,
+          message: '跨列消息线与该单元的禁置带约束未能在迭代内自洽，已显式保留并延长生命线。',
+        });
+      }
+    });
+  });
+  const seen = new Set(solution.conflicts.map((conflict) => conflict.id));
+  return {
+    ...solution,
+    conflicts: [...solution.conflicts, ...residual.filter((conflict) => !seen.has(conflict.id))],
+    reservedByRole: finalReserved,
+  };
+}
+
+function sameBands(a: ReadonlyMap<number, readonly number[]>, b: ReadonlyMap<number, readonly number[]>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, values] of a) {
+    const other = b.get(key);
+    if (other === undefined || other.length !== values.length) return false;
+    if ([...values].sort((x, y) => x - y).some((value, index) => value !== [...other].sort((x, y) => x - y)[index])) return false;
+  }
+  return true;
 }
 
 interface Placement {
@@ -103,6 +143,8 @@ function placeUnits(
   const yByUnitId = new Map<string, number>();
   const bottomByRole: number[] = [];
   const conflicts: SpacingConflict[] = [];
+  // 全局唯一域只收消息端 y：本地步骤/事件/折叠条不占消息箭头的纵向位置
+  // （票面「本地步骤不占消息箭头」；跨角色行也不承诺对齐）。
   const usedY = new Set<number>();
   request.unitsByRole.forEach((units, roleIndex) => {
     const bands = reserved.get(roleIndex) ?? [];
@@ -111,16 +153,29 @@ function placeUnits(
     units.forEach((spacingUnit) => {
       const gap = gapOf(spacingUnit.gapTier, unit);
       const nominalY = cursor + gap + spacingUnit.height / 2;
-      let y = settleY(nominalY, spacingUnit.height, usedY, bands, reserveHalf);
-      if (y > nominalY + 1e-9 && spacingUnit.messageEndpoint) {
+      const y = settleY(nominalY, spacingUnit.height, usedY, bands, reserveHalf);
+      if (spacingUnit.messageEndpoint) {
+        usedY.add(y);
+        if (y > nominalY + 1e-9) {
+          conflicts.push({
+            id: `spacing:${spacingUnit.id}`,
+            roleIndex,
+            y,
+            message: '消息端为满足跨列禁置带或全局 y 唯一性而下移，已延长生命线（非静默重排）。',
+          });
+        }
+      }
+      // 残留带命中（互穿线过度约束、迭代上限内未自洽）→ 显式标记，不静默重叠。
+      const clashing = bands.find((bandY) =>
+        y - spacingUnit.height / 2 - BAND_MARGIN < bandY + reserveHalf && y + spacingUnit.height / 2 + BAND_MARGIN > bandY - reserveHalf);
+      if (clashing !== undefined) {
         conflicts.push({
-          id: `spacing:${spacingUnit.id}`,
+          id: `spacing-band:${spacingUnit.id}`,
           roleIndex,
           y,
-          message: '消息端为满足跨列禁置带或全局 y 唯一性而下移，已延长生命线（非静默重排）。',
+          message: '跨列消息线与该单元的禁置带约束未能在迭代内自洽，已显式保留并延长生命线。',
         });
       }
-      usedY.add(y);
       yByUnitId.set(spacingUnit.id, y);
       cursor = y + spacingUnit.height / 2;
     });

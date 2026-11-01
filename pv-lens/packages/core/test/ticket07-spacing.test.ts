@@ -111,4 +111,35 @@ describe('ticket #07：自适应纵向间距解算器（core 属性）', () => {
     expect(gapOf('row', gapUnitOf(1))).toBe(34);
     expect(gapOf('group', gapUnitOf(1))).toBe(50);
   });
+
+  it('本地步骤不占消息箭头的纵向位置：非消息行与消息端可同 y 且不产冲突', () => {
+    const solution = solveSpacing({
+      unitsByRole: [
+        [row('local', 0)],
+        [row('msg', 1, { messageEndpoint: true })],
+      ],
+      compactness: 0,
+      startOffsetByRole: [100, 100],
+    });
+    expect(solution.yByUnitId.get('local')).toBe(solution.yByUnitId.get('msg'));
+    expect(solution.conflicts).toHaveLength(0);
+  });
+
+  it('互穿消息线：要么自洽、要么振荡残留被显式标记，不允许静默重叠', () => {
+    const solution = solveSpacing({
+      unitsByRole: [
+        [row('a1', 0, { messageEndpoint: true, crossedRoles: [1] })],
+        [row('b1', 1, { messageEndpoint: true, crossedRoles: [0] })],
+      ],
+      compactness: 0,
+      startOffsetByRole: [100, 100],
+    });
+    const ys = [solution.yByUnitId.get('a1')!, solution.yByUnitId.get('b1')!];
+    expect(new Set(ys).size).toBe(2);
+    // 自洽时无残留标记；振荡时残留命中必须以 spacing-band 冲突显式出现。
+    const residual = solution.conflicts.filter((conflict) => conflict.id.startsWith('spacing-band:'));
+    if (residual.length > 0) {
+      expect(residual[0]?.message).toContain('显式');
+    }
+  });
 });

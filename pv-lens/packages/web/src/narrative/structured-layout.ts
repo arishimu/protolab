@@ -11,7 +11,7 @@ import type {
   SourceSpan,
 } from '@pv-lens/core';
 import { narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
-import { solveSpacing } from '@pv-lens/core';
+import { gapUnitOf, solveSpacing } from '@pv-lens/core';
 import type { SpacingUnit } from '@pv-lens/core';
 import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
 
@@ -279,7 +279,7 @@ export function buildStructuredNarrativeLayout(
 ): StructuredNarrativeLayout {
   const roles = narrativeRoleOrder(result);
   const compactness = clamp(options.compactness ?? 0, 0, 1);
-  const gapUnit = 26 - compactness * 8;
+  const gapUnit = gapUnitOf(compactness);
   const horizontal = solveHorizontalSequence(result);
   const roleByName = new Map(roles.map((role) => [role.name, role]));
   // 臂道画在信道外侧、构造链画在内侧（朝信道）——与 prototype 08 同口径。
@@ -388,9 +388,6 @@ export function buildStructuredNarrativeLayout(
       : item.kind === 'message'
         ? METRICS.messageHeight
         : METRICS.localHeight;
-  const startOffsetOf = (parameterCount: number): number => parameterCount === 0
-    ? margin + METRICS.headerHeight + METRICS.parameterHeight
-    : METRICS.headerHeight + METRICS.parameterLabelGap + 14;
   /** 该消息端的水平线穿过的中间角色下标（解算器据此产生禁置带；几何判定只在此处）。 */
   const crossedRolesOf = (roleName: string, channelName: string): number[] => {
     const column = roleColumns.get(roleName);
@@ -413,17 +410,26 @@ export function buildStructuredNarrativeLayout(
 
   interface RowMeta { chain: readonly ChainEntry[]; rowHeight: number; chip: boolean }
   /**
-   * 三段式（ticket 07）：一次遍历构建每角色的布局单元（参数簇 / 行 / 折叠条），
+   * 三段式（ticket 07）：一次遍历构建每角色的布局单元（参数簇 / 行 / 芯片 / 折叠条），
    * 交给 core 的 `solveSpacing` 分配 y（三层档位、禁置带收敛、显式冲突都在解算器内），
-   * 发射阶段只按解算结果摆放。参数簇与折叠条是刚性单元；行单元的高度含未配对
-   * 线上芯片的附加段；群组边界（参数簇后首行 / join 后 / 折叠条后）用 group 档。
+   * 发射阶段只按解算结果摆放。参数簇与折叠条是刚性单元；未配对线上芯片是紧跟其行的
+   * 独立 tight 单元（decision 08 把芯片列为闭集单元，不并入行高）；群组边界
+   * （参数簇后首行 / join 后 / 折叠条后）用 group 档。动作区起点全图统一：
+   * 所有角色的首行 top = max(各角色参数簇底) + group 档（decision 08 §4）。
    */
   const rowMetaByKey = new Map<string, RowMeta>();
   const unitsByRole: SpacingUnit[][] = roles.map(() => []);
+  const parameterClusterHeight = roles.reduce(
+    (max, role) => Math.max(max, role.bindings.filter((binding) => binding.kind === 'parameter').length * METRICS.valuePitch),
+    0,
+  );
+  const parameterTop = METRICS.headerHeight + METRICS.parameterLabelGap + 14;
+  // 无参数簇的角色从统一动作线起步；有簇角色的簇固定画在 paramTop，簇后首行经 group 档落在同一条线上。
+  const actionStart = parameterTop + parameterClusterHeight + Math.max(50, 2.4 * gapUnit);
   const startOffsets: number[] = [];
   roles.forEach((role, roleIndex) => {
     const parameterCount = role.bindings.filter((binding) => binding.kind === 'parameter').length;
-    startOffsets[roleIndex] = startOffsetOf(parameterCount);
+    startOffsets[roleIndex] = parameterCount > 0 ? parameterTop : actionStart;
     const units = unitsByRole[roleIndex] ?? [];
     unitsByRole[roleIndex] = units;
     if (parameterCount > 0) {
@@ -463,12 +469,12 @@ export function buildStructuredNarrativeLayout(
       const rowHeight = Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
       const chip = wireChipOf(item, roleIndex);
       const message = item.kind === 'message';
+      const key = rowKeyOf(roleIndex, itemIndex);
       units.push({
-        id: rowKeyOf(roleIndex, itemIndex),
+        id: key,
         roleIndex,
         kind: 'row',
-        // 行高含未配对线上芯片段（芯片排在该行值层之下，占位须一并入解算）。
-        height: rowHeight + (chip ? METRICS.wireChipGap + METRICS.chipHeight : 0),
+        height: rowHeight,
         rigid: false,
         messageEndpoint: message,
         ...(message
@@ -476,7 +482,19 @@ export function buildStructuredNarrativeLayout(
           : {}),
         gapTier: prevIsBoundary ? 'group' : 'row',
       });
-      rowMetaByKey.set(rowKeyOf(roleIndex, itemIndex), { chain, rowHeight, chip });
+      if (chip) {
+        // 芯片是独立 tight 单元：不占消息箭头的唯一域，只随行栈推进。
+        units.push({
+          id: `${key}:chip`,
+          roleIndex,
+          kind: 'row',
+          height: METRICS.chipHeight,
+          rigid: false,
+          messageEndpoint: false,
+          gapTier: 'tight',
+        });
+      }
+      rowMetaByKey.set(key, { chain, rowHeight, chip });
       prevIsBoundary = item.kind === 'branch' && item.marker === 'join';
     });
   });
@@ -486,12 +504,7 @@ export function buildStructuredNarrativeLayout(
     reserveHalf: METRICS.crossReserveHalf,
     startOffsetByRole: startOffsets,
   });
-  const rowYOf = (key: string): number => spacing.yByUnitId.get(key) ?? (startOffsets[0] ?? margin);
-  const foldYByBranch = new Map(
-    [...spacing.yByUnitId.keys()]
-      .filter((key) => key.startsWith('fold:'))
-      .map((key) => [key.slice('fold:'.length), spacing.yByUnitId.get(key) ?? 0]),
-  );
+  const rowYOf = (key: string, fallback: number): number => spacing.yByUnitId.get(key) ?? fallback;
 
   roles.forEach((role, roleIndex) => {
     const column = roleColumns.get(role.name);
@@ -532,7 +545,7 @@ export function buildStructuredNarrativeLayout(
       if (isBranchStart(item) && collapsedBranches.has(item.id)) {
         const hiddenCount = countBranchItems(role.items, itemIndex);
         const height = METRICS.branchFoldHeight;
-        const y = foldYByBranch.get(item.id) ?? rowYOf(`fold:${item.id}`);
+        const y = rowYOf(`fold:${item.id}`, startOffsets[roleIndex] ?? margin);
         const label = `▸ ${branchLabel(item)} · +${String(hiddenCount)}`;
         // 折叠条封在自身泳道内（F8）：不再越列压到邻列元素，文字随宽截断。
         const width = Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
@@ -554,12 +567,11 @@ export function buildStructuredNarrativeLayout(
       }
 
       const stepItem = item.kind === 'message' ? item : undefined;
-      let wireChipBottom = 0;
       // 行几何来自单元构建缓存（chain 只算一遍），y 来自 core 解算器；兜底路径仅防御解算缺项。
       const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
       const chain = meta?.chain ?? chainOfItem(item, roleIndex);
       const rowHeight = meta?.rowHeight ?? Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
-      const y = rowYOf(rowKeyOf(roleIndex, itemIndex));
+      const y = rowYOf(rowKeyOf(roleIndex, itemIndex), startOffsets[roleIndex] ?? margin);
 
       if (item.kind === 'branch') {
         if (item.marker === 'branch') {
@@ -828,12 +840,11 @@ export function buildStructuredNarrativeLayout(
               });
             }
           }
-          // 未配对端的线上词项芯片（F2）：落在自身泳道、该行值层之下，宽度按文字估算，
-          // 描边用未配对橙与虚线/空心点同色——不再画在 0.72 分位点压住邻列文字。
-          if (meta?.chip === true) {
+          // 未配对端的线上词项芯片（F2）：独立的 tight 单元（ticket 07），y 由解算器分配，
+          // 宽度按文字估算；描边用未配对橙与虚线/空心点同色。
+          if (meta?.chip === true && stepItem !== undefined) {
             const text = renderTerm(stepItem.endpoint.term);
             const chipWidth = Math.min(METRICS.wireChipMaxWidth, 20 + text.length * CAPTION_CHAR_WIDTH);
-            const chipY = Math.max(y + rowHeight / 2, slotTop) + METRICS.wireChipGap + METRICS.chipHeight / 2;
             chips.push({
               id: `${item.id}:wire-chip`,
               roleIndex,
@@ -841,20 +852,15 @@ export function buildStructuredNarrativeLayout(
               kind: 'wire',
               color: UNPAIRED_COLOR,
               x: lifelineX,
-              y: chipY,
+              y: rowYOf(`${rowKeyOf(roleIndex, itemIndex)}:chip`, y + rowHeight / 2 + METRICS.chipHeight / 2),
               width: chipWidth,
               height: METRICS.chipHeight,
               sourceSpan: item.span,
             });
             maxTextRight = Math.max(maxTextRight, lifelineX + chipWidth / 2);
-            wireChipBottom = chipY + METRICS.chipHeight / 2;
           }
         }
       }
-
-      // 芯片可能因禁置带/链下移而低于常规行底，游标取两者较大者。
-      // 解算器已含全部占位（含芯片段）；发射侧只需兜底「芯片因链槽极端排布低于单元底」的极端情形。
-      if (wireChipBottom > 0) maxBottom = Math.max(maxBottom, wireChipBottom + gapUnit);
     });
   });
 
