@@ -10,6 +10,7 @@ import {
   VALUE_COLORS,
   buildStructuredNarrativeLayout,
   foldLabelBudgetOf,
+  frameLabelBudgetOf,
 } from './structured-layout';
 import type {
   MessagePillar,
@@ -322,12 +323,19 @@ function MessagePillarSvg({ pillar }: { pillar: StructuredNarrativeLayout['pilla
       <text x={pillar.channelX + 10} y={pillar.top + 4} fill={pillar.color}>M{pillar.sequence}</text>
       <g className="structured-message-frame">
         <title>{`${pillar.termText}${originLabel}`}</title>
-        <rect className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`} x={pillar.channelX - 28} y={frameY - 11} width="56" height="22" stroke={pillar.color} />
+        <rect
+          className={`structured-term-chip structured-term-chip--${pillar.termPresentation}`}
+          x={pillar.channelX - pillar.frameWidth / 2}
+          y={frameY - 11}
+          width={pillar.frameWidth}
+          height="22"
+          stroke={pillar.color}
+        />
         {/* identity 接收去重（F5）：接收绑定的值身份色以帧内色带标注，泳道省略同名词块。 */}
         {pillar.termValueColor !== undefined && (
-          <rect className="structured-term-value-strip" x={pillar.channelX - 26} y={frameY - 8} width="3.5" height="16" fill={pillar.termValueColor} />
+          <rect className="structured-term-value-strip" x={pillar.channelX - pillar.frameWidth / 2 + 2} y={frameY - 8} width="3.5" height="16" fill={pillar.termValueColor} />
         )}
-        <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, 8)}</text>
+        <text x={pillar.channelX} y={frameY + 4} textAnchor="middle">{truncate(pillar.termText, frameLabelBudgetOf(pillar.frameWidth))}</text>
       </g>
     </g>
   );
@@ -671,6 +679,8 @@ function StructuredValueBlockSvg({ block }: { block: StructuredValueBlock }) {
         fill={block.color}
       />
       <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 8)}</text>
+      {/* 值身份序号（09 / spec 65）：右缘外小角标，色轮转超八后靠它与图例对照区分。 */}
+      <text className="structured-value-ordinal" x={block.x + block.width / 2 + 2} y={block.y - block.height / 2 + 6}>{String(block.ordinal)}</text>
     </g>
   );
 }

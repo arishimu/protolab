@@ -36,6 +36,20 @@ function foldBarWidthOf(label: string): number {
 export function foldLabelBudgetOf(width: number): number {
   return Math.max(4, Math.floor((width - 12) / CHAR_WIDTH));
 }
+
+/**
+ * 信道帧宽度（09，ticket 11 移交项）：随词项长度在 [56, 132] 内伸缩——56 是原定稿下限，
+ * 132 与线上芯片同上限；帧居信道中轴，列间距 38 可容纳 132/2=66 的外扩不触邻列生命线
+ * （最近邻生命线距信道中轴 ≥113）。
+ */
+export function messageFrameWidthOf(termText: string): number {
+  return Math.min(132, Math.max(56, 14 + termText.length * CAPTION_CHAR_WIDTH));
+}
+
+/** 信道帧内词项的截断预算（渲染方 SVG 用；与 messageFrameWidthOf 同源）。 */
+export function frameLabelBudgetOf(frameWidth: number): number {
+  return Math.max(3, Math.floor((frameWidth - 10) / CAPTION_CHAR_WIDTH));
+}
 export const CHANNEL_STYLES = ['solid', 'long-dash', 'dot'] as const;
 
 /** 粗略字宽，仅用于估算标签占用与画布宽度（不做像素级排版）。 */
@@ -82,6 +96,8 @@ export interface StructuredValueBlock {
   bindingId: string;
   label: string;
   color: string;
+  /** 值身份序号（09 / spec 65）：绑定全局序 1 起；色轮转超八后靠它区分同名色。 */
+  ordinal: number;
   occurrence: 'binding' | 'reference' | 'equality';
   x: number;
   y: number;
@@ -223,8 +239,10 @@ export interface MessagePillar {
   /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）与帧的中轴 y。 */
   termText: string;
   termPresentation: StructuredEndpoint['termPresentation'];
-  /** identity 接收去重时，接收绑定省略泳道方块，改在帧内词项旁标注值身份色带。 */
+  /** identity 接收去重时，接收绑定的值身份色以帧内色带标注，泳道省略同名词块。 */
   termValueColor?: string;
+  /** 信道帧宽度（09：随词项长度在 [56,132] 内伸缩，列间隙容纳不越列；截断预算由它派生）。 */
+  frameWidth: number;
   frameY: number;
   endpoints: readonly StructuredEndpoint[];
 }
@@ -500,6 +518,8 @@ export function buildStructuredNarrativeLayout(
   const foldedClusterByStart = new Map<string, ClusterRange>();
   // 绑定全局序（assignBindingColors 的插入序）：幽灵值块按它排列，稳定且与值身份色同源。
   const globalBindingOrder = new Map([...bindingColors.keys()].map((id, index) => [id, index] as const));
+  // 值身份序号（09 / spec 65）：绑定全局序 1 起，色与序号双通道（超八色同名靠序号区分）。
+  const ordinalOf = (bindingId: string): number => (globalBindingOrder.get(bindingId) ?? -1) + 1;
   // 「仍被后续引用」判定（spec 52）：绑定是角色本地的（id 带角色前缀），角色内 item 按源码序
   // 展开，对某绑定的引用只可能出现在引入它的 item 之上（源码序之后）——因此「全图引用集」
   // 与「簇外后续引用」等价，无需按位置过滤。
@@ -718,6 +738,7 @@ export function buildStructuredNarrativeLayout(
         parameterTop + parameterIndex * METRICS.valuePitch,
         'binding',
         bindingColors,
+        ordinalOf(binding.id),
         valueBlocks.length,
       ));
     });
@@ -788,7 +809,7 @@ export function buildStructuredNarrativeLayout(
             const binding = bindingById.get(bindingId);
             if (binding === undefined) return;
             const blockY = ghostY - ((ghostCount - 1) * METRICS.valuePitch) / 2 + ghostIndex * METRICS.valuePitch;
-            valueBlocks.push({ ...valueBlockOf(binding, roleIndex, lifelineX, blockY, 'binding', bindingColors, valueBlocks.length), ghost: true });
+            valueBlocks.push({ ...valueBlockOf(binding, roleIndex, lifelineX, blockY, 'binding', bindingColors, ordinalOf(binding.id), valueBlocks.length), ghost: true });
           });
           maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
         }
@@ -910,7 +931,7 @@ export function buildStructuredNarrativeLayout(
           if (pendingConstruct !== null && outputSlot >= 0 && entryIndex === pendingConstruct.entryIndex + 1 + outputSlot) {
             const outputCount = pendingConstruct.outputBindingIds.length;
             const outputY = pendingConstruct.boxY + (outputSlot - (outputCount - 1) / 2) * METRICS.valuePitch;
-            valueBlocks.push(valueBlockOf(binding, roleIndex, pendingConstruct.outputX, outputY, 'binding', bindingColors, valueBlocks.length));
+            valueBlocks.push(valueBlockOf(binding, roleIndex, pendingConstruct.outputX, outputY, 'binding', bindingColors, ordinalOf(binding.id), valueBlocks.length));
             return;
           }
           const slotY = slotTop + METRICS.valuePitch / 2;
@@ -922,6 +943,7 @@ export function buildStructuredNarrativeLayout(
             slotY,
             entry.occurrence,
             bindingColors,
+            ordinalOf(binding.id),
             valueBlocks.length,
           ));
           maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
@@ -934,7 +956,7 @@ export function buildStructuredNarrativeLayout(
             if (operand.kind === 'value') {
               const binding = bindingById.get(operand.bindingId);
               if (binding === undefined) return;
-              valueBlocks.push(valueBlockOf(binding, roleIndex, operandX, operandY, 'reference', bindingColors, valueBlocks.length));
+              valueBlocks.push(valueBlockOf(binding, roleIndex, operandX, operandY, 'reference', bindingColors, ordinalOf(binding.id), valueBlocks.length));
               return;
             }
             chips.push({
@@ -1139,11 +1161,12 @@ export function buildStructuredNarrativeLayout(
       termText: group.out.termText,
       termPresentation: group.out.termPresentation,
       ...(termValueColor === undefined ? {} : { termValueColor }),
+      frameWidth: messageFrameWidthOf(group.out.termText),
       // 帧对齐到发送端那一端：弧的走向固定（发出→信道→接收），帧不必浮在两端中间。
       frameY: group.out.y,
       endpoints: members,
     });
-    maxTextRight = Math.max(maxTextRight, channelX + 35);
+    maxTextRight = Math.max(maxTextRight, channelX + messageFrameWidthOf(group.out.termText) / 2);
   });
   const finalEndpoints = endpoints.map((endpoint) => ({ ...endpoint, unpaired: !paired.has(endpoint.id) }));
   const finalPillars = pillars.map((pillar) => ({
@@ -1492,6 +1515,7 @@ function valueBlockOf(
   y: number,
   occurrence: StructuredValueBlock['occurrence'],
   colors: ReadonlyMap<string, string>,
+  ordinal: number,
   index: number,
 ): StructuredValueBlock {
   return {
@@ -1500,6 +1524,7 @@ function valueBlockOf(
     bindingId: binding.id,
     label: binding.name,
     color: colors.get(binding.id) ?? VALUE_COLORS[0],
+    ordinal,
     occurrence,
     x,
     y,

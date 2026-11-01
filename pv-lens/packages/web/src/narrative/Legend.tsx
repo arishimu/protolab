@@ -28,9 +28,25 @@ export type LegendKey =
   | 'local-ops'
   | 'diagnostics';
 
+/** 本图实际出现的消息序号 token（09：图例与画布共用消息柱的 M 序号与色）。 */
+export interface LegendMessageToken {
+  sequence: number;
+  color: string;
+  termText: string;
+}
+
+/** 本图实际出现的值身份 token（09：值序号 + 绑定名 + 值身份色，与方块角标同源）。 */
+export interface LegendValueToken {
+  ordinal: number;
+  label: string;
+  color: string;
+}
+
 export interface LegendContent {
   keys: readonly LegendKey[];
   notation: readonly { notation: string; functors: readonly string[] }[];
+  messages: readonly LegendMessageToken[];
+  values: readonly LegendValueToken[];
 }
 
 /** 从布局与解析结果推导应显示的图例条目（纯函数，供组件与测试共用）。 */
@@ -53,7 +69,21 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
   if (layout.nodes.some((node) => node.kind === 'branch')) keys.push('branch-lane');
   if (layout.nodes.some((node) => node.kind === 'local')) keys.push('local-ops');
   if (result.diagnostics.length > 0) keys.push('diagnostics');
-  return { keys, notation: NOTATION_LEGEND.filter((entry) => entry.functors.some((functor) => usage.functors.has(functor))) };
+  // 实际身份对照（09）：消息按柱序 M1..Mn；值按绑定全局序去重（首现即全部信息）。
+  const messages = layout.pillars.map((pillar) => ({ sequence: pillar.sequence, color: pillar.color, termText: pillar.termText }));
+  const valueByBinding = new Map<string, LegendValueToken>();
+  layout.valueBlocks.forEach((block) => {
+    if (!valueByBinding.has(block.bindingId)) {
+      valueByBinding.set(block.bindingId, { ordinal: block.ordinal, label: block.label, color: block.color });
+    }
+  });
+  const values = [...valueByBinding.values()].sort((a, b) => a.ordinal - b.ordinal);
+  return {
+    keys,
+    notation: NOTATION_LEGEND.filter((entry) => entry.functors.some((functor) => usage.functors.has(functor))),
+    messages,
+    values,
+  };
 }
 
 interface TermUsage {
@@ -121,7 +151,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
   return (
     <div className="narrative-legend" aria-label="图例">
       <h4>图例</h4>
-      {content.keys.length === 0 && content.notation.length === 0 ? (
+      {content.keys.length === 0 && content.notation.length === 0 && content.messages.length === 0 && content.values.length === 0 ? (
         <p className="hint">当前画布没有需要解释的记法。</p>
       ) : (
         <dl>
@@ -162,7 +192,19 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-value-block">值</span>
               </dt>
-              <dd>值方块（含 `new` 与角色参数引入的绑定）：一种颜色对应一个角色本地绑定，同色再现表示同一绑定的引用或等值复制</dd>
+              <dd>
+                值方块（含 `new` 与角色参数引入的绑定）：一种颜色对应一个角色本地绑定，同色再现表示同一绑定的引用或等值复制；方块右缘数字是值身份序号，颜色八色轮转超八后靠序号区分
+                {content.values.length > 0 && (
+                  <span className="legend-token-list" aria-label="本图值序号">
+                    {content.values.map((token) => (
+                      <span key={`v-${String(token.ordinal)}`} className="legend-token">
+                        <span className="legend-token-swatch" style={{ background: token.color }} aria-hidden="true" />
+                        {String(token.ordinal)} {token.label}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </dd>
             </div>
           )}
           {present.has('method-box') && (
@@ -202,7 +244,19 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-message-pillar">M1</span>
               </dt>
-              <dd>消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准</dd>
+              <dd>
+                消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准
+                {content.messages.length > 0 && (
+                  <span className="legend-token-list" aria-label="本图消息序号">
+                    {content.messages.map((token) => (
+                      <span key={`m-${String(token.sequence)}`} className="legend-token">
+                        <span className="legend-token-swatch" style={{ background: token.color }} aria-hidden="true" />
+                        M{String(token.sequence)} {token.termText}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </dd>
             </div>
           )}
           {present.has('direction') && (

@@ -128,6 +128,14 @@
   font-weight: 650;
 }
 
+/* 值身份序号（09 / spec 65）：方块右缘外的小角标，灰度下仍可与图例对照读出身份。 */
+.structured-value-ordinal {
+  fill: #334155;
+  font-size: 7px;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
 .structured-method polygon {
   fill: #ffffff;
   stroke: #1f2937;
@@ -425,6 +433,31 @@
   background: #ffffff;
   border: 1px solid #1f2937;
   transform: skewX(-8deg);
+}
+
+/* 实际身份对照（09）：图例内列出本图实际出现的消息/值 token，色样 + 序号 + 名称。 */
+.legend-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.legend-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: #334155;
+}
+
+.legend-token-swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  border: 1px solid rgba(31, 41, 55, 0.45);
 }
 
 .legend-wire-chip {
