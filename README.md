@@ -9,6 +9,7 @@
   - `docs/proverif/note/`：分章学习笔记，`00-framework.md` 起头，每篇讲一个能力问题
   - `docs/proverif/pv/`：示例模型，全部 `.pv`
   - `docs/proverif/pdf/`：官方 PDF（手册、教程、综述）
+  - `docs/gui-test/`：GUI 测试报告、两轮整改方案与验收截图，入口见 `docs/gui-test/README.md`
 - `pv-lens/`：安全协议可视化（阅读与验证）Web 工具，画布编辑建模为二期（pnpm workspace，三包：`core` 纯 TS 共享核心 / `server` Node 验证后端 / `web` React + Vite 前端）
 - `README.md`：索引页，定位 + 导航 + 常用命令
 
