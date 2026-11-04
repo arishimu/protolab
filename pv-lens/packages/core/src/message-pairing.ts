@@ -1,5 +1,5 @@
 import type { MessageEndpoint, ParseResult, PvTerm, RoleItem } from './parser/model.js';
-import { pairSteps, narrativeRoleOrder } from './pairing.js';
+import { pairSteps, narrativeRoleOrder, inferredTypeOf } from './pairing.js';
 
 export type PairingOrigin = 'automatic' | 'manual';
 
@@ -60,7 +60,7 @@ export function composeMessagePairings(
       diagnostics.push({ kind: 'invalid-channel', message: '人工配对必须使用同一信道。', outEnd: intent.outEnd, inEnd: intent.inEnd });
       continue;
     }
-    const warning = compatibleShape(out.term, incoming.term) ? undefined : '词项类型或形状不完全匹配；已保留为人工设计意图。';
+    const warning = compatibleShape(out.term, incoming.term) ? undefined : typeMismatchWarning(result, out, incoming, intent);
     if (!pairings.some((pairing) => refKey(pairing.outEnd) === refKey(intent.outEnd) && refKey(pairing.inEnd) === refKey(intent.inEnd))) {
       pairings.push({ outEnd: intent.outEnd, inEnd: intent.inEnd, origin: 'manual', ...(warning === undefined ? {} : { warning }) });
     }
@@ -166,6 +166,24 @@ function endpointMap(result: ParseResult): Map<string, MessageEndpoint> {
     });
   });
   return map;
+}
+
+/**
+ * D7 类型不符警告：两侧类型都可得且不同时写明类型名；否则退回通用措辞。
+ * 类型不符不阻止声明（U3.10），警告与拒绝诊断区分呈现。
+ */
+function typeMismatchWarning(
+  result: ParseResult,
+  out: MessageEndpoint,
+  incoming: MessageEndpoint,
+  intent: { outEnd: { roleIndex: number }; inEnd: { roleIndex: number } },
+): string {
+  const outType = inferredTypeOf(result, out.term, intent.outEnd.roleIndex);
+  const inType = inferredTypeOf(result, incoming.term, intent.inEnd.roleIndex);
+  if (outType !== undefined && inType !== undefined && outType !== inType) {
+    return `类型不符：${out.term.text} 为 ${outType}，${incoming.term.text} 为 ${inType}；声明已保留`;
+  }
+  return '词项类型或形状不完全匹配；已保留为人工设计意图。';
 }
 
 function refKey(ref: MessageEndpointRef): string {

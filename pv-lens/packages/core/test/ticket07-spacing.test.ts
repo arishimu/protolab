@@ -86,7 +86,8 @@ describe('ticket #07：自适应纵向间距解算器（core 属性）', () => {
       startOffsetByRole: [100, 100],
     });
     expect(clashed.conflicts.length).toBeGreaterThanOrEqual(1);
-    expect(clashed.conflicts[0]?.message).toContain('非静默重排');
+    // C8：冲突消息为用户语言（不再使用「非静默重排」等实现术语）。
+    expect(clashed.conflicts[0]?.message).toContain('避免与跨列连线重叠');
   });
 
   it('紧凑度不改单元相对顺序与角色内结构，只改间距（确定性输出）', () => {
@@ -139,7 +140,8 @@ describe('ticket #07：自适应纵向间距解算器（core 属性）', () => {
     // 自洽时无残留标记；振荡时残留命中必须以 spacing-band 冲突显式出现。
     const residual = solution.conflicts.filter((conflict) => conflict.id.startsWith('spacing-band:'));
     if (residual.length > 0) {
-      expect(residual[0]?.message).toContain('显式');
+      // C8：用户语言口径——说明避让结果即可。
+      expect(residual[0]?.message).toContain('避让跨列连线');
     }
   });
 });

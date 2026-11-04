@@ -53,6 +53,8 @@ export type ProcessFact =
   | { kind: 'let'; span: SourceSpan; text: string; pattern: PvTerm; term: PvTerm; boundNames: readonly string[] }
   | { kind: 'get'; span: SourceSpan; text: string; pattern: PvTerm; boundNames: readonly string[] }
   | { kind: 'insert'; span: SourceSpan; text: string }
+  /** C14：不支持的语句（table/phase/choice/not）作为事实进入源码顺序，随后 item 化为行单元。 */
+  | { kind: 'unsupported'; span: SourceSpan; text: string }
   | { kind: 'event'; event: PendingEvent; args: readonly PvTerm[] }
   | { kind: 'branch'; linkId: string; guardText: string; guardKind: 'if' | 'get'; span: SourceSpan }
   | { kind: 'else'; linkId: string; span: SourceSpan; empty: boolean }
@@ -200,7 +202,7 @@ function scanStatement(cursor: TokenCursor, body: BodyScan, terminators: Readonl
       case 'phase':
       case 'choice':
       case 'not':
-        scanUnsupported(cursor, `暂不支持 \`${token.text}\` 语句，已按原文降级`);
+        scanUnsupported(cursor, body, `暂不支持 \`${token.text}\` 语句，已按原文降级`);
         return;
       default:
         scanInvocation(cursor, body);
@@ -544,10 +546,14 @@ function scanInvocation(cursor: TokenCursor, body: BodyScan): void {
   });
 }
 
-function scanUnsupported(cursor: TokenCursor, message: string): void {
+function scanUnsupported(cursor: TokenCursor, body: BodyScan, message: string): void {
   const start = cursor.peek().span.start;
   skipToStatementEnd(cursor);
-  cursor.degraded(message, cursor.span(start));
+  const span = cursor.span(start);
+  cursor.degraded(message, span);
+  // C14：降级语句同时进入事实流（源码顺序），构建时 item 化为行单元——
+  // 位置与两次 out 之间一致，不再整组挂在角色列顶端（诊断条只保留非语句级诊断）。
+  body.facts.push({ kind: 'unsupported', span, text: collapseWhitespace(cursor.slice(span)) });
 }
 
 function pushStep(

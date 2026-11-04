@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { coreSamples, parsePv } from '@pv-lens/core';
-import type { PvTerm } from '@pv-lens/core';
+import type { PvTerm, RoleParameter } from '@pv-lens/core';
 
 // 本测试文件位于 packages/core/test/，fixtures 位于 packages/core/fixtures/。
 const coreDir = fileURLToPath(new URL('..', import.meta.url));
@@ -27,6 +27,10 @@ const apply = (functor: string, args: PvTerm[], text: string): PvTerm => ({
 });
 const tuple = (items: PvTerm[], text: string): PvTerm => ({ kind: 'tuple', items, text });
 const equality = (term: PvTerm, text: string): PvTerm => ({ kind: 'equality', term, text });
+/** 参数断言只比较名字与类型；源码 span 由 D3 单独断言。 */
+const parameterShape = (parameters: readonly RoleParameter[]) =>
+  parameters.map(({ name: parameterName, typeName }) =>
+    typeName === undefined ? { name: parameterName } : { name: parameterName, typeName });
 
 describe('Seam A：hello.pv（无命名进程的内联主进程）', () => {
   const model = parsePv(readFixture('pv/hello.pv'));
@@ -77,12 +81,12 @@ describe('Seam A：handshake-fixed.pv 黄金断言（握手级子集）', () => 
 
   it('角色集为 clientA / serverB，带展示用参数与类型', () => {
     expect(model.roles.map((r) => r.name)).toEqual(['clientA', 'serverB']);
-    expect(model.roles[0].parameters).toEqual([
+    expect(parameterShape(model.roles[0].parameters)).toEqual([
       { name: 'pkA', typeName: 'pkey' },
       { name: 'skA', typeName: 'skey' },
       { name: 'pkB', typeName: 'spkey' },
     ]);
-    expect(model.roles[1].parameters).toEqual([
+    expect(parameterShape(model.roles[1].parameters)).toEqual([
       { name: 'pkB', typeName: 'spkey' },
       { name: 'skB', typeName: 'sskey' },
       { name: 'pkA', typeName: 'pkey' },
@@ -208,7 +212,7 @@ describe('Seam A：ns-mutual-auth.pv 黄金断言（NS 级子集）', () => {
       'processS',
       'processK',
     ]);
-    expect(model.roles.map((r) => r.parameters)).toEqual([
+    expect(model.roles.map((r) => parameterShape(r.parameters))).toEqual([
       [
         { name: 'pkS', typeName: 'spkey' },
         { name: 'skA', typeName: 'skey' },
@@ -377,7 +381,7 @@ describe('Seam A：ns-original.pv 黄金断言（NS 级子集，不回退）', (
 
   it('两角色 processA / processB，步骤序列与 v1 一致', () => {
     expect(model.roles.map((r) => r.name)).toEqual(['processA', 'processB']);
-    expect(model.roles.map((r) => r.parameters)).toEqual([
+    expect(model.roles.map((r) => parameterShape(r.parameters))).toEqual([
       [
         { name: 'pkB', typeName: 'pkey' },
         { name: 'skA', typeName: 'skey' },

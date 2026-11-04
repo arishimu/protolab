@@ -23,8 +23,20 @@ export interface SpacingUnit {
   messageEndpoint: boolean;
   /** 该消息端水平线穿过的中间角色下标（调用方按列几何判定）。 */
   crossedRoles?: readonly number[];
+  /** 消息端 y 的最小分离步长；配对端默认 4，未配对端用更大步长避免共线。 */
+  endpointSeparation?: number;
   /** 与上一单元之间的间距档位；首单元用 startOffset。 */
   gapTier: GapTier;
+}
+
+/**
+ * 跨角色因果约束：before 单元的底部必须早于 after 单元的顶部至少 minGap。
+ * 同角色相邻单元的顺序边由解算器自动补齐；此处只放配对消息的 out → in 边。
+ */
+export interface SpacingOrderEdge {
+  before: string;
+  after: string;
+  minGap?: number;
 }
 
 export interface SpacingRequest {
@@ -35,6 +47,8 @@ export interface SpacingRequest {
   reserveHalf?: number;
   /** 每角色首单元上缘的起始偏移（画布头部/参数标签区），缺省 0。 */
   startOffsetByRole?: readonly number[];
+  /** 跨角色因果边；缺省时退化为逐角色顺序放置。 */
+  orderEdges?: readonly SpacingOrderEdge[];
 }
 
 export interface SpacingConflict {
@@ -82,12 +96,35 @@ export function solveSpacing(request: SpacingRequest): SpacingSolution {
   const unit = gapUnitOf(request.compactness);
   const reserveHalf = request.reserveHalf ?? 11;
   let reserved = new Map<number, number[]>();
-  let solution = placeUnits(request, unit, reserveHalf, reserved);
+  let orderEdges = [...(request.orderEdges ?? [])];
+  let solution = placeUnits(request, unit, reserveHalf, reserved, orderEdges);
+  const causalConflicts: SpacingConflict[] = [];
+  if (solution.cycle) {
+    // 成环时丢弃环内因果边，保留其余约束；图仍完整，冲突显式记录。
+    const remaining = solution.remainingIds;
+    const dropped = orderEdges.filter((edge) => remaining.has(edge.before) && remaining.has(edge.after));
+    orderEdges = orderEdges.filter((edge) => !dropped.includes(edge));
+    solution = placeUnits(request, unit, reserveHalf, reserved, orderEdges);
+    if (solution.cycle) {
+      orderEdges = [];
+      solution = placeUnits(request, unit, reserveHalf, reserved, orderEdges);
+    }
+    const anchor = dropped
+      .flatMap((edge) => [edge.before, edge.after])
+      .map((id) => solution.yByUnitId.get(id))
+      .find((y) => y !== undefined) ?? 0;
+    causalConflicts.push({
+      id: 'order-cycle',
+      roleIndex: 0,
+      y: anchor,
+      message: '配对消息的因果顺序无法同时满足，已保留图形并忽略环内顺序约束；请检查协议的设计意图。',
+    });
+  }
   for (let pass = 0; pass < 6; pass += 1) {
     const next = deriveReservations(request, solution);
     if (sameBands(next, reserved)) break;
     reserved = next;
-    solution = placeUnits(request, unit, reserveHalf, reserved);
+    solution = placeUnits(request, unit, reserveHalf, reserved, orderEdges);
   }
   // 终检：互穿线 + 全局唯一性的贪心迭代可能周期振荡（稳定解存在但该路径找不到）。
   // 放置带与最终带不一致的残留命中必须显式标记，不静默重叠。
@@ -105,15 +142,16 @@ export function solveSpacing(request: SpacingRequest): SpacingSolution {
           id: `spacing-band:${spacingUnit.id}`,
           roleIndex,
           y,
-          message: '跨列消息线与该单元的禁置带约束未能在迭代内自洽，已显式保留并延长生命线。',
+          message: '空间不足，该步骤已下移避让跨列连线；生命线已延长。',
         });
       }
     });
   });
-  const seen = new Set(solution.conflicts.map((conflict) => conflict.id));
+  const seen = new Set([...causalConflicts, ...solution.conflicts].map((conflict) => conflict.id));
   return {
-    ...solution,
-    conflicts: [...solution.conflicts, ...residual.filter((conflict) => !seen.has(conflict.id))],
+    yByUnitId: solution.yByUnitId,
+    bottomByRole: solution.bottomByRole,
+    conflicts: [...causalConflicts, ...solution.conflicts, ...residual.filter((conflict) => !seen.has(conflict.id))],
     reservedByRole: finalReserved,
   };
 }
@@ -132,56 +170,130 @@ interface Placement {
   yByUnitId: Map<string, number>;
   bottomByRole: number[];
   conflicts: SpacingConflict[];
+  /** 拓扑排序是否因因果环而未能放置全部单元。 */
+  cycle: boolean;
+  /** 未能放置的单元 id（成环时的回退依据）。 */
+  remainingIds: Set<string>;
 }
 
+interface PlacementNode {
+  unit: SpacingUnit;
+  roleIndex: number;
+  index: number;
+}
+
+function compareNodes(a: PlacementNode, b: PlacementNode): number {
+  return a.roleIndex - b.roleIndex || a.index - b.index;
+}
+
+/**
+ * 跨角色拓扑放置。同角色相邻单元构成局部链；配对消息的 out → in 构成跨角色边。
+ * Kahn 队列按角色下标、单元下标升序取最小，保证确定性；成环时返回未放置集合，
+ * 由 solveSpacing 丢弃环内边后重试。
+ */
 function placeUnits(
   request: SpacingRequest,
   unit: number,
   reserveHalf: number,
   reserved: ReadonlyMap<number, readonly number[]>,
+  orderEdges: readonly SpacingOrderEdge[],
 ): Placement {
   const yByUnitId = new Map<string, number>();
-  const bottomByRole: number[] = [];
+  const bottomByRole: number[] = request.unitsByRole.map((_, roleIndex) => request.startOffsetByRole?.[roleIndex] ?? 0);
   const conflicts: SpacingConflict[] = [];
-  // 全局唯一域只收消息端 y：本地步骤/事件/折叠条不占消息箭头的纵向位置
-  // （票面「本地步骤不占消息箭头」；跨角色行也不承诺对齐）。
-  const usedY = new Set<number>();
+  // 全局唯一域只收消息端 y：本地步骤/事件/折叠条不占消息箭头的纵向位置。
+  const usedY = new Map<number, number>();
+  const nodes: PlacementNode[] = [];
   request.unitsByRole.forEach((units, roleIndex) => {
+    units.forEach((spacingUnit, index) => nodes.push({ unit: spacingUnit, roleIndex, index }));
+  });
+  const byId = new Map(nodes.map((node) => [node.unit.id, node]));
+  const indegree = new Map<string, number>(nodes.map((node) => [node.unit.id, 0]));
+  const successors = new Map<string, string[]>();
+  const crossPredecessors = new Map<string, Array<{ id: string; minGap: number }>>();
+
+  const addEdge = (before: string, after: string, minGap?: number): void => {
+    if (before === after || !byId.has(before) || !byId.has(after)) return;
+    successors.set(before, [...(successors.get(before) ?? []), after]);
+    indegree.set(after, (indegree.get(after) ?? 0) + 1);
+    if (minGap !== undefined) {
+      crossPredecessors.set(after, [...(crossPredecessors.get(after) ?? []), { id: before, minGap }]);
+    }
+  };
+
+  // 同角色局部顺序边。
+  request.unitsByRole.forEach((units) => {
+    for (let index = 1; index < units.length; index += 1) {
+      const before = units[index - 1];
+      const after = units[index];
+      if (before !== undefined && after !== undefined) addEdge(before.id, after.id);
+    }
+  });
+  // 配对消息的因果边。
+  orderEdges.forEach((edge) => addEdge(edge.before, edge.after, edge.minGap ?? 16));
+
+  const ready: PlacementNode[] = nodes
+    .filter((node) => (indegree.get(node.unit.id) ?? 0) === 0)
+    .sort(compareNodes);
+  const placed = new Set<string>();
+
+  while (ready.length > 0) {
+    const node = ready.shift();
+    if (node === undefined) break;
+    const { unit: spacingUnit, roleIndex } = node;
+    const gap = gapOf(spacingUnit.gapTier, unit);
+    let nominalY = (bottomByRole[roleIndex] ?? 0) + gap + spacingUnit.height / 2;
+    for (const predecessor of crossPredecessors.get(spacingUnit.id) ?? []) {
+      const predecessorNode = byId.get(predecessor.id);
+      const predecessorY = yByUnitId.get(predecessor.id);
+      if (predecessorNode === undefined || predecessorY === undefined) continue;
+      nominalY = Math.max(
+        nominalY,
+        predecessorY + predecessorNode.unit.height / 2 + predecessor.minGap + spacingUnit.height / 2,
+      );
+    }
     const bands = reserved.get(roleIndex) ?? [];
-    const startOffset = request.startOffsetByRole?.[roleIndex] ?? 0;
-    let cursor = startOffset;
-    units.forEach((spacingUnit) => {
-      const gap = gapOf(spacingUnit.gapTier, unit);
-      const nominalY = cursor + gap + spacingUnit.height / 2;
-      const y = settleY(nominalY, spacingUnit.height, usedY, bands, reserveHalf);
-      if (spacingUnit.messageEndpoint) {
-        usedY.add(y);
-        if (y > nominalY + 1e-9) {
-          conflicts.push({
-            id: `spacing:${spacingUnit.id}`,
-            roleIndex,
-            y,
-            message: '消息端为满足跨列禁置带或全局 y 唯一性而下移，已延长生命线（非静默重排）。',
-          });
-        }
-      }
-      // 残留带命中（互穿线过度约束、迭代上限内未自洽）→ 显式标记，不静默重叠。
-      const clashing = bands.find((bandY) =>
-        y - spacingUnit.height / 2 - BAND_MARGIN < bandY + reserveHalf && y + spacingUnit.height / 2 + BAND_MARGIN > bandY - reserveHalf);
-      if (clashing !== undefined) {
+    const separation = spacingUnit.messageEndpoint ? spacingUnit.endpointSeparation ?? SEPARATION_STEP : SEPARATION_STEP;
+    const y = settleY(nominalY, spacingUnit.height, usedY, bands, reserveHalf, separation);
+    if (spacingUnit.messageEndpoint) {
+      usedY.set(y, separation);
+      if (y > nominalY + 1e-9) {
         conflicts.push({
-          id: `spacing-band:${spacingUnit.id}`,
+          id: `spacing:${spacingUnit.id}`,
           roleIndex,
           y,
-          message: '跨列消息线与该单元的禁置带约束未能在迭代内自洽，已显式保留并延长生命线。',
+          message: '消息位置已下移，避免与跨列连线重叠；生命线已相应延长。',
         });
       }
-      yByUnitId.set(spacingUnit.id, y);
-      cursor = y + spacingUnit.height / 2;
-    });
-    bottomByRole[roleIndex] = cursor;
-  });
-  return { yByUnitId, bottomByRole, conflicts };
+    }
+    // 残留带命中（互穿线过度约束、迭代上限内未自洽）→ 显式标记，不静默重叠。
+    const clashing = bands.find((bandY) =>
+      y - spacingUnit.height / 2 - BAND_MARGIN < bandY + reserveHalf && y + spacingUnit.height / 2 + BAND_MARGIN > bandY - reserveHalf);
+    if (clashing !== undefined) {
+      conflicts.push({
+        id: `spacing-band:${spacingUnit.id}`,
+        roleIndex,
+        y,
+        message: '空间不足，该步骤已下移避让跨列连线；生命线已延长。',
+      });
+    }
+    yByUnitId.set(spacingUnit.id, y);
+    bottomByRole[roleIndex] = y + spacingUnit.height / 2;
+    placed.add(spacingUnit.id);
+    for (const successor of successors.get(spacingUnit.id) ?? []) {
+      const next = (indegree.get(successor) ?? 0) - 1;
+      indegree.set(successor, next);
+      if (next !== 0) continue;
+      const successorNode = byId.get(successor);
+      if (successorNode !== undefined) {
+        ready.push(successorNode);
+        ready.sort(compareNodes);
+      }
+    }
+  }
+
+  const remainingIds = new Set(nodes.filter((node) => !placed.has(node.unit.id)).map((node) => node.unit.id));
+  return { yByUnitId, bottomByRole, conflicts, cycle: placed.size < nodes.length, remainingIds };
 }
 
 /** 名义位置只下不上：先全局唯一分离，再避禁置带，循环至两者同时满足。
@@ -190,28 +302,35 @@ function placeUnits(
 function settleY(
   nominal: number,
   height: number,
-  usedY: ReadonlySet<number>,
+  usedY: ReadonlyMap<number, number>,
   bands: readonly number[],
   reserveHalf: number,
+  separation: number,
 ): number {
-  let y = uniqueY(nominal, usedY);
+  let y = uniqueY(nominal, usedY, separation);
   const leap = reserveHalf + height / 2 + BAND_MARGIN + 0.5;
   for (let round = 0; round < 10_000; round += 1) {
     const clashing = bands.find((bandY) =>
       y - height / 2 - BAND_MARGIN < bandY + reserveHalf && y + height / 2 + BAND_MARGIN > bandY - reserveHalf);
     if (clashing === undefined) return y;
-    y = uniqueY(clashing + leap, usedY);
+    y = uniqueY(clashing + leap, usedY, separation);
   }
   throw new Error(`settleY 未收敛：nominal=${String(nominal)} y=${String(y)} h=${String(height)} bands=${bands.join(',')} reserveHalf=${String(reserveHalf)}`);
 }
 
-function uniqueY(value: number, usedY: ReadonlySet<number>): number {
+/** 与已用 y 保持至少 max(本次步长, 已用步长) 的距离；只向上移动到最近可行位置。 */
+function uniqueY(value: number, usedY: ReadonlyMap<number, number>, separation: number): number {
   let y = value;
-  for (let round = 0; usedY.has(y); round += 1) {
-    if (round > 100_000) throw new Error(`uniqueY 未分离：y=${String(y)}`);
-    y += SEPARATION_STEP;
+  for (let round = 0; round < 100_000; round += 1) {
+    let next = y;
+    for (const [used, usedSeparation] of usedY) {
+      const gap = Math.max(separation, usedSeparation);
+      if (Math.abs(next - used) < gap) next = used + gap;
+    }
+    if (next === y) return y;
+    y = next;
   }
-  return y;
+  throw new Error(`uniqueY 未分离：y=${String(y)}`);
 }
 
 /** 由消息端解算 y 推导被穿角色的禁置带。 */

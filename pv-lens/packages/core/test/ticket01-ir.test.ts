@@ -62,7 +62,8 @@ describe('ticket #01：规范叙事 IR 兼容层与基线生命线', () => {
       process !role(pkA).
     `);
     const role = model.roles[0];
-    expect(role.parameters).toEqual([{ name: 'pk', typeName: 'pkey' }]);
+    expect(role.parameters).toMatchObject([{ name: 'pk', typeName: 'pkey' }]);
+    expect(role.parameters[0]?.span.start.line).toBe(4);
     expect(role.replicated).toBe(true);
     expect(role.parallel).toBe(false);
     const message = role.items.find((item) => item.kind === 'message');

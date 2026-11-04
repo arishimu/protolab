@@ -56,6 +56,42 @@ const VERDICT_BY_TEXT: Record<string, Verdict> = {
   'cannot be proved': 'cannot-be-proved',
 };
 
+/** 适配器 mkdtemp 临时目录前缀（F3 脱敏口径；部署边界为 Linux/WSL 的 /tmp）。 */
+const VERIFY_TEMP_DIR_RE = /\/tmp\/pv-lens-verify-[A-Za-z0-9_-]+\//g;
+
+/** F4：ProVerif stdout 里的源码定位（行/列保持 ProVerif 原文口径）。 */
+export interface ProverifLocation {
+  line: number;
+  column: number;
+  text: string;
+}
+
+/**
+ * F4：解析 stdout 中的 `line N, character(s) M` 定位，生成与工具诊断并列的结构化位置。
+ * 同一行多处定位按出现顺序保留；无定位返回空数组。
+ */
+export function parseProverifLocations(stdout: string): ProverifLocation[] {
+  const locations: ProverifLocation[] = [];
+  const pattern = /line (\d+), characters? (\d+)(?:-(\d+))?/g;
+  for (const match of stdout.matchAll(pattern)) {
+    const line = Number(match[1]);
+    const column = Number(match[2]);
+    if (Number.isFinite(line) && Number.isFinite(column) && line > 0) {
+      locations.push({ line, column, text: match[0] });
+    }
+  }
+  return locations;
+}
+
+/**
+ * F3：stdout 展示前的临时目录脱敏——把验证服务为运行生成的临时绝对目录替换为空，
+ * 文件名（`model.pv`）保留，用户看到的定位形如 `File "model.pv", line 7`。
+ * 原始输出仍可通过「未处理输出」入口独立核对。
+ */
+export function sanitizeStdout(stdout: string): string {
+  return stdout.replace(VERIFY_TEMP_DIR_RE, '');
+}
+
 /**
  * 把 ProVerif stdout 解析成按查询的验证结论。
  *

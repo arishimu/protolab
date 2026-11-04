@@ -15,6 +15,15 @@ export interface CorrespondenceQuery {
   from: EventReference;
   to: EventReference;
   text: string;
+  /** 该有序对是否对应源码中一条声明查询。 */
+  declared?: boolean;
+  /** 对应的源码查询原文；仅 declared 为真时存在。 */
+  declaredText?: string;
+  /**
+   * 声明目标是否按单射 `inj-event` 语义运行；仅 declared 为真时存在。
+   * 源码声明为非单射 `event` 时为 false，声明格按原查询语义判定。
+   */
+  declaredInjective?: boolean;
 }
 
 export type CorrespondenceVerdict = 'true' | 'false' | 'cannot-be-proved' | 'pending';
@@ -78,6 +87,7 @@ function correspondenceQueryText(
   from: EventReference,
   to: EventReference,
   typesByName: ReadonlyMap<string, readonly string[]>,
+  injective = true,
 ): string {
   const fromTypes = typesByName.get(from.name) ?? [];
   const toTypes = typesByName.get(to.name) ?? [];
@@ -102,7 +112,8 @@ function correspondenceQueryText(
     if (index < toTypes.length) toArgs.push(toVariable);
   }
   const prefix = declarations.length === 0 ? '' : `${declarations.join(', ')}; `;
-  return `${prefix}inj-event(${from.name}(${fromArgs.join(',')})) ==> inj-event(${to.name}(${toArgs.join(',')}))`;
+  const keyword = injective ? 'inj-event' : 'event';
+  return `${prefix}${keyword}(${from.name}(${fromArgs.join(',')})) ==> ${keyword}(${to.name}(${toArgs.join(',')}))`;
 }
 
 /** 只在 process 关键字前插入批量 query，源文本本身不被修改。 */
@@ -114,9 +125,39 @@ export function injectCorrespondenceQueries(source: string, queries: readonly Co
   return `${source.slice(0, processMatch.index)}${insertion}${source.slice(processMatch.index)}`;
 }
 
+/** 从一条源码查询文本提取事件名有序对；非对应性查询返回 null。 */
+export function declaredEventPairOfQuery(text: string): string | null {
+  const names = [...text.matchAll(/(?:inj-)?event\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/g)]
+    .map((match) => match[1])
+    .filter((name): name is string => name !== undefined);
+  if (names.length < 2) return null;
+  return `${names[0]}=>${names[1]}`;
+}
+
 export function createCorrespondencePlan(source: string, result: ParseResult): CorrespondencePlan {
   const events = collectEventReferences(result);
-  const queries = generateCorrespondenceQueries(events, result.events);
+  const declared = new Map<string, string>();
+  for (const query of result.queries) {
+    const pair = declaredEventPairOfQuery(query.text);
+    if (pair !== null && !declared.has(pair)) declared.set(pair, query.text);
+  }
+  const typesByName = new Map(result.events.map((declaration) => [declaration.name, declaration.argTypes]));
+  const queries = events.flatMap((from) => events.map((to) => {
+    const key = `${from.name}=>${to.name}`;
+    const declaredText = declared.get(key);
+    // 源码声明为非单射 event 时，声明格必须按原查询语义运行；inj-event 只用于
+    // 探索性有序对，避免把单射强化探针的结论误当成声明目标的结论（ADR-0016 修订）。
+    const declaredInjective = declaredText === undefined || /\binj-event\s*\(/.test(declaredText);
+    const query: CorrespondenceQuery = {
+      id: `${from.id}=>${to.id}`,
+      from,
+      to,
+      text: correspondenceQueryText(from, to, typesByName, declaredInjective),
+    };
+    return declaredText === undefined
+      ? query
+      : { ...query, declared: true, declaredText, declaredInjective };
+  }));
   return { source, verificationSource: injectCorrespondenceQueries(source, queries), events, queries };
 }
 
@@ -144,24 +185,20 @@ export function buildCorrespondenceMatrix(
 }
 
 /**
- * 从 RESULT 行的查询文本提取事件名有序对；非单射行 / 无法识别的行不参与映射。
- * 事件实参可能嵌套括号（元组、构造子），不能只用 `[^()]*`——先按 inj-event 定位再
- * 以括号深度平衡截取实参区间。
+ * 从 RESULT 行的查询文本提取事件名有序对；同时接受 `event(` 与 `inj-event(`。
+ * 声明目标可能按源码原语义运行非单射查询，探索性有序对使用 inj-event 探针。
+ * 事件实参可能嵌套括号（元组、构造子），按括号深度跳过实参，避免在实参中再次命中。
  */
 function eventPairOfResultText(text: string): string | null {
   const names: string[] = [];
-  let index = 0;
-  while (names.length < 2) {
-    const hit = text.indexOf('inj-event(', index);
-    if (hit < 0) return null;
-    const nameStart = hit + 'inj-event('.length;
-    const nameMatch = text.slice(nameStart).match(/^[A-Za-z_][A-Za-z0-9_]*/);
-    if (nameMatch === null) return null;
-    names.push(nameMatch[0]);
-    // 跳过实参的括号区（深度平衡），索引推进到其后。
-    const restOffset = text.slice(nameStart + nameMatch[0].length).indexOf('(');
-    if (restOffset < 0) return null;
-    const openAt = nameStart + nameMatch[0].length + restOffset;
+  const pattern = /(?:inj-)?event\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+  let match: RegExpExecArray | null;
+  while (names.length < 2 && (match = pattern.exec(text)) !== null) {
+    const name = match[1];
+    if (name === undefined) return null;
+    names.push(name);
+    const openAt = text.indexOf('(', match.index);
+    if (openAt < 0) return null;
     let depth = 0;
     let cursor = openAt;
     while (cursor < text.length) {
@@ -174,9 +211,9 @@ function eventPairOfResultText(text: string): string | null {
       cursor += 1;
     }
     if (depth !== 0) return null;
-    index = cursor + 1;
+    pattern.lastIndex = cursor + 1;
   }
-  return pairOf(names);
+  return names.length === 2 ? pairOf(names) : null;
 }
 
 function pairOf(names: readonly string[]): string {

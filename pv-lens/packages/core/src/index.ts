@@ -49,8 +49,8 @@ export interface CoreSampleDef {
 export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'hello',
-    title: 'hello（保密性最小冒烟）',
-    description: '最小冒烟样例：hello 世界，仅验证公开信道上发送的 RSA 明文是否泄露。',
+    title: 'hello（保密性最小示例）',
+    description: '最小样例：hello 世界，仅验证公开信道上发送的 RSA 明文是否泄露。',
     kind: 'secrecy-broken',
     pvFile: 'pv/hello.pv',
     stdoutFile: 'proverif/hello.stdout.txt',
@@ -61,7 +61,7 @@ export const coreSamples: readonly CoreSampleDef[] = [
   },
   {
     id: 'handshake-fixed',
-    title: '握手修正版（全绿）',
+    title: '握手修正版（查询全部成立）',
     description: '中规模握手协议修正版：对称/非对称加密与签名并用，附事件，三条查询全部成立。',
     kind: 'all-green',
     pvFile: 'pv/handshake-fixed.pv',
@@ -207,21 +207,22 @@ export type { NotationLegendEntry } from './symbolic-term.js';
  *
  * 纯转换：记录 stdout 文本进、结构化结果出；判定只以 RESULT 行为准。
  */
-export { parseVerifyStdout } from './verify-result.js';
+export { parseVerifyStdout, parseProverifLocations, sanitizeStdout } from './verify-result.js';
+export type { ProverifLocation } from './verify-result.js';
 export type { VerificationResult } from './verify-result.js';
 
 /**
- * 保守配对引擎（ticket 06）：跨泳道 out → in 配对判定，只在双向唯一可确定时连线。
- * `pairSteps` 的下标对齐 `narrativeRoleOrder` 的泳道顺序，可直接喂给 web 的布局。
+ * 保守配对引擎（ticket 06）：跨角色列 out → in 配对判定，只在双向唯一可确定时连线。
+ * `pairSteps` 的下标对齐 `narrativeRoleOrder` 的角色列顺序，可直接喂给 web 的布局。
  */
 export { pairSteps, narrativeRoleOrder } from './pairing.js';
 export type { StepPairing, StepPairingAnchor } from './pairing.js';
 export { solveHorizontalSequence, collectChannels } from './horizontal-sequence.js';
 export type { HorizontalNode, HorizontalOrderConstraint, HorizontalSequence } from './horizontal-sequence.js';
 export { composeMessagePairings } from './message-pairing.js';
-export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles } from './correspondence.js';
+export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles, declaredEventPairOfQuery } from './correspondence.js';
 export { solveSpacing, gapUnitOf, gapOf } from './spacing.js';
-export type { GapTier, SpacingUnit, SpacingRequest, SpacingConflict, SpacingSolution } from './spacing.js';
+export type { GapTier, SpacingUnit, SpacingRequest, SpacingConflict, SpacingSolution, SpacingOrderEdge } from './spacing.js';
 export type {
   CorrespondenceCell,
   CorrespondencePlan,

@@ -141,6 +141,8 @@ export interface MessageStep {
 export interface RoleParameter {
   name: string;
   typeName?: string;
+  /** 参数在角色定义中的源码区间，用于画布值方块与源码联动。 */
+  span: SourceSpan;
 }
 
 export type BindingKind = 'parameter' | 'new' | 'in' | 'let' | 'get';
@@ -185,7 +187,7 @@ export interface MessageItem {
 export interface LocalItem {
   kind: 'local';
   id: string;
-  operation: 'new' | 'let' | 'get' | 'insert';
+  operation: 'new' | 'let' | 'get' | 'insert' | 'degraded';
   span: SourceSpan;
   text: string;
   name?: string;

@@ -9,7 +9,7 @@
  *   （`name` 后不是 `(`，且 `body` 以进程起始构造开头）。无命名进程的内联主进程
  *   （`process` 关键字后的进程体）单独放在 `mainProcess`：它是协议启动处而非协议参与方，
  *   hello 这类样例只有它。渲染方在 `roles` 为空而 `mainProcess` 非空时，应把主进程当作
- *   一条 `main` 泳道展示，而不是当作「无角色结构」。
+ *   一条 `main` 角色列展示，而不是当作「无角色结构」。
  * - 声明区（`type` / `fun` / `reduc` / `free` / `const` / `event` / `table` / `not` /
  *   顶层词项绑定 `let`）宽容解析：整体跳过，不建模、不报错。
  */
@@ -220,9 +220,11 @@ function parseRoleParameters(cursor: TokenCursor): RoleParameter[] | null {
         recoverToDeclarationEnd(cursor);
         return null;
       }
+      const start = parameterToken.span.start;
       cursor.next();
       const typeName = parseTypeAscription(cursor);
-      parameters.push(typeName === undefined ? { name: parameterToken.text } : { name: parameterToken.text, typeName });
+      const span = cursor.span(start);
+      parameters.push(typeName === undefined ? { name: parameterToken.text, span } : { name: parameterToken.text, typeName, span });
       if (cursor.match(',')) continue;
       break;
     }

@@ -30,7 +30,7 @@ export function buildRoleItems(
     name: parameter.name,
     kind: 'parameter',
     ...(parameter.typeName === undefined ? {} : { typeName: parameter.typeName }),
-    span: steps[0]?.span ?? emptySpan(),
+    span: parameter.span,
   }));
   // 作用域 = 帧栈：frames[0] 是角色级，每个分支臂压一帧，引用自内向外取最近同名绑定。
   const frames: Array<Map<string, string>> = [new Map(parameters.map((parameter, index) => [parameter.name, bindings[index].id]))];
@@ -201,11 +201,11 @@ export function buildRoleItems(
       continue;
     }
 
-    if (fact.kind === 'insert') {
+    if (fact.kind === 'insert' || fact.kind === 'unsupported') {
       items.push({
         kind: 'local',
-        id: `${roleName}:item:${items.length}:insert`,
-        operation: 'insert',
+        id: `${roleName}:item:${items.length}:${fact.kind}`,
+        operation: fact.kind === 'insert' ? 'insert' : 'degraded',
         span: fact.span,
         text: fact.text,
         bindingIds: [],
@@ -336,11 +336,6 @@ function visitTerm(term: PvTerm, visit: (term: PvTerm) => void): void {
     default:
       return;
   }
-}
-
-function emptySpan(): SourceSpan {
-  const position = { offset: 0, line: 1, column: 1 };
-  return { start: position, end: position };
 }
 
 /** 给后续布局使用的条件表达式解析入口，保持 parser 内部 helper 可测试。 */
