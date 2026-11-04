@@ -579,6 +579,10 @@
   font-weight: 650;
 }
 
+.structured-conflict {
+  cursor: pointer;
+}
+
 .structured-conflict path {
   fill: #b91c1c;
   stroke: #b91c1c;
@@ -587,6 +591,34 @@
 .structured-conflict text {
   fill: #b91c1c;
   font-size: 10px;
+}
+
+/* ticket 27：冲突列表与画布标记按“冲突 N”一一对应；角色名与源码行紧随编号。 */
+.narrative-conflicts-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.35rem 0 0;
+}
+
+.narrative-conflicts-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  scroll-margin-top: 4rem;
+}
+
+.narrative-conflicts-number {
+  color: #b91c1c;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.narrative-conflicts-location {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .legend-value-block,

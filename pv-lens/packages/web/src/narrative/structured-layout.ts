@@ -317,6 +317,10 @@ export interface StructuredConflict {
   message: string;
   y: number;
   roleIndex?: number;
+  /** 冲突锚定角色名（标记与列表按“冲突 N + 角色 + 源码行”一一对应）。 */
+  roleName?: string;
+  /** 冲突锚定消息步骤的源码行（1 基）；全局冲突或非行单元时为 undefined。 */
+  sourceLine?: number;
 }
 
 /**
@@ -460,6 +464,20 @@ const METRICS = {
   diagnosticPitch: 18,
   diagnosticStripMaxWidth: 200,
 } as const;
+
+/** 从解算器冲突 id 还原锚定的消息行：`spacing:<role>:<item>` / `spacing-band:<role>:<item>`。
+ *  参数簇、诊断条、折叠条与全局 order-cycle 没有消息行锚点，返回 undefined。 */
+function conflictLineOf(
+  id: string,
+  roles: readonly PvRole[],
+): { roleIndex: number; line: number } | undefined {
+  const match = /^spacing(?:-band)?:(\d+):(\d+)$/.exec(id);
+  if (match === null) return undefined;
+  const roleIndex = Number(match[1]);
+  const itemIndex = Number(match[2]);
+  const item = roles[roleIndex]?.items[itemIndex];
+  return item === undefined ? undefined : { roleIndex, line: item.span.start.line };
+}
 
 /** v2 的内容驱动几何：各角色保留本地顺序，只有信道柱跨角色共享。 */
 export function buildStructuredNarrativeLayout(
@@ -892,11 +910,18 @@ export function buildStructuredNarrativeLayout(
       const chip = meta?.chip ?? wireChipOf(item, roleIndex);
       const message = item.kind === 'message';
       const key = rowKeyOf(roleIndex, itemIndex);
+      // ticket 27：未配对词项芯片并入消息行单元。无值层链时芯片以消息线 y 居中（压在线上，
+      // 与原型 wireChip 同式）；有值层链时置于值层底部下方，行框下缘按芯片位置扩展。
+      // 行单元高度仍按芯片下缘预留，保持既有行距/冲突位置稳定。
+      const chipExtra = chip ? METRICS.wireChipGap + METRICS.chipHeight : 0;
+      const unitHeight = chip
+        ? 2 * Math.max(rowHeight / 2, (chain.length > 0 ? rowHeight / 2 : 0) + chipExtra)
+        : rowHeight;
       units.push({
         id: key,
         roleIndex,
         kind: 'row',
-        height: rowHeight,
+        height: unitHeight,
         rigid: false,
         messageEndpoint: message,
         ...(message
@@ -907,18 +932,6 @@ export function buildStructuredNarrativeLayout(
           : {}),
         gapTier: prevIsBoundary ? 'group' : 'row',
       });
-      if (chip) {
-        // 芯片是独立 tight 单元：不占消息箭头的唯一域，只随行栈推进。
-        units.push({
-          id: `${key}:chip`,
-          roleIndex,
-          kind: 'row',
-          height: METRICS.chipHeight,
-          rigid: false,
-          messageEndpoint: false,
-          gapTier: 'tight',
-        });
-      }
       prevIsBoundary = item.kind === 'branch' && item.marker === 'join';
     });
   });
@@ -1399,7 +1412,9 @@ export function buildStructuredNarrativeLayout(
               kind: 'wire',
               color: UNPAIRED_COLOR,
               x: lifelineX,
-              y: rowYOf(`${rowKeyOf(roleIndex, itemIndex)}:chip`, y + rowHeight / 2 + METRICS.chipHeight / 2),
+              y: chain.length > 0
+                ? y + rowHeight / 2 + METRICS.wireChipGap + METRICS.chipHeight / 2
+                : y,
               width: chipWidth,
               height: METRICS.chipHeight,
               sourceSpan: item.span,
@@ -1500,12 +1515,23 @@ export function buildStructuredNarrativeLayout(
   }));
   // 冲突全部来自解算器（ticket 07）：消息端为禁置带或全局 y 唯一性让位时显式标记并加高，
   // 不静默重排；解算器已保证 y 唯一，旧的事后 global-y 兜底检查随之退役。
-  const conflicts: StructuredConflict[] = spacing.conflicts.map((conflict) => ({
-    id: conflict.id,
-    message: conflict.message,
-    y: conflict.y,
-    ...(conflict.roleIndex === undefined ? {} : { roleIndex: conflict.roleIndex }),
-  }));
+  // ticket 27：补角色名与源码行，并自上而下编号（标记与列表共用同一顺序），
+  // 让“冲突 N”在画布与列表中一眼对应。
+  const conflicts: StructuredConflict[] = spacing.conflicts.map((conflict) => {
+    const line = conflictLineOf(conflict.id, roles);
+    const roleIndex = line?.roleIndex ?? conflict.roleIndex;
+    const roleName = conflict.id === 'order-cycle' || roleIndex === undefined
+      ? undefined
+      : roles[roleIndex]?.name;
+    return {
+      id: conflict.id,
+      message: conflict.message,
+      y: conflict.y,
+      ...(roleIndex === undefined ? {} : { roleIndex }),
+      ...(roleName === undefined ? {} : { roleName }),
+      ...(line === undefined ? {} : { sourceLine: line.line }),
+    };
+  }).sort((a, b) => a.y - b.y || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const columnsRight = columns.length === 0
     ? margin
     : columns[columns.length - 1].x + columns[columns.length - 1].width;

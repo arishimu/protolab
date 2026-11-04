@@ -16,6 +16,7 @@ import type {
   MessageLineStyle,
   MessagePillar,
   StructuredChip,
+  StructuredConflict,
   StructuredNarrativeLayout,
   StructuredNode,
   StructuredOperatorClusterFold,
@@ -492,11 +493,22 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             <section className="narrative-conflicts" aria-label="布局冲突列表">
               <h4 className="narrative-conflicts-title">布局冲突（{String(structured.conflicts.length)} 处）</h4>
               <ul className="narrative-conflicts-list">
-                {structured.conflicts.map((conflict, index) => (
-                  <li key={conflict.id} id={`layout-conflict-${String(index)}`} className="narrative-conflicts-item">
-                    {conflict.message}
-                  </li>
-                ))}
+                {structured.conflicts.map((conflict, index) => {
+                  const number = index + 1;
+                  const location = conflictLocationOf(conflict);
+                  return (
+                    <li
+                      key={conflict.id}
+                      id={`layout-conflict-${String(number)}`}
+                      data-conflict-number={number}
+                      className="narrative-conflicts-item"
+                    >
+                      <span className="narrative-conflicts-number">冲突 {number}</span>
+                      {location.length > 0 && <span className="narrative-conflicts-location">{location}</span>}
+                      <span className="narrative-conflicts-message">{conflict.message}</span>
+                    </li>
+                  );
+                })}
               </ul>
               <p className="hint">冲突表示布局为保证可读性做了避让；不影响协议语义与验证结论。</p>
             </section>
@@ -507,6 +519,14 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
     </section>
   );
 });
+
+/** ticket 27：冲突的可见定位串（角色名 + 源码行），标记与列表共用同一份。 */
+function conflictLocationOf(conflict: StructuredConflict): string {
+  return [
+    conflict.roleName,
+    conflict.sourceLine === undefined ? undefined : `L${String(conflict.sourceLine)}`,
+  ].filter((part): part is string => part !== undefined).join(' · ');
+}
 
 function StructuredNarrativeCanvas({
   layout,
@@ -708,23 +728,29 @@ function StructuredNarrativeCanvas({
         </g>
         {/* C8：布局冲突标记逐条锚定所属角色列右侧，短标签 + title 全文；列表见画布下方。 */}
         {layout.conflicts.map((conflict, index) => {
-          // 列按水平序列排布，role 列的出现序即角色下标（与 narrativeRoleOrder 对齐）。
-          const anchorColumn = layout.columns.filter((column) => column.kind === 'role')[conflict.roleIndex ?? 0];
+          const number = index + 1;
+          const location = conflictLocationOf(conflict);
+          // 角色列按水平序列排布，顺序与 narrativeRoleOrder 不一定一致（如 NS 修正版），
+          // 因此按角色名锚定，避免标记落在相邻角色列上。
+          const roleColumns = layout.columns.filter((column) => column.kind === 'role');
+          const anchorColumn = roleColumns.find((column) => column.name === conflict.roleName) ?? roleColumns[0];
           const anchorX = anchorColumn === undefined
             ? layout.width - 42
             : anchorColumn.x + anchorColumn.width / 2 + 14;
+          const detail = `冲突 ${number}${location.length > 0 ? ` · ${location}` : ''}：${conflict.message}`;
           return (
             <g
               key={conflict.id}
+              id={`layout-conflict-marker-${String(number)}`}
               className="structured-conflict"
               role="alert"
-              data-conflict-index={index}
-              aria-label={`布局冲突：${conflict.message}`}
-              onClick={() => document.getElementById(`layout-conflict-${String(index)}`)?.scrollIntoView({ block: 'nearest' })}
+              data-conflict-number={number}
+              aria-label={detail}
+              onClick={() => document.getElementById(`layout-conflict-${String(number)}`)?.scrollIntoView({ block: 'nearest' })}
             >
-              <title>{conflict.message}</title>
+              <title>{detail}</title>
               <path d={`M ${anchorX} ${conflict.y - 9} l 9 18 h -18 z`} />
-              <text className="structured-text-halo" x={anchorX + 13} y={conflict.y + 4}>布局冲突</text>
+              <text className="structured-text-halo" x={anchorX + 13} y={conflict.y + 4}>冲突 {number}</text>
             </g>
           );
         })}

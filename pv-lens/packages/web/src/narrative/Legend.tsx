@@ -257,7 +257,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-wire-chip">线上词项</span>
               </dt>
-              <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤下方的自身角色列里</dd>
+              <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤的自身角色列里并压在消息线上；有值层时置于值层下方</dd>
             </div>
           )}
           {present.has('derived-chip') && (
