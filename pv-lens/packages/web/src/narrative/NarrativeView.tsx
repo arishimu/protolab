@@ -1394,6 +1394,10 @@ function StructuredValueBlockSvg({
       : block.occurrence === 'equality'
         ? `等值复制 ${block.label}（值 ${String(block.ordinal)}）`
         : `引用 ${block.label}（值 ${String(block.ordinal)}）`;
+  // ticket 26：字号提升到 11px 后，4–5 字符的标签会与右上角值序号相碰；
+  // 长标签轻微左移，给序号让出角落（3 字符短名保持居中）。最多显示 5 字符。
+  const labelShift = Math.max(0, Math.min(5, block.label.length) - 3) * 3;
+  const labelText = truncate(block.label, 5);
   return (
     <g
       className={`structured-value-block structured-value-block--${block.occurrence}${ghost ? ' structured-value-block--ghost' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
@@ -1420,7 +1424,7 @@ function StructuredValueBlockSvg({
           fill={`url(#value-pattern-${block.pattern})`}
         />
       )}
-      <text x={block.x} y={block.y + 4} textAnchor="middle">{truncate(block.label, 6)}</text>
+      <text x={block.x - labelShift} y={block.y + 4} textAnchor="middle">{labelText}</text>
       {/* 值身份序号（09 / spec 65 / B4）：嵌入方块右上角，任何后续元素都不会单独覆盖。 */}
       <text className="structured-value-ordinal structured-text-halo" x={block.x + block.width / 2 - 3} y={block.y - block.height / 2 + 7} textAnchor="end">{String(block.ordinal)}</text>
     </g>

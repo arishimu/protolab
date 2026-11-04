@@ -1171,6 +1171,11 @@ body {
   background: #fbfdff;
 }
 
+/* ticket 26：对应性面板的说明文字占满可用宽度；全局 .hint 的 70ch 限宽仍用于正文区。 */
+.correspondence .hint {
+  max-width: none;
+}
+
 .correspondence-summary {
   cursor: pointer;
   font-weight: 650;

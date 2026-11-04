@@ -503,7 +503,29 @@ export function buildStructuredNarrativeLayout(
       - METRICS.columnWidth / 2 - baseMargin)
     : 0;
   const margin = baseMargin + leftEventMargin;
-  const columnX = (index: number): number => margin + index * (METRICS.columnWidth + METRICS.columnGap);
+  // ticket 26：信道列按该信道最长消息帧加宽。帧宽上限 132；信道矩形左右各内缩 6px，
+  // 再给帧两侧各留 2px 余量，故列宽 = max(72, 最长帧宽 + 16)。只有有效配对会产生帧，
+  // 未配对消息不参与加宽，避免多信道样例被无帧词项整体撑宽。
+  const endpointInfoByRef = new Map<string, { channel: string; term: string }>();
+  roles.forEach((role, roleIndex) => {
+    role.items.forEach((item) => {
+      if (item.kind !== 'message') return;
+      endpointInfoByRef.set(refOf(roleIndex, item.endpoint.stepIndex), {
+        channel: renderTerm(item.endpoint.channel),
+        term: renderTerm(item.endpoint.term),
+      });
+    });
+  });
+  const frameWidthByChannel = new Map<string, number>();
+  (options.pairings ?? []).forEach((pairing) => {
+    const out = endpointInfoByRef.get(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex));
+    const incoming = endpointInfoByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
+    if (out === undefined || incoming === undefined || out.channel !== incoming.channel) return;
+    frameWidthByChannel.set(
+      out.channel,
+      Math.max(frameWidthByChannel.get(out.channel) ?? 0, messageFrameWidthOf(out.term)),
+    );
+  });
   // R09：信道序号字形与线型按水平序列中从左到右的位置生成，与图例描述一致。
   const channelOrderByName = new Map<string, number>();
   for (const node of horizontal.nodes) {
@@ -511,15 +533,19 @@ export function buildStructuredNarrativeLayout(
       channelOrderByName.set(node.name, channelOrderByName.size);
     }
   }
-  const columns: StructuredColumn[] = horizontal.nodes.map((node, index) => {
+  let columnCursorX = margin;
+  const columns: StructuredColumn[] = horizontal.nodes.map((node) => {
     const role = node.kind === 'role' ? roleByName.get(node.name) : undefined;
     const channelOrder = node.kind === 'channel' ? channelOrderByName.get(node.name) : undefined;
-    return {
+    const width = node.kind === 'channel'
+      ? Math.max(METRICS.channelWidth, (frameWidthByChannel.get(node.name) ?? 0) + 16)
+      : METRICS.columnWidth;
+    const column: StructuredColumn = {
       kind: node.kind,
       name: node.name,
       index: node.index,
-      x: columnX(index),
-      width: node.kind === 'channel' ? METRICS.channelWidth : METRICS.columnWidth,
+      x: columnCursorX,
+      width,
       ...(channelOrder === undefined ? {} : { channelOrder }),
       ...(role === undefined ? {} : {
         signatureText: signatureOf(role),
@@ -528,6 +554,8 @@ export function buildStructuredNarrativeLayout(
         ...(role.parameters.length === 0 ? {} : { parameterLabelY: METRICS.headerHeight + METRICS.parameterLabelGap }),
       }),
     };
+    columnCursorX += width + METRICS.columnGap;
+    return column;
   });
   const roleColumns = new Map(roles.map((role) => [role.name, columns.find((column) => column.kind === 'role' && column.name === role.name)]));
   const channelColumns = new Map(columns.filter((column) => column.kind === 'channel').map((column) => [column.name, column]));
