@@ -734,9 +734,17 @@ function StructuredNarrativeCanvas({
           // 因此按角色名锚定，避免标记落在相邻角色列上。
           const roleColumns = layout.columns.filter((column) => column.kind === 'role');
           const anchorColumn = roleColumns.find((column) => column.name === conflict.roleName) ?? roleColumns[0];
+          // 标记放在角色列与相邻列之间的空隙，避开列心的值方块（宽 50）与线上芯片；
+          // 非末列向右放，末列向左放，文字沿空隙延伸，不压住任何列内对象。
+          const columnIndex = anchorColumn === undefined ? -1 : layout.columns.indexOf(anchorColumn);
+          const placeRight = anchorColumn === undefined || columnIndex < layout.columns.length - 1;
           const anchorX = anchorColumn === undefined
             ? layout.width - 42
-            : anchorColumn.x + anchorColumn.width / 2 + 14;
+            : placeRight
+              ? anchorColumn.x + anchorColumn.width - 9
+              : anchorColumn.x + 9;
+          const textX = placeRight ? anchorX + 11 : anchorX - 6;
+          const textAnchor = placeRight ? 'start' : 'end';
           const detail = `冲突 ${number}${location.length > 0 ? ` · ${location}` : ''}：${conflict.message}`;
           return (
             <g
@@ -750,7 +758,7 @@ function StructuredNarrativeCanvas({
             >
               <title>{detail}</title>
               <path d={`M ${anchorX} ${conflict.y - 9} l 9 18 h -18 z`} />
-              <text className="structured-text-halo" x={anchorX + 13} y={conflict.y + 4}>冲突 {number}</text>
+              <text className="structured-text-halo" x={textX} y={conflict.y + 4} textAnchor={textAnchor}>冲突 {number}</text>
             </g>
           );
         })}
