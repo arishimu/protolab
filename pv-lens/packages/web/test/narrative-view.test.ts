@@ -57,13 +57,13 @@ describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {
   it('两方协议经意图配对后画出跨泳道连线、端点去掉未配对标注', () => {
     const html = renderWithPairings(fixture('handshake-fixed'));
     expect(html).toContain('narrative-edge');
-    expect(html).toContain('2 条泳道，3 条跨泳道连线');
+    expect(html).toContain('2 条角色列，3 条跨角色列连线');
   });
 
   it('多方协议（ns-mutual-auth）不自动连线，保持全部未配对', () => {
     const html = renderWithPairings(fixture('ns-mutual-auth'));
     expect(html).not.toContain('narrative-edge"');
-    expect(html).toContain('0 条跨泳道连线');
+    expect(html).toContain('0 条跨角色列连线');
   });
 
   it('图例解释记法且按画布内容过滤（ticket 11）；中文 UI', () => {

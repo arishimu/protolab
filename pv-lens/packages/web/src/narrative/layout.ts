@@ -1,18 +1,18 @@
 /**
  * 规范叙事视图的确定性布局（ticket 04）。
  *
- * 纯函数：`ParseResult` 进 → 泳道 / 步骤卡片 / 诊断卡片 / 跨泳道连线的坐标与文本出。
+ * 纯函数：`ParseResult` 进 → 角色列 / 步骤卡片 / 诊断卡片 / 跨角色列连线的坐标与文本出。
  * 不依赖 DOM（浏览器布局引擎不参与），坐标全部由 `NARRATIVE_METRICS` 的固定常量算出，
  * 同一模型两次调用结果相同，可在 node 下断言。
  *
- * 泳道选择的规则（对齐 core 的 parsePv 契约）：
- * - 有命名进程时，每个命名进程一条泳道（主进程是协议启动处、不是协议参与方，不单独成泳道）；
- * - 没有任何命名进程而有内联主进程时（如 hello），主进程渲染为一条名为 `main` 的泳道；
+ * 角色列选择的规则（对齐 core 的 parsePv 契约）：
+ * - 有命名进程时，每个命名进程一条角色列（主进程是协议启动处、不是协议参与方，不单独成角色列）；
+ * - 没有任何命名进程而有内联主进程时（如 hello），主进程渲染为一条名为 `main` 的角色列；
  * - 两者都没有时 `hasLanes` 为 false，视图据此显示中文提示而非白屏。
  *
  * 未配对与配对接缝（ADR-0003）：默认 `pairings` 为空 ⇒ 每个步骤卡片都标 `未配对`，
  * 布局绝不臆造连线。传入意图配对结果时，其两个端点步骤去掉 `未配对` 标注，
- * 并产出一条跨泳道连线（连线形态由渲染端决定，布局只给端点锚点）。
+ * 并产出一条跨角色列连线（连线形态由渲染端决定，布局只给端点锚点）。
  */
 
 import type {
@@ -29,15 +29,15 @@ import { narrativeRoleOrder, renderTerm } from '@pv-lens/core';
 export const NARRATIVE_METRICS = {
   /** 画布四周留白。 */
   margin: 24,
-  /** 单条泳道宽度。 */
+  /** 单条角色列宽度。 */
   laneWidth: 380,
-  /** 泳道标题区高度。 */
+  /** 角色列标题区高度。 */
   laneHeaderHeight: 44,
-  /** 泳道之间的水平间距（跨泳道连线走这里）。 */
+  /** 角色列之间的水平间距（跨角色列连线走这里）。 */
   laneGap: 48,
-  /** 泳道底部留白。 */
+  /** 角色列底部留白。 */
   lanePaddingBottom: 16,
-  /** 步骤卡片宽度（居中于泳道内）。 */
+  /** 步骤卡片宽度（居中于角色列内）。 */
   cardWidth: 340,
   /** 卡片之间的垂直间距。 */
   cardGap: 12,
@@ -51,9 +51,9 @@ export const NARRATIVE_METRICS = {
   cardPaddingY: 8,
   /** 卡片文本每行最多字符数（按等宽字体 + 卡片宽度定的估计值）。 */
   maxLineChars: 48,
-  /** 泳道之后的「未归属诊断」区标题高度。 */
+  /** 角色列之后的「未归属诊断」区标题高度。 */
   unassignedTitleHeight: 28,
-  /** 泳道区与「未归属诊断」区之间的间距。 */
+  /** 角色列区与「未归属诊断」区之间的间距。 */
   sectionGap: 24,
 } as const;
 
@@ -65,7 +65,7 @@ export interface LayoutTextLine {
 
 /** 一个消息步骤的卡片。 */
 export interface StepCard {
-  /** 所属泳道在 `NarrativeLayout.lanes` 里的下标（配对锚点用它）。 */
+  /** 所属角色列在 `NarrativeLayout.lanes` 里的下标（配对锚点用它）。 */
   roleIndex: number;
   /** 该步骤在 `role.steps` 里的下标（配对锚点用它）。 */
   stepIndex: number;
@@ -131,21 +131,21 @@ export interface DiagnosticCard {
   lines: readonly LayoutTextLine[];
 }
 
-/** 一条泳道。 */
+/** 一条角色列。 */
 export interface NarrativeLane {
   /** 在 `NarrativeLayout.lanes` 里的下标（配对锚点用它；有命名角色时与 `roles` 下标一致）。 */
   roleIndex: number;
   name: string;
-  /** `main` 表示内联主进程伪角色（没有任何命名进程时的兜底泳道）。 */
+  /** `main` 表示内联主进程伪角色（没有任何命名进程时的兜底角色列）。 */
   kind: 'role' | 'main';
   /** 展示用参数签名（如 `(pkS: spkey, skA: skey)`）；无参为空串。 */
   signatureText: string;
   replicated: boolean;
   parallel: boolean;
-  /** 该泳道的消息步骤数。 */
+  /** 该角色列的消息步骤数。 */
   stepCount: number;
   cards: readonly StepCard[];
-  /** 归入该泳道的诊断卡片（span 落在角色 `role.span` 内的诊断）。 */
+  /** 归入该角色列的诊断卡片（span 落在角色 `role.span` 内的诊断）。 */
   diagnosticCards: readonly DiagnosticCard[];
   x: number;
   y: number;
@@ -153,14 +153,14 @@ export interface NarrativeLane {
   height: number;
 }
 
-/** 一条跨泳道连线的端点锚点（卡片边缘中点），连线形态由渲染端决定。
+/** 一条跨角色列连线的端点锚点（卡片边缘中点），连线形态由渲染端决定。
  *  配对端点 `StepPairingAnchor` / `StepPairing` 由 core 的意图配对引擎定义（ADR-0003）。 */
 export interface CrossLaneEdge {
   from: StepPairingAnchor & { x: number; y: number };
   to: StepPairingAnchor & { x: number; y: number };
 }
 
-/** 「未归属诊断」区（落不进任何泳道的诊断）。 */
+/** 「未归属诊断」区（落不进任何角色列的诊断）。 */
 export interface UnassignedSection {
   title: string;
   x: number;
@@ -171,15 +171,15 @@ export interface UnassignedSection {
 /** 布局产物：视图据此自绘 SVG。 */
 export interface NarrativeLayout {
   lanes: readonly NarrativeLane[];
-  /** 落不进任何泳道的诊断（泳道之后的「未归属诊断」区）。 */
+  /** 落不进任何角色列的诊断（角色列之后的「未归属诊断」区）。 */
   unassignedDiagnostics: readonly DiagnosticCard[];
-  /** 有配对的步骤之间的跨泳道连线；默认（无配对）为空。 */
+  /** 有配对的步骤之间的跨角色列连线；默认（无配对）为空。 */
   crossLaneEdges: readonly CrossLaneEdge[];
   /** 「未归属诊断」区；无未归属诊断时为 null。 */
   unassignedSection: UnassignedSection | null;
   width: number;
   height: number;
-  /** 是否有可画的泳道；false 时视图显示「无角色结构」中文提示而非白屏。 */
+  /** 是否有可画的角色列；false 时视图显示「无角色结构」中文提示而非白屏。 */
   hasLanes: boolean;
 }
 
@@ -300,8 +300,8 @@ interface LaneSource {
 }
 
 /**
- * 选出要画成泳道的角色：复用 core 的 `narrativeRoleOrder`（与配对引擎同一份泳道顺序，
- * 从而配对下标不会与泳道下标漂移）。有命名进程就用命名进程，否则退回内联主进程（`main`）。
+ * 选出要画成角色列的角色：复用 core 的 `narrativeRoleOrder`（与配对引擎同一份角色列顺序，
+ * 从而配对下标不会与角色列下标漂移）。有命名进程就用命名进程，否则退回内联主进程（`main`）。
  */
 function selectLaneSources(result: ParseResult): LaneSource[] {
   const kind = result.roles.length > 0 ? 'role' : 'main';
@@ -333,7 +333,7 @@ export function buildNarrativeLayout(
 ): NarrativeLayout {
   const sources = selectLaneSources(result);
 
-  // 第一遍：按源码顺序铺好泳道与卡片，全部按「未配对」起步。
+  // 第一遍：按源码顺序铺好角色列与卡片，全部按「未配对」起步。
   const lanes: NarrativeLane[] = sources.map((source, roleIndex) => {
     const { role, kind } = source;
     const laneX = margin + roleIndex * (laneWidth + laneGap);
@@ -371,7 +371,7 @@ export function buildNarrativeLayout(
       return card;
     });
 
-    // 归入本泳道的诊断（span 落在角色 span 内）：接在步骤卡片下面同列堆叠。
+    // 归入本角色列的诊断（span 落在角色 span 内）：接在步骤卡片下面同列堆叠。
     const diagnosticCards: DiagnosticCard[] = result.diagnostics
       .filter((diagnostic) => diagnosticInRole(diagnostic, role))
       .map((diagnostic) => {
@@ -430,7 +430,7 @@ export function buildNarrativeLayout(
           ),
         }));
 
-  // 落不进任何泳道的诊断 → 「未归属诊断」区（泳道之后）。
+  // 落不进任何角色列的诊断 → 「未归属诊断」区（角色列之后）。
   const laneRoles = sources.map((source) => source.role);
   const unassigned = result.diagnostics.filter(
     (diagnostic) => !laneRoles.some((role) => diagnosticInRole(diagnostic, role)),

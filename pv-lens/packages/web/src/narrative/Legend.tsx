@@ -4,11 +4,13 @@
  * 只显示当前画布实际出现的记法（F1）：条目集合由 `legendContentFor` 纯函数从布局与
  * 解析结果推导，可独立测试；符号化记法部分与 core 的 `NOTATION_LEGEND` 同源。
  * 配对口径与 ADR-0003 一致：连线是设计意图，不是可达性。
+ * C1/C3/P3-F2：方向条目不出现画布中不存在的字形；① 有专门条目；等值复制有虚线样例；
+ * 记号一律用 code 元素，不在文案中写反引号。
  */
 
 import { NOTATION_LEGEND, narrativeRoleOrder } from '@pv-lens/core';
 import type { Condition, ParseResult, PvTerm } from '@pv-lens/core';
-import type { StructuredNarrativeLayout } from './structured-layout';
+import type { StructuredNarrativeLayout, ValuePattern } from './structured-layout';
 
 /** 图例条目键：每种记法一条；符号化记法单列（与 NOTATION_LEGEND 同源）。 */
 export type LegendKey =
@@ -22,6 +24,7 @@ export type LegendKey =
   | 'unpaired'
   | 'message-pillar'
   | 'direction'
+  | 'channel-order'
   | 'scope-flags'
   | 'event'
   | 'branch-lane'
@@ -40,13 +43,28 @@ export interface LegendValueToken {
   ordinal: number;
   label: string;
   color: string;
+  pattern: ValuePattern;
 }
+
+export const VALUE_PATTERN_LABELS: Record<ValuePattern, string> = {
+  none: '空白',
+  slash: '斜线',
+  backslash: '反斜线',
+  dots: '点阵',
+};
+
+/** R07：值身份清单超过该数量时默认折叠为独立面板，标题显示数量；少于时不折叠。 */
+export const LEGEND_VALUE_FOLD_THRESHOLD = 12;
 
 export interface LegendContent {
   keys: readonly LegendKey[];
   notation: readonly { notation: string; functors: readonly string[] }[];
   messages: readonly LegendMessageToken[];
   values: readonly LegendValueToken[];
+  /** 本图是否出现等值复制方块（C3：出现时图例加虚线样例）。 */
+  hasEqualityCopy: boolean;
+  /** 是否单角色模型（C1：未配对说明按角色数分流）。 */
+  singleRole: boolean;
 }
 
 /** 从布局与解析结果推导应显示的图例条目（纯函数，供组件与测试共用）。 */
@@ -64,6 +82,7 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
   if (layout.endpoints.some((endpoint) => endpoint.unpaired)) keys.push('unpaired');
   if (layout.pillars.length > 0) keys.push('message-pillar');
   if (layout.endpoints.length > 0) keys.push('direction');
+  if (layout.columns.some((column) => column.kind === 'channel')) keys.push('channel-order');
   if (layout.columns.some((column) => column.replicated || column.parallel)) keys.push('scope-flags');
   if (layout.nodes.some((node) => node.kind === 'event')) keys.push('event');
   if (layout.nodes.some((node) => node.kind === 'branch')) keys.push('branch-lane');
@@ -74,7 +93,7 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
   const valueByBinding = new Map<string, LegendValueToken>();
   layout.valueBlocks.forEach((block) => {
     if (!valueByBinding.has(block.bindingId)) {
-      valueByBinding.set(block.bindingId, { ordinal: block.ordinal, label: block.label, color: block.color });
+      valueByBinding.set(block.bindingId, { ordinal: block.ordinal, label: block.label, color: block.color, pattern: block.pattern });
     }
   });
   const values = [...valueByBinding.values()].sort((a, b) => a.ordinal - b.ordinal);
@@ -83,6 +102,8 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
     notation: NOTATION_LEGEND.filter((entry) => entry.functors.some((functor) => usage.functors.has(functor))),
     messages,
     values,
+    hasEqualityCopy: layout.valueBlocks.some((block) => block.occurrence === 'equality'),
+    singleRole: narrativeRoleOrder(result).length === 1,
   };
 }
 
@@ -214,15 +235,12 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
                 <span className="legend-value-block">值</span>
               </dt>
               <dd>
-                值方块（含 `new` 与角色参数引入的绑定）：一种颜色对应一个角色本地绑定，同色再现表示同一绑定的引用或等值复制；方块右缘数字是值身份序号，颜色八色轮转超八后靠序号区分
-                <LegendTokenList
-                  ariaLabel="本图值序号"
-                  tokens={content.values.map((token) => ({
-                    key: `v-${String(token.ordinal)}`,
-                    text: `${String(token.ordinal)} ${token.label}`,
-                    color: token.color,
-                  }))}
-                />
+                值方块（含 <code>new</code> 与角色参数引入的绑定）：颜色由绑定身份稳定生成，一个绑定一种颜色，同色再现表示同一绑定的引用或等值复制；方块右缘数字是值身份序号，左缘图案按序号循环（空白、斜线、反斜线、点阵），作为权威标识；完整清单见下方“本图值序号”
+                {content.hasEqualityCopy && (
+                  <>
+                    ；<span className="legend-value-block legend-value-block--dashed">虚线边框</span>表示等值复制 <code>=M</code>，与实线方块共享同一颜色，表示同一绑定的另一次出现
+                  </>
+                )}
               </dd>
             </div>
           )}
@@ -231,7 +249,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-method-box">方法</span>
               </dt>
-              <dd>方法盒：竖向梯形表示解构、横向表示构造、`?:` 表示产出单个值的条件选择；输入取自上方同色值方块，输出为下方值块；`=` / `∈` 检查盒无输出</dd>
+              <dd>方法盒：竖向梯形表示解构、横向表示构造、<code>?:</code> 表示产出单个值的条件选择；输入取自上方同色值方块，输出为下方值块；<code>=</code> / <code>∈</code> 检查盒无输出</dd>
             </div>
           )}
           {present.has('wire-chip') && (
@@ -239,7 +257,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-wire-chip">线上词项</span>
               </dt>
-              <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤下方的自身泳道里</dd>
+              <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤下方的自身角色列里</dd>
             </div>
           )}
           {present.has('derived-chip') && (
@@ -255,7 +273,11 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-unpaired-dot" aria-hidden="true" /> 未配对
               </dt>
-              <dd>虚线为该步骤的消息线：一端在角色生命线，另一端的橙色空心圆点标记词项抵达的信道总线。多方协议不自动连线（画对优先于画全）</dd>
+              <dd>
+                {content.singleRole
+                  ? '单角色模型没有跨角色收发关系，消息步骤按未配对呈现；未配对不代表路由不存在。'
+                  : '虚线为该步骤的消息线：一端在角色生命线，另一端的橙色空心圆点标记词项抵达的信道总线。多方协议不自动连线（画对优先于画全）；自动配对仅适用于两方协议。'}
+              </dd>
             </div>
           )}
           {present.has('message-pillar') && (
@@ -264,7 +286,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
                 <span className="legend-message-pillar">M1</span>
               </dt>
               <dd>
-                消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准
+                消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。消息线型按 M 序号循环：实线、短虚线、点线；序号为权威标识。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准
                 <LegendTokenList
                   ariaLabel="本图消息序号"
                   tokens={content.messages.map((token) => ({
@@ -278,10 +300,16 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
           )}
           {present.has('direction') && (
             <div className="legend-item">
+              <dt>箭头方向</dt>
+              <dd>箭头指向抵达目标：发送段指向信道，接收段指向接收端；未配对端以空心圆点标记，表示路由未确定</dd>
+            </div>
+          )}
+          {present.has('channel-order') && (
+            <div className="legend-item">
               <dt>
-                <code>→ 发出</code> / <code>← 接收</code>
+                <code>①</code> 信道序号
               </dt>
-              <dd>消息步骤的方向与所在信道；配对消息的发送端画实心起点圆点、不画箭头</dd>
+              <dd>信道列标题中的 ① 等序号字形按水平序列从左到右编号，用于在多信道模型中指认信道；超过五个信道时以 (n) 形式显示；信道边框线型按同一位置循环（实线、长虚线、点线），灰度下可按线型区分</dd>
             </div>
           )}
           {present.has('scope-flags') && (
@@ -289,7 +317,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-chip">!</span> / <span className="legend-chip">|</span>
               </dt>
-              <dd>`!` 表示该角色处于复制作用域（可并发多会话），`|` 表示处于并行组合内</dd>
+              <dd><code>!</code> 表示该角色处于复制作用域（可并发多会话），<code>|</code> 表示处于并行组合内</dd>
             </div>
           )}
           {present.has('event') && (
@@ -297,7 +325,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <code>event …</code>
               </dt>
-              <dd>事件标注（对应性查询引用的协议位置）</dd>
+              <dd>事件标注（对应性查询引用的协议位置）：默认中性标记；选中查询后该查询的前提画菱形、结论画旗标</dd>
             </div>
           )}
           {present.has('branch-lane') && (
@@ -305,7 +333,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <span className="legend-branch-tick">if …</span>
               </dt>
-              <dd>分支：守卫排成等值检查行；生命线旁的虚线竖轨是臂道（then / else），`▾` 开关折叠整个分支、折叠条显示守卫与隐藏步数</dd>
+              <dd>分支：守卫排成等值检查行；生命线旁的虚线竖轨是臂道（then / else），<code>▾</code> 开关折叠整个分支、折叠条显示守卫与隐藏步数</dd>
             </div>
           )}
           {present.has('local-ops') && (
@@ -313,7 +341,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               <dt>
                 <code>let / get / insert</code>
               </dt>
-              <dd>`let` 显示为方法盒（输入在上、输出在下）；`get` 按表模式检查；`insert` 是生命线上的本地步骤</dd>
+              <dd><code>let</code> 显示为方法盒（输入在上、输出在下）；<code>get</code> 以表模式 <code>∈</code> 检查盒呈现；<code>insert</code> 是生命线上的本地步骤</dd>
             </div>
           )}
           {present.has('diagnostics') && (
@@ -322,10 +350,24 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
                 <span className="legend-chip legend-chip--degraded">降级诊断</span>{' '}
                 <span className="legend-chip legend-chip--error">错误诊断</span>
               </dt>
-              <dd>解析器的降级/错误诊断以原文标注卡片入图，按源码位置归入泳道</dd>
+              <dd>解析器的降级/错误诊断以原文标注卡片入图，按源码位置归入角色列；降级语句本身以虚线琥珀边框胶囊按原文保留，与 insert 的浅黄实线胶囊可区分</dd>
             </div>
           )}
         </dl>
+      )}
+      {/* R07：值身份清单移出记法网格，作为独立折叠面板跨满全宽；超过阈值默认折叠，标题显示数量。 */}
+      {content.values.length > 0 && (
+        <details className="legend-value-fold" open={content.values.length <= LEGEND_VALUE_FOLD_THRESHOLD}>
+          <summary>本图值序号（{String(content.values.length)}）</summary>
+          <LegendTokenList
+            ariaLabel="本图值序号"
+            tokens={content.values.map((token) => ({
+              key: `v-${String(token.ordinal)}`,
+              text: `${String(token.ordinal)} ${token.label} · ${VALUE_PATTERN_LABELS[token.pattern]}`,
+              color: token.color,
+            }))}
+          />
+        </details>
       )}
     </div>
   );

@@ -11,7 +11,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { CorrespondencePlan, VerificationResult } from '@pv-lens/core';
 import { buildCorrespondenceMatrix } from '@pv-lens/core';
 import type { CorrespondenceCell, EventReference } from '@pv-lens/core';
-import { requestVerification } from './verify';
+import { requestVerification, describeVerifyFailureKind } from './verify';
 import type { VerifyFailure } from './verify';
 import { VERDICT_META } from './query-presentation';
 
@@ -47,6 +47,7 @@ export function CorrespondencePanel({
   onSelectQuery,
 }: CorrespondencePanelProps) {
   const [state, setState] = useState<RunState>({ status: 'idle' });
+  const [declaredOnly, setDeclaredOnly] = useState(false);
   const cacheRef = useRef(new Map<string, CacheEntry>());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -54,6 +55,16 @@ export function CorrespondencePanel({
     () => (state.status === 'done' && state.ok ? buildCorrespondenceMatrix(plan, state.results) : buildCorrespondenceMatrix(plan)),
     [plan, state],
   );
+  const declaredQueries = useMemo(
+    () => plan.queries.filter((query) => query.declared === true),
+    [plan.queries],
+  );
+  const declaredEventIds = useMemo(
+    () => new Set(declaredQueries.flatMap((query) => [query.from.id, query.to.id])),
+    [declaredQueries],
+  );
+  const visibleEvents = declaredOnly ? plan.events.filter((event) => declaredEventIds.has(event.id)) : plan.events;
+  const visibleCells = declaredOnly ? cells.filter((cell) => cell.query.declared === true) : cells;
   const selectedCell = useMemo(
     () => cells.find((cell) => cell.query.id === selectedQueryId) ?? null,
     [cells, selectedQueryId],
@@ -92,14 +103,22 @@ export function CorrespondencePanel({
   return (
     <section className="correspondence" aria-label="事件对应性矩阵">
       <details open>
-        <summary className="correspondence-summary">事件对应性矩阵（inj-event，{plan.events.length} 个事件 × {plan.queries.length} 条有序对）</summary>
+        <summary className="correspondence-summary">
+          事件对应性矩阵（{plan.events.length} 个事件，生成 {plan.queries.length} 条有序对；其中 {declaredQueries.length} 条为源码声明的安全目标）
+        </summary>
         {plan.events.length === 0 ? (
           <p className="hint">当前模型没有 event 标记，无法生成对应性查询。</p>
         ) : (
           <>
             <p className="hint">
-              为全部有序事件对预生成 `inj-event` 查询并插入验证文本的 `process` 之前（原始 `.pv` 不变）；
-              单元三态独立呈现，反例可展开 trace。点击矩阵单元或生命线上的事件旗标互相定位。
+              为探索性有序对预生成 <code>inj-event</code> 探针；源码声明的目标按原查询语义运行
+              （非单射 <code>event</code> 声明仍按 <code>event</code> 判定）。
+              查询插入验证文本的 <code>process</code> 之前，原始 <code>.pv</code> 不变。
+              声明目标来自源码中的 query 语句；其余为工具生成的探索性有序对，其 ✗ 不构成协议攻击。
+              点击矩阵单元或生命线上的事件旗标互相定位。
+            </p>
+            <p className="hint correspondence-legend">
+              · 未运行；↺ 自反对；✓ 成立；✗ 被证伪；? 未证出；蓝框 = 源码声明目标。自反对即 <code>inj-event(A) ==&gt; inj-event(A)</code>。
             </p>
             <div className="correspondence-controls">
               <button type="button" className="btn btn--primary" onClick={() => void run()} disabled={running}>
@@ -108,19 +127,52 @@ export function CorrespondencePanel({
               {running && (
                 <button type="button" className="btn" onClick={cancel}>取消</button>
               )}
+              <label className="correspondence-filter">
+                <input
+                  type="checkbox"
+                  checked={declaredOnly}
+                  onChange={(event) => setDeclaredOnly(event.target.checked)}
+                />
+                仅显示源码声明的安全目标
+              </label>
+              {selectedEventId !== null && (() => {
+                const event = plan.events.find((candidate) => candidate.id === selectedEventId);
+                if (event === undefined) return null;
+                return (
+                  <button
+                    type="button"
+                    className="btn correspondence-reflexive-btn"
+                    onClick={() => onSelectQuery(`${event.id}=>${event.id}`)}
+                    title="查询 inj-event(A) ==> inj-event(A)（与双击事件旗标同效）"
+                  >
+                    查询 {event.name} 的自反对应性
+                  </button>
+                );
+              })()}
             </div>
             {running && <p className="verify-progress" role="status">正在运行 ProVerif（n² 条查询一次跑）…</p>}
             {state.status === 'done' && !state.ok && (
-              <p className="verify-error" role="alert">验证未能完成（{state.outcome.kind}）；对应性矩阵保持未验证状态。</p>
+              <p className="verify-error" role="alert">
+                验证未能完成：{describeVerifyFailureKind(state.outcome.kind)}；对应性矩阵保持未验证状态，详情见验证结果面板。
+              </p>
             )}
-            <CorrespondenceMatrixTable
-              events={plan.events}
-              cells={cells}
+            {declaredOnly ? (
+              <DeclaredQueryList
+                cells={cells}
+                declaredQueries={declaredQueries}
+                selectedQueryId={selectedQueryId}
+                onSelectQuery={onSelectQuery}
+              />
+            ) : (
+              <CorrespondenceMatrixTable
+              events={visibleEvents}
+              cells={visibleCells}
               selectedEventId={selectedEventId}
               selectedQueryId={selectedQueryId}
               onSelectEvent={onSelectEvent}
               onSelectQuery={onSelectQuery}
             />
+            )}
             {selectedCell !== null && <CorrespondenceCellDetail cell={selectedCell} />}
             {state.status === 'done' && state.ok && (
               <details className="raw-output">
@@ -132,6 +184,47 @@ export function CorrespondencePanel({
         )}
       </details>
     </section>
+  );
+}
+
+/** R13：声明过滤视图——源码声明目标的列表（判定符号 + 查询原文 + 点击联动选中），不再保留清空的 n×n 网格。 */
+function DeclaredQueryList({
+  cells,
+  declaredQueries,
+  selectedQueryId,
+  onSelectQuery,
+}: {
+  cells: readonly CorrespondenceCell[];
+  declaredQueries: readonly CorrespondencePlan['queries'][number][];
+  selectedQueryId: string | null;
+  onSelectQuery: (queryId: string | null) => void;
+}) {
+  if (declaredQueries.length === 0) {
+    return <p className="hint">当前模型没有源码声明的安全目标（query 语句）。</p>;
+  }
+  return (
+    <ol className="declared-query-list" aria-label="源码声明的安全目标">
+      {declaredQueries.map((query, index) => {
+        const cell = cells.find((candidate) => candidate.query.id === query.id);
+        const verdict = cell?.verdict ?? 'pending';
+        const meta = metaFor(verdict);
+        return (
+          <li key={query.id}>
+            <button
+              type="button"
+              className={`declared-query-item${query.id === selectedQueryId ? ' declared-query-item--selected' : ''}`}
+              onClick={() => onSelectQuery(query.id)}
+              aria-label={`声明目标 ${String(index + 1)}：${query.declaredText ?? query.text}，${meta === null ? '未验证' : meta.label}`}
+            >
+              <span className={`verdict-badge verdict-badge--${meta === null ? 'unknown' : meta.tone}`}>
+                {verdict === 'pending' ? '未运行' : meta?.label ?? '?'}
+              </span>
+              <code className="declared-query-text">{query.declaredText ?? query.text}</code>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -154,8 +247,30 @@ function CorrespondenceMatrixTable({
     cells.find((cell) => cell.query.from.id === fromId && cell.query.to.id === toId);
   // 选中单元的行/列两端事件都高亮（旗标 ↔ 矩阵双向联动的列侧）。
   const selectedQuery = selectedQueryId === null ? null : cells.find((cell) => cell.query.id === selectedQueryId)?.query ?? null;
-  const highlightEvent = (eventId: string): boolean =>
-    eventId === selectedEventId || selectedQuery?.from.id === eventId || selectedQuery?.to.id === eventId;
+  // D5 强弱两级：选中单元所在行/列为强（前提行 + 结论列），另一端的正交方向为弱（related）。
+  type HeadLevel = 'strong' | 'related' | null;
+  const headLevelOf = (eventId: string, axis: 'row' | 'col'): HeadLevel => {
+    if (eventId === selectedEventId) return 'strong';
+    if (selectedQuery === null) return null;
+    if (axis === 'row') {
+      if (selectedQuery.from.id === eventId) return 'strong';
+      if (selectedQuery.to.id === eventId) return 'related';
+      return null;
+    }
+    if (selectedQuery.to.id === eventId) return 'strong';
+    if (selectedQuery.from.id === eventId) return 'related';
+    return null;
+  };
+  const headClassOf = (level: HeadLevel): string =>
+    level === 'strong'
+      ? 'correspondence-head correspondence-head--selected'
+      : level === 'related'
+        ? 'correspondence-head correspondence-head--related'
+        : 'correspondence-head';
+  const rowClassOf = (eventId: string): string | undefined => {
+    const level = headLevelOf(eventId, 'row');
+    return level === null ? undefined : `correspondence-row--${level === 'strong' ? 'selected' : 'related'}`;
+  };
   return (
     <div className="correspondence-matrix-wrap">
       <table className="correspondence-matrix" aria-label="事件对应性矩阵">
@@ -166,7 +281,7 @@ function CorrespondenceMatrixTable({
               <th
                 key={to.id}
                 scope="col"
-                className={highlightEvent(to.id) ? 'correspondence-head correspondence-head--selected' : 'correspondence-head'}
+                className={headClassOf(headLevelOf(to.id, 'col'))}
               >
                 <button type="button" className="correspondence-head-btn" onClick={() => onSelectEvent(to.id)} title={to.text}>
                   {to.name}
@@ -177,8 +292,8 @@ function CorrespondenceMatrixTable({
         </thead>
         <tbody>
           {events.map((from) => (
-            <tr key={from.id} className={highlightEvent(from.id) ? 'correspondence-row--selected' : undefined}>
-              <th scope="row" className={highlightEvent(from.id) ? 'correspondence-head correspondence-head--selected' : 'correspondence-head'}>
+            <tr key={from.id} className={rowClassOf(from.id)}>
+              <th scope="row" className={headClassOf(headLevelOf(from.id, 'row'))}>
                 <button type="button" className="correspondence-head-btn" onClick={() => onSelectEvent(from.id)} title={from.text}>
                   {from.name}
                 </button>
@@ -188,15 +303,17 @@ function CorrespondenceMatrixTable({
                 if (cell === undefined) return <td key={to.id} />;
                 const meta = metaFor(cell.verdict);
                 const reflexive = from.id === to.id;
+                const declared = cell.query.declared === true;
                 return (
                   <td key={to.id}>
                     <button
                       type="button"
-                      className={`correspondence-cell correspondence-cell--${cell.verdict}${cell.query.id === selectedQueryId ? ' correspondence-cell--selected' : ''}`}
-                      aria-label={`${from.text} ==> ${to.text}${reflexive ? '（自反）' : ''}：${meta === null ? '未验证' : meta.label}`}
+                      className={`correspondence-cell correspondence-cell--${cell.verdict}${declared ? ' correspondence-cell--declared' : ' correspondence-cell--exploratory'}${cell.query.id === selectedQueryId ? ' correspondence-cell--selected' : ''}`}
+                      data-declared={declared ? 'true' : 'false'}
+                      aria-label={`${from.text} ==> ${to.text}${reflexive ? '（自反）' : ''}：${meta === null ? '未验证' : meta.label}；${declared ? '源码声明的安全目标' : '探索性有序对'}`}
                       onClick={() => {
+                        // D5：单元点击只设置选中查询，不再设置事件——避免 4 个表头同强高亮。
                         onSelectQuery(cell.query.id);
-                        onSelectEvent(from.id);
                       }}
                     >
                       {cell.verdict === 'pending' ? '·' : cell.verdict === 'true' ? '✓' : cell.verdict === 'false' ? '✗' : '?'}
@@ -217,18 +334,34 @@ function CorrespondenceMatrixTable({
 const metaFor = (verdict: CorrespondenceCell['verdict']) =>
   verdict === 'pending' ? null : VERDICT_META[verdict];
 
-function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell }) {
+export function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell }) {
   const meta = metaFor(cell.verdict);
+  const declared = cell.query.declared === true;
   return (
     <div className="correspondence-detail" aria-label="对应性单元详情">
+      <p className="correspondence-detail-kind">
+        {declared ? '源码声明的安全目标' : '探索性有序对'}
+        {declared && cell.query.declaredText !== undefined && (
+          <span className="correspondence-detail-source"> · {cell.query.declaredText}</span>
+        )}
+      </p>
       <p className="correspondence-detail-query"><code>query {cell.query.text}.</code></p>
+      {declared && cell.query.declaredInjective === false && (
+        <p className="hint correspondence-detail-semantics">
+          本格按源码声明的非单射 <code>event</code> 查询判定；单射 <code>inj-event</code> 探针不属于本格结论。
+        </p>
+      )}
       <p>
         <span className={`verdict-badge verdict-badge--${meta === null ? 'unknown' : meta.tone}`}>
           {meta === null ? '未验证' : meta.label}
         </span>
       </p>
       <p className="correspondence-detail-explanation">
-        {meta === null ? '尚未运行对应性查询。' : meta.explanation}
+        {cell.verdict === 'pending'
+          ? '尚未运行对应性查询。'
+          : declared
+            ? declaredExplanation(cell)
+            : exploratoryExplanation(cell)}
       </p>
       {cell.result?.counterexampleTrace != null && (
         <details className="counterexample">
@@ -238,4 +371,18 @@ function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell }) {
       )}
     </div>
   );
+}
+
+function declaredExplanation(cell: CorrespondenceCell): string {
+  if (cell.verdict === 'true') return '源码声明的安全目标成立：ProVerif 未找到反例。';
+  if (cell.verdict === 'false') return '源码声明的安全目标不成立，已被证伪；攻击路径见下方的反例 trace。';
+  return '源码声明的安全目标未被证明，也未被证伪；未证出不等于性质为假。';
+}
+
+function exploratoryExplanation(cell: CorrespondenceCell): string {
+  if (cell.verdict === 'true') return '该有序对成立。它是工具生成的探索性结果，不是源码声明的安全目标。';
+  if (cell.verdict === 'false') {
+    return '该有序对不成立。它由工具枚举，不是源码声明的安全目标；✗ 不构成协议攻击。';
+  }
+  return '该探索性有序对未被证明，也未被证伪。';
 }

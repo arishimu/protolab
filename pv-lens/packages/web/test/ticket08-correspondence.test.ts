@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildCorrespondenceMatrix, createCorrespondencePlan, deriveEventRoles, getSampleSource, parsePv } from '@pv-lens/core';
 import type { VerificationResult } from '@pv-lens/core';
 import { CorrespondencePanel } from '../src/CorrespondencePanel';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 import type { EventCorrespondenceBinding } from '../src/narrative/NarrativeView';
+
+const webDir = fileURLToPath(new URL('..', import.meta.url));
 
 describe('ticket #08：事件标记与批量对应性查询（web）', () => {
   it('矩阵常驻可折叠：handshake-fixed 4 事件 16 有序对，初始全部未验证、自反单元可辨识', () => {
@@ -20,7 +25,7 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     }));
     // React 数字插值会产生 <!-- --> 分隔，先剥离再比对文本。
     const plain = html.replace(/<!-- -->/g, '');
-    expect(plain).toContain('4 个事件 × 16 条有序对');
+    expect(plain).toContain('4 个事件，生成 16 条有序对；其中 2 条为源码声明的安全目标');
     expect(plain).toContain('<details open');
     // 初始未运行：16 个单元全部 pending。
     expect((html.match(/correspondence-cell--pending/g) ?? []).length).toBe(16);
@@ -66,7 +71,8 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     expect((html.match(/structured-event--premise/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect((html.match(/structured-event--conclusion/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect((html.match(/structured-event--clickable/g) ?? []).length).toBeGreaterThanOrEqual(4);
-    expect(html).toContain('单击选中行列，双击查自反对应性');
+    // D4：单击两次 = 自反查询（与双击同效），title 文案随之更新。
+    expect(html).toContain('单击选中行列，再次单击查询自反对应性；双击同效');
   });
 
   it('无事件样例给出提示而不是空矩阵', () => {
@@ -81,5 +87,41 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     }));
     expect(html).toContain('没有 event 标记');
     expect(html).not.toContain('correspondence-matrix"');
+  });
+});
+
+describe('ticket #08：R13 矩阵尺寸、声明框图例与过滤视图', () => {
+  it('图例说明蓝框 = 源码声明目标', () => {
+    const source = getSampleSource('handshake-fixed') ?? '';
+    const plan = createCorrespondencePlan(source, parsePv(source));
+    const html = renderToString(createElement(CorrespondencePanel, {
+      plan,
+      selectedEventId: null,
+      onSelectEvent: () => {},
+      selectedQueryId: null,
+      onSelectQuery: () => {},
+    }));
+    expect(html).toContain('蓝框 = 源码声明目标');
+  });
+
+  it('声明过滤改渲染声明目标列表，不再保留清空的 n×n 网格', () => {
+    const panel = readFileSync(join(webDir, 'src', 'CorrespondencePanel.tsx'), 'utf8');
+    expect(panel).toMatch(/\{declaredOnly \? \(\s*<DeclaredQueryList/);
+    expect(panel).toContain('declared-query-list');
+    const styles = readFileSync(join(webDir, 'src', 'styles.css'), 'utf8');
+    expect(styles).toMatch(/\.declared-query-list\s*\{/);
+    expect(styles).toMatch(/\.declared-query-item\s*\{/);
+  });
+
+  it('矩阵占满面板宽度并限宽，宽屏下单元格增大', () => {
+    const styles = readFileSync(join(webDir, 'src', 'styles.css'), 'utf8');
+    expect(styles).toMatch(/\.correspondence-matrix\s*\{[^}]*width:\s*100%[^}]*max-width:\s*760px/s);
+    expect(styles).toMatch(/@media \(min-width:\s*1280px\)\s*\{[\s\S]*?\.correspondence-cell\s*\{[^}]*width:\s*40px[^}]*height:\s*32px/s);
+  });
+
+  it('失败状态行不再外露 kind 枚举（R10 口径同步覆盖本面板）', () => {
+    const panel = readFileSync(join(webDir, 'src', 'CorrespondencePanel.tsx'), 'utf8');
+    expect(panel).not.toMatch(/\{state\.outcome\.kind\}/);
+    expect(panel).toContain('describeVerifyFailureKind(state.outcome.kind)');
   });
 });

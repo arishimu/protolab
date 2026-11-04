@@ -155,7 +155,8 @@ describe('ticket #11：使用关卡视觉修复', () => {
       for (const subset of subsets) {
         const layout = buildStructuredNarrativeLayout(result, { pairings, collapsedBranches: subset });
         for (const fold of layout.branchFolds) {
-          expect(fold.width).toBeLessThanOrEqual(154 - 8 + 0.01);
+          // C9：列宽提高到 168，折叠条上限随之（原 154-8 为旧列宽口径）。
+          expect(fold.width).toBeLessThanOrEqual(168 - 8 + 0.01);
           const foldRect = rectOf(fold.x, fold.y, fold.width, fold.height);
           const elements = [
             ...layout.valueBlocks.map((block) => rectOf(block.x, block.y, block.width, block.height)),
@@ -206,7 +207,8 @@ describe('ticket #11：使用关卡视觉修复', () => {
   it('F1/F9 图例按画布内容过滤：hello 只剩三条，多协议样例含方法盒与惯用记法', () => {
     const hello = fixture('hello.pv');
     const helloContent = legendContentFor(buildStructuredNarrativeLayout(hello), hello);
-    expect(new Set(helloContent.keys)).toEqual(new Set(['unpaired', 'wire-chip', 'direction']));
+    // C1：信道列出现时图例新增「信道序号」条目。
+    expect(new Set(helloContent.keys)).toEqual(new Set(['unpaired', 'wire-chip', 'direction', 'channel-order']));
     expect(helloContent.notation).toHaveLength(0);
 
     const ns = fixture('ns-mutual-auth.pv');

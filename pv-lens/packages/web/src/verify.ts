@@ -115,9 +115,9 @@ export async function requestVerification(
   try {
     payload = JSON.parse(text) as unknown;
   } catch {
-    return badResponseFailure(status, text, 'body 不是合法 JSON');
+    return badResponseFailure(status, text, 'body 不是合法 JSON', true);
   }
-  if (!isRecord(payload)) return badResponseFailure(status, text, 'body JSON 不是对象');
+  if (!isRecord(payload)) return badResponseFailure(status, text, 'body JSON 不是对象', true);
 
   if (status >= 200 && status < 300) {
     const success = readSuccess(payload);
@@ -183,41 +183,45 @@ export function describeVerifyFailureKind(kind: VerifyFailureKind): string {
   return FAILURE_KIND_LABEL[kind];
 }
 
+/** R10：只取面向用户的指引句（不含服务端 message 拼接）；机器细节走「技术细节」折叠。 */
+export function verifyFailureGuidance(kind: VerifyFailureKind): string {
+  return FAILURE_GUIDANCE[kind];
+}
+
 const FAILURE_GUIDANCE: Record<VerifyFailureKind, string> = {
   'invalid-request':
     '请求未通过服务端校验：常见原因是模型文本为空，或超时不是正数（毫秒）。修正后重新运行。',
   'not-found':
-    '验证接口路径不存在（HTTP 404）：前端请求的 `/api/verify` 与当前 server 的版本不一致。'
-    + '请更新代码后重启 server（仓库根目录 `pnpm start`），并确认 web 的 `/api` 代理指向 127.0.0.1:8787。',
+    '验证接口路径不存在（HTTP 404）：前端请求的 /api/verify 与当前 server 的版本不一致。'
+    + '请更新代码后在 pv-lens 目录执行 pnpm start 重启 server，并确认 web 的 /api 代理指向 127.0.0.1:8787。',
   'method-not-allowed':
-    '验证接口拒绝了该 HTTP 方法（HTTP 405）：`POST /api/verify` 只接受 POST。'
-    + '若持续出现，说明代理或 server 版本与前端不一致，重启 server（`pnpm start`）后重试。',
+    '验证接口拒绝了该 HTTP 方法（HTTP 405）：POST /api/verify 只接受 POST。'
+    + '若持续出现，说明代理或 server 版本与前端不一致，在 pv-lens 目录执行 pnpm start 重启 server 后重试。',
   'missing-executable':
-    '本机找不到 ProVerif 可执行文件。'
-    + '安装：先装 OPAM（https://opam.ocaml.org/），再 `opam update` → `opam depext proverif` → `opam install proverif`；'
-    + '若 `proverif` 不在当前 PATH 上，先在 shell 里 `eval "$(opam env)"`。'
-    + '指定路径：启动 server 时用环境变量 `PROVERIF_PATH` 指向可执行文件，'
-    + '例如 `PROVERIF_PATH=~/.opam/default/bin/proverif pnpm start`。'
-    + '不随应用打包 ProVerif 是本项目的既定决策（ADR-0002），MVP 假设运行机器已自行安装 ProVerif 2.x。',
+    '本机找不到 ProVerif 可执行文件，需要先安装 ProVerif 2.x。'
+    + '安装：先装 OPAM（https://opam.ocaml.org/），再依次执行 opam update、opam depext proverif、opam install proverif；'
+    + '若 proverif 不在当前 PATH 上，先在 shell 里执行 eval "$(opam env)"。'
+    + '也可以在启动 server 时用环境变量 PROVERIF_PATH 直接指定可执行文件路径，'
+    + '例如 PROVERIF_PATH=~/.opam/default/bin/proverif pnpm start（在 pv-lens 目录执行）。',
   'proverif-error':
     'ProVerif 报告了模型自身的问题（模型语法 / 类型 / 声明错误，不是工具故障）。'
     + '请按下面的退出码与 stdout / stderr 定位模型源码的出错位置'
-    + '（ProVerif 会指明出错的行与语法元素），修正 `.pv` 后重新运行。',
+    + '（ProVerif 会指明出错的行与语法元素），修正 .pv 后重新运行。',
   timeout:
     'ProVerif 在时限内没有给出结论，已被终止。多数情况下是模型太复杂（状态空间爆炸）而不是卡死：'
     + '把「超时（毫秒）」调大后重试；若仍然超时，考虑缩小模型（减少会话数 / 简化代数假设）。',
   cancelled:
     '验证已取消：本次运行没有产生结论（要重新验证就再点一次「运行验证」）。',
   unreachable:
-    '无法连接验证服务。请先在仓库根目录启动 server：`pnpm start`'
-    + '（等价于 `pnpm --filter @pv-lens/server start`），它默认监听 http://127.0.0.1:8787；'
-    + 'web 通过 Vite 的 `/api` 代理访问它（dev 与 preview 的代理都已在 `vite.config.ts` 配好）。',
+    '无法连接验证服务。请先启动 server：在 pv-lens 目录执行 pnpm start'
+    + '（等价于 pnpm --filter @pv-lens/server start），它默认监听 http://127.0.0.1:8787；'
+    + 'web 通过 Vite 的 /api 代理访问它（dev 与 preview 的代理都已在 vite.config.ts 配好）。',
   'internal-error':
     '验证服务内部异常（server 未归类的错误）。请查看启动 server 的终端输出排查，然后重试。',
   'bad-response':
     '验证服务返回了无法识别的响应（不是约定结构的 JSON）。'
     + '最常见的原因是 server 没在跑：Vite 代理连不上 127.0.0.1:8787 时会回一个非 JSON 的错误页。'
-    + '请先在仓库根目录 `pnpm start` 启动本仓库的 server 再重试；'
+    + '请先在 pv-lens 目录执行 pnpm start 启动 server 再重试；'
     + '若 server 已在运行，则可能是 server 版本与前端不匹配，重启 server 后再试。',
 };
 
@@ -244,7 +248,16 @@ function transportFailure(error: unknown, signal: AbortSignal | undefined): Veri
   return { ok: false, kind: 'unreachable', message: `无法连接验证服务：${detail}` };
 }
 
-function badResponseFailure(status: number, text: string, reason: string): VerifyFailure {
+function badResponseFailure(status: number, text: string, reason: string, nonJson = false): VerifyFailure {
+  // R10：502/504 且响应体不是 JSON（代理在 server 未启动时回的错误页），归为「验证服务不可达」；
+  // HTTP 状态码保留在 message，仅进「技术细节」折叠。JSON 但结构未约定的 502 仍是 bad-response。
+  if (nonJson && (status === 502 || status === 504)) {
+    return {
+      ok: false,
+      kind: 'unreachable',
+      message: `无法连接验证服务（代理返回 HTTP ${String(status)}，${reason}）：${snippet(text)}`,
+    };
+  }
   return {
     ok: false,
     kind: 'bad-response',

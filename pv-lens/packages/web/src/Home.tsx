@@ -1,14 +1,25 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useCurrentProtocol } from './CurrentProtocolContext';
+import { useVerifyServiceHealth, verifyServiceHealthText } from './use-service-health';
 import type { SampleKind } from '@pv-lens/core';
 
 /** 内置样例「形态」的中文标签与样式类（标签/类名同源，避免两处 switch 漂移）。 */
 const KIND_META: Record<SampleKind, { label: string; cls: string }> = {
-  'all-green': { label: '全绿', cls: 'kind-tag kind-tag--all-green' },
+  'all-green': { label: '查询全部成立', cls: 'kind-tag kind-tag--all-green' },
   'secrecy-broken': { label: '保密性破坏', cls: 'kind-tag kind-tag--secrecy-broken' },
   'auth-broken': { label: '认证破坏', cls: 'kind-tag kind-tag--auth-broken' },
 };
+
+/** E1 双栏断点（与 styles.css 的 1280px 媒体查询同值，ADR-0015）。 */
+export const LAYOUT_TWO_COLUMN_BREAKPOINT = 1280;
+
+/** E1/R08 装载提示文案由布局断点决定，不写死方向（纯函数供测试）；窄屏画布在前。 */
+export function layoutHintOf(wideLayout: boolean): string {
+  return wideLayout
+    ? '任选其一即装载为当前协议；其源码会显示在左侧只读面板中，与右侧规范叙事视图并列。'
+    : '任选其一即装载为当前协议；规范叙事视图先显示，其源码面板随其后。';
+}
 
 /**
  * 首页：内置样例列表（任选其一即装载）+「导入 .pv 文件」（读取本地文件装载）。
@@ -18,6 +29,8 @@ export function Home() {
   const { samples, loadSample, loadLocalText } = useCurrentProtocol();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  // R19：首页即显示验证服务健康状态（server 未启动时提前提示，不用等点运行才发现）。
+  const { health } = useVerifyServiceHealth();
 
   async function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -36,12 +49,35 @@ export function Home() {
     }
   }
 
+  // E1：文案随双栏断点切换，断点变化时自动更新。
+  const [wideLayout, setWideLayout] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(`(min-width: ${String(LAYOUT_TWO_COLUMN_BREAKPOINT)}px)`).matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const query = window.matchMedia(`(min-width: ${String(LAYOUT_TWO_COLUMN_BREAKPOINT)}px)`);
+    const listener = (event: MediaQueryListEvent): void => setWideLayout(event.matches);
+    query.addEventListener('change', listener);
+    return () => query.removeEventListener('change', listener);
+  }, []);
+
   return (
     <div className="home">
-      <h2>选择一个内置协议开始</h2>
-      <p className="hint">
-        任选其一即装载为当前协议；其源码会显示在右侧只读面板中。
-      </p>
+      <h2>
+        选择一个内置协议开始
+        <span className={`verify-health verify-health--${health}`} role="status" title={verifyServiceHealthText(health)}>
+          <span className="verify-health-dot" aria-hidden="true" />
+          {verifyServiceHealthText(health)}
+        </span>
+      </h2>
+      <p className="hint">{layoutHintOf(wideLayout)}</p>
+      {/* R19：首次使用者的 3–5 行阅读路径。 */}
+      <ol className="reading-path" aria-label="如何阅读这张图">
+        <li>装载后先看画布：竖向虚线是角色生命线，矩形是信道，横向连线是消息（设计意图，不代表攻击者可达）。</li>
+        <li>同色值方块是同一个绑定，消息按 M 序号与线型区分身份。</li>
+        <li>要回答安全性问题，用画布下方的验证面板运行 ProVerif，按查询读判定与反例 trace。</li>
+        <li>多角色模型可用人工配对声明收发关系（仅会话内有效，不回写 .pv 文件）。</li>
+      </ol>
       <ul className="sample-list">
         {samples.map(({ def }) => {
           const meta = KIND_META[def.kind];

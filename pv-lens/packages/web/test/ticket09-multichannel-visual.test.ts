@@ -5,7 +5,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeMessagePairings, getSampleSource, parsePv } from '@pv-lens/core';
-import { buildStructuredNarrativeLayout, frameLabelBudgetOf, messageFrameWidthOf } from '../src/narrative/structured-layout';
+import {
+  buildStructuredNarrativeLayout,
+  channelLineStyleOf,
+  frameLabelBudgetOf,
+  messageFrameWidthOf,
+} from '../src/narrative/structured-layout';
 import { legendContentFor } from '../src/narrative/Legend';
 import { NarrativeView } from '../src/narrative/NarrativeView';
 
@@ -127,8 +132,8 @@ describe('ticket #09：图例显示实际使用的消息/值序号（实化对�
   });
 });
 
-describe('ticket #09：值身份超八色兜底（序号双通道）', () => {
-  it('超八个绑定：色轮转同名再现，序号 1..11 唯一可区分', () => {
+describe('ticket #09：值身份超八色仍保持唯一（序号双通道）', () => {
+  it('超八个绑定：一绑定一色，序号 1..11 唯一可区分', () => {
     const result = parsePv(OVER_EIGHT_VALUES);
     const layout = buildStructuredNarrativeLayout(result);
     const distinct = new Map<string, number>();
@@ -137,16 +142,98 @@ describe('ticket #09：值身份超八色兜底（序号双通道）', () => {
     expect(distinct.size).toBe(11);
     const ordinals = [...distinct.values()].sort((a, b) => a - b);
     expect(ordinals).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    // 同色不同身份：至少存在一对同色但序号不同的方块（8 色轮转 + 10 身份）。
-    const byColor = new Map<string, number[]>();
-    layout.valueBlocks.forEach((block) => {
-      byColor.set(block.color, [...(byColor.get(block.color) ?? []), block.ordinal]);
-    });
-    const shared = [...byColor.values()].find((list) => new Set(list).size > 1);
-    expect(shared).toBeDefined();
+    // 一绑定一色：颜色数等于身份数，不存在同色不同身份。
+    const colorByBinding = new Map<string, string>();
+    layout.valueBlocks.forEach((block) => colorByBinding.set(block.bindingId, block.color));
+    expect(new Set(colorByBinding.values()).size).toBe(distinct.size);
     // 渲染出的序号角标数量与绑定身份一致。
     const rendered = renderToString(createElement(NarrativeView, { result }));
     expect((rendered.match(/structured-value-ordinal/g) ?? []).length).toBe(layout.valueBlocks.length);
+  });
+});
+
+describe('ticket #09：R09 信道序号与水平位置一致', () => {
+  it('序号字形与线型按水平序列位置生成：最左信道是 ①/solid，与声明顺序无关', () => {
+    const result = fixture('multi-channel.pv');
+    const layout = buildStructuredNarrativeLayout(result, { pairings: composeMessagePairings(result).pairings });
+    // 按画布 x 坐标从左到右排信道列；channelOrder 必须随之 0、1、2 递增。
+    const channelsByX = layout.columns
+      .filter((column) => column.kind === 'channel')
+      .sort((a, b) => a.x - b.x);
+    expect(channelsByX).toHaveLength(3);
+    expect(channelsByX.map((column) => column.channelOrder)).toEqual([0, 1, 2]);
+    // u39 证据：水平顺序为 processS · c2 · processB · c1 · processA · c3，
+    // 即最左信道是 c2（声明序号 2）——位置序号必须与声明序号不同。
+    expect(channelsByX.map((column) => column.name)).toEqual(['c2', 'c1', 'c3']);
+    expect(channelsByX.map((column) => column.index)).not.toEqual([0, 1, 2]);
+    const rendered = renderToString(createElement(NarrativeView, {
+      result,
+      pairings: composeMessagePairings(result).pairings,
+    }));
+    const plain = rendered.replace(/<!-- -->/g, '');
+    expect(plain).toContain('信道 c2 ①');
+    expect(plain).toContain('信道 c1 ②');
+    expect(plain).toContain('信道 c3 ③');
+    // 线型与序号同源：位置 0 是 solid、1 是 long-dash、2 是 dot。
+    expect(channelsByX.map((column) => channelLineStyleOf(column.channelOrder ?? 0)))
+      .toEqual(['solid', 'long-dash', 'dot']);
+    const c2Rect = rendered.match(/<g class="structured-column structured-column--channel"[^>]*data-identity="c2"[\s\S]*?<rect class="structured-channel structured-channel--(\w[\w-]*)"/);
+    expect(c2Rect?.[1]).toBe('solid');
+    const c1Rect = rendered.match(/<g class="structured-column structured-column--channel"[^>]*data-identity="c1"[\s\S]*?<rect class="structured-channel structured-channel--(\w[\w-]*)"/);
+    expect(c1Rect?.[1]).toBe('long-dash');
+  });
+
+  it('channelLineStyleOf 按位置循环；图例文案与 (n) 形式说明同步', () => {
+    expect(channelLineStyleOf(0)).toBe('solid');
+    expect(channelLineStyleOf(1)).toBe('long-dash');
+    expect(channelLineStyleOf(2)).toBe('dot');
+    expect(channelLineStyleOf(3)).toBe('solid');
+    // 负位置按镜像取整（与 messageLineStyleOf 同一口径），实际 channelOrder 恒为非负。
+    expect(channelLineStyleOf(-1)).toBe(channelLineStyleOf(1));
+    const result = fixture('multi-channel.pv');
+    const layout = buildStructuredNarrativeLayout(result, { pairings: composeMessagePairings(result).pairings });
+    const rendered = renderToString(createElement(NarrativeView, { result, pairings: [] }));
+    const plain = rendered.replace(/<!-- -->/g, '');
+    expect(plain).toContain('超过五个信道时以 (n) 形式显示');
+    expect(plain).toContain('灰度下可按线型区分');
+  });
+
+  it('六信道合成模型：第六条信道以 (6) 形式显示且不与 ①–⑤ 冲突', () => {
+    const source = [
+      'free c1: channel.',
+      'free c2: channel.',
+      'free c3: channel.',
+      'free c4: channel.',
+      'free c5: channel.',
+      'free c6: channel.',
+      'let A() = out(c1, a).',
+      'let B() = out(c2, b).',
+      'let C() = out(c3, c).',
+      'let D() = out(c4, d).',
+      'let E() = out(c5, e).',
+      'let F() = out(c6, f).',
+      'process ( A() | B() | C() | D() | E() | F() )',
+    ].join('\n');
+    const result = parsePv(source);
+    const layout = buildStructuredNarrativeLayout(result);
+    const channelsByX = layout.columns
+      .filter((column) => column.kind === 'channel')
+      .sort((a, b) => a.x - b.x);
+    expect(channelsByX).toHaveLength(6);
+    expect(channelsByX.map((column) => column.channelOrder)).toEqual([0, 1, 2, 3, 4, 5]);
+    const rendered = renderToString(createElement(NarrativeView, { result, pairings: [] }));
+    const plain = rendered.replace(/<!-- -->/g, '');
+    expect(plain).toContain('(6)');
+    expect(plain).not.toContain('⑥');
+  });
+});
+
+describe('ticket #09：R17 信道线型灰度可辨', () => {
+  it('信道边框线宽 2px，三线型墨迹密度拉开（dasharray 断言）', () => {
+    const v2 = readFileSync(join(webDir, 'src', 'narrative', 'v2.css'), 'utf8');
+    expect(v2).toMatch(/\.structured-channel\s*\{[^}]*stroke-width:\s*2/s);
+    expect(v2).toMatch(/\.structured-channel--long-dash\s*\{[^}]*stroke-dasharray:\s*7 5/s);
+    expect(v2).toMatch(/\.structured-channel--dot\s*\{[^}]*stroke-dasharray:\s*1\.5 4\.5/s);
   });
 });
 

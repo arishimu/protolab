@@ -16,6 +16,144 @@
   font-size: 0.8rem;
 }
 
+/* E2 画布视口（ADR-0015）：控制条 sticky 在滚动容器顶部，画布限高内部滚动。 */
+.narrative-viewport {
+  max-height: 75vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #eef2f7;
+}
+
+.narrative-viewport::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.narrative-viewport::-webkit-scrollbar-track {
+  background: #eef2f7;
+}
+
+.narrative-viewport::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border: 2px solid #eef2f7;
+  border-radius: 6px;
+}
+
+/* R04：展开画布取消内部限高，由页面滚动；控制条不再粘在页面顶部。 */
+.narrative-viewport--expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.narrative-viewport--expanded .narrative-controls--sticky {
+  position: static;
+}
+
+/* R04：全屏阅读视口覆盖页面，内部仍由画布容器滚动；Esc 或按钮退出。 */
+.narrative-viewport--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.narrative-overview-hint {
+  margin: 0.35rem 0.75rem 0.5rem;
+}
+
+.narrative-viewport--fit-page .narrative-canvas--structured {
+  display: flex;
+  justify-content: center;
+}
+
+.narrative-back-to-top-wrap {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0.75rem 0.6rem;
+  pointer-events: none;
+}
+
+.narrative-back-to-top {
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+}
+
+.narrative-controls--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fbfbfc;
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 0.75rem;
+  flex-wrap: wrap;
+}
+
+.narrative-scroll-body {
+  padding: 0.5rem 0.25rem;
+}
+
+.narrative-caption-hint {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.legend-value-block--dashed {
+  border-style: dashed;
+}
+
+.narrative-compactness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.narrative-compactness-ticks {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.narrative-compactness-readout {
+  min-width: 4.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.narrative-zoom-readout {
+  min-width: 3.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* R08：缩放读出旁的等效正文字号提示，帮助判断当前缩放下文字是否仍可读。 */
+.narrative-zoom-font {
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+  align-self: center;
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-btn:disabled:hover {
+  border-color: var(--border);
+}
+
+.narrative-focus-source {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 .narrative-controls label {
   display: inline-flex;
   align-items: center;
@@ -56,6 +194,14 @@
   min-height: 20rem;
 }
 
+/* 文字光晕（B1/B5）：线从文字背后穿过时仍保持字形边界。 */
+.structured-text-halo {
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 .structured-column-label {
   fill: var(--text);
   font-size: 12px;
@@ -82,18 +228,20 @@
   stroke-dasharray: 4 4;
 }
 
+/* R17：信道边框线宽提到 2px，三种线型的墨迹密度拉开（实线 100%、长虚线约 58%、
+ * 点线约 25%），1px 打印与灰度下仍可按密度指认信道；线型按水平位置循环。 */
 .structured-channel {
   fill: #f8fafc;
   stroke: #64748b;
-  stroke-width: 1.5;
+  stroke-width: 2;
 }
 
 .structured-channel--long-dash {
-  stroke-dasharray: 8 4;
+  stroke-dasharray: 7 5;
 }
 
 .structured-channel--dot {
-  stroke-dasharray: 2 4;
+  stroke-dasharray: 1.5 4.5;
 }
 
 .structured-node rect,
@@ -196,9 +344,10 @@
   stroke: #c2410c;
 }
 
+/* R15：臂道标签最小字号 10px（100% 缩放下可读，不再随 8.5px 基准被压到 7px）。 */
 .structured-arm-label {
   fill: #2563eb;
-  font-size: 8.5px;
+  font-size: 10px;
   font-family: var(--mono);
 }
 
@@ -377,11 +526,39 @@
   fill: #7c2d12;
 }
 
-/* 置顶标签底（ticket 11）：跨泳道消息线从文字背后穿过而非划穿文字。 */
+/* 置顶标签底（ticket 11）：跨角色列消息线从文字背后穿过而非划穿文字。 */
 .structured-label-bg {
-  fill: rgba(255, 255, 255, 0.92);
+  fill: #ffffff;
   stroke: rgba(148, 163, 184, 0.35);
   stroke-width: 0.5;
+}
+
+/* 信道帧置顶层（B1）：端点线在帧外停止，帧内文字压在连线上。 */
+.structured-frame-layer {
+  pointer-events: none;
+}
+
+.structured-message-pillar-fill {
+  fill-opacity: 0.32;
+}
+
+.structured-message-pillar-line {
+  fill: none;
+}
+
+.structured-event-connector {
+  stroke: #94a3b8;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.structured-caption-bg {
+  fill: #ffffff;
+  stroke: none;
+}
+
+.structured-value-pattern {
+  opacity: 0.75;
 }
 
 .structured-message-pillar text {
@@ -511,17 +688,19 @@
   cursor: pointer;
 }
 
-/* 反向/正向选中态（ticket 10）：琥珀描边 + 轻微放大，灰度下靠描边宽度仍可辨。 */
+/* 反向/正向选中态（ticket 10 / A6，R15 修订）：中性深灰描边加粗 + 暖色底光晕，
+ * 不再与 then 臂道/branch 线共用 #2563eb 色相；灰度下靠描边宽度与光晕仍可辨。 */
 .structured-source-selected > rect,
 .structured-source-selected > polygon,
 .structured-source-selected > path,
 .structured-source-selected > circle {
-  stroke: #b45309;
+  stroke: #111827;
   stroke-width: 2.4;
+  filter: drop-shadow(0 0 2.5px rgba(217, 119, 6, 0.5));
 }
 
 .structured-node.structured-source-selected > rect {
-  fill: #fef3c7;
+  fill: #fde68a;
 }
 
 /* 角色内诊断条（ticket 10 / spec 71）：带位置的原文标注段，降级琥珀、错误红。 */
@@ -556,6 +735,52 @@
 
 .structured-endpoint--selectable:hover .structured-unpaired-dot {
   stroke-width: 3;
+}
+
+/* R06：配对模式高亮候选端点与线上词项芯片；命中路径加宽到 24px，芯片本身也可点。 */
+.structured-endpoint--candidate {
+  filter: drop-shadow(0 0 3px rgba(217, 119, 6, 0.55));
+}
+
+.structured-endpoint--candidate .structured-unpaired-dot {
+  fill: #ffedd5;
+  stroke-width: 3.2;
+}
+
+.structured-endpoint .structured-endpoint-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 24;
+  pointer-events: stroke;
+}
+
+.structured-chip--candidate {
+  filter: drop-shadow(0 0 3px rgba(217, 119, 6, 0.55));
+}
+
+.structured-chip--candidate > rect:not(.structured-chip-hit) {
+  stroke-width: 1.8;
+}
+
+.structured-chip .structured-chip-hit {
+  fill: transparent;
+  stroke: none;
+  stroke-dasharray: none;
+  pointer-events: all;
+}
+
+.structured-chip--selectable:focus-visible > rect:not(.structured-chip-hit),
+.structured-endpoint--selectable:focus-visible path {
+  stroke-width: 2.6;
+  outline: none;
+}
+
+/* R20：事件旗标与本地/降级节点的键盘焦点可见（与芯片、端点一致的加粗描边）。 */
+.structured-event--clickable:focus-visible > path,
+.structured-node:focus-visible > rect,
+.structured-node:focus-visible > line {
+  stroke-width: 2.6;
+  outline: none;
 }
 
 .structured-endpoint--pending path {
@@ -600,6 +825,19 @@
   color: #92400e;
 }
 
+.pairing-warning--selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pairing-warning-undo {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .narrative-pairing-hint {
   margin: 0 0 0.5rem;
   color: #1d4ed8;
@@ -618,4 +856,33 @@
 
 .structured-event--selected path {
   stroke-width: 2.4;
+}
+
+/* C4：insert 事实胶囊——浅黄底、深黄描边，文本随宽（不再空矩形）。 */
+.structured-node--insert rect {
+  fill: #fef9c3;
+  stroke: #ca8a04;
+  stroke-width: 1.2;
+}
+
+/* R11：降级语句独立警示样式——虚线琥珀边框与降级诊断条同色系，区别于 insert 胶囊；
+ * 原文逐字保留（R05），样式只承担「解析器不支持」的视觉信号。 */
+.structured-node--degraded rect {
+  fill: #fffbeb;
+  stroke: #d97706;
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+}
+
+/* C2：事件默认中性空心菱形（未选中查询时不表达前提/结论）。 */
+.structured-event-neutral {
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 1.4;
+}
+
+/* C10：分支折叠条的隐藏步数徽标（右端对齐，不参与截断）。 */
+.structured-branch-fold-badge {
+  font-weight: 650;
+  fill: #1d4ed8;
 }

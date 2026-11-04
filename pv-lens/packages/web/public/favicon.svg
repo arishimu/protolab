@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- pv-lens：两条角色生命线夹一条信道总线，一道消息横穿（叙事视图的抽象）。 -->
+  <rect width="32" height="32" rx="6" fill="#f8fafc"/>
+  <rect x="13" y="4" width="6" height="24" rx="2" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="4 3"/>
+  <line x1="6" y1="8" x2="6" y2="26" stroke="#2563eb" stroke-width="2" stroke-dasharray="3 3"/>
+  <line x1="26" y1="8" x2="26" y2="26" stroke="#2563eb" stroke-width="2" stroke-dasharray="3 3"/>
+  <line x1="6" y1="16" x2="26" y2="16" stroke="#c2410c" stroke-width="2.5"/>
+  <circle cx="26" cy="16" r="2.5" fill="#c2410c"/>
+</svg>

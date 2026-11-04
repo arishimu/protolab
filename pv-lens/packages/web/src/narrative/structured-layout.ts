@@ -16,8 +16,9 @@ import { diagnosticSeverityLabel } from './layout';
 import { gapUnitOf, solveSpacing } from '@pv-lens/core';
 import type { SpacingUnit } from '@pv-lens/core';
 import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
+import { MESSAGE_COLOR_TOKENS, buildMessagePalette, valueColorsOf } from './identity-color';
 
-export const MESSAGE_COLORS = ['#2563EB', '#0891B2', '#16A34A', '#D97706', '#DC2626', '#7C3AED', '#DB2777', '#475569'] as const;
+export const MESSAGE_COLORS = MESSAGE_COLOR_TOKENS;
 export const VALUE_COLORS = ['#BFDBFE', '#A5F3FC', '#BBF7D0', '#FED7AA', '#FECACA', '#DDD6FE', '#FBCFE8', '#CBD5E1'] as const;
 /** 未配对端点统一用色（虚线/空心圆点/线上词项芯片），与 v2.css 的 #c2410c 同值。 */
 export const UNPAIRED_COLOR = '#C2410C';
@@ -29,9 +30,23 @@ const refOf = (roleIndex: number, stepIndex: number): string => `${roleIndex}:${
 const rowKeyOf = (roleIndex: number, itemIndex: number): string => `${roleIndex}:${String(itemIndex)}`;
 /** 算子簇键：折叠决策（内部 Map）与公开 clusterId 共用同一拼装（07b）。 */
 const clusterKeyOf = (roleIndex: number, itemIndex: number): string => `opcluster:${String(roleIndex)}:${String(itemIndex)}`;
-/** 折叠条宽度：封在自身泳道内，随文字截断（分支折叠条与算子折叠条同式，F8 口径）。 */
+/** 折叠条宽度：封在自身角色列内，随文字截断（分支折叠条与算子折叠条同式，F8 口径）。 */
 function foldBarWidthOf(label: string): number {
   return Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
+}
+
+/** C10：分支折叠条宽度——守卫文本与右侧固定徽标（+N）分开计宽，徽标不参与截断。 */
+function branchFoldWidthOf(guard: string, badge: string): number {
+  return Math.min(
+    METRICS.branchFoldMaxWidth,
+    METRICS.columnWidth - 8,
+    20 + (guard.length + badge.length) * CHAR_WIDTH + 16,
+  );
+}
+
+/** C10：分支折叠条守卫文本的截断预算（为右侧徽标预留 28px）。 */
+export function foldGuardBudgetOf(width: number): number {
+  return Math.max(4, Math.floor((width - 12 - 28) / CHAR_WIDTH));
 }
 
 /** 折叠条内文字的截断预算（与 foldBarWidthOf 的宽度公式同源；渲染方 SVG 用）。 */
@@ -56,6 +71,30 @@ export function frameLabelBudgetOf(frameWidth: number): number {
   return Math.max(3, Math.floor((frameWidth - 10) / CAPTION_CHAR_WIDTH));
 }
 export const CHANNEL_STYLES = ['solid', 'long-dash', 'dot'] as const;
+export type ChannelLineStyle = (typeof CHANNEL_STYLES)[number];
+/** 消息线型按 M 序号循环：实线、短虚线、点线；序号是权威标识。 */
+export const MESSAGE_LINE_STYLES = ['solid', 'short-dash', 'dot'] as const;
+export type MessageLineStyle = (typeof MESSAGE_LINE_STYLES)[number];
+/** 值方块的二阶图案，按值序号循环，供灰度与打印条件区分身份。 */
+export const VALUE_PATTERNS = ['none', 'slash', 'backslash', 'dots'] as const;
+export type ValuePattern = (typeof VALUE_PATTERNS)[number];
+
+/** R09/R17：信道线型按水平序列位置循环（实线、长虚线、点线）；位置与序号字形同源，
+ * 使线型、序号、图例三者从同一位置派生，灰度下按线型即可指认信道。 */
+export function channelLineStyleOf(position: number): ChannelLineStyle {
+  const slot = Math.abs(Math.trunc(position)) % CHANNEL_STYLES.length;
+  return CHANNEL_STYLES[slot] ?? 'solid';
+}
+
+export function patternKindOf(ordinal: number): ValuePattern {
+  const index = Math.abs(Math.trunc(ordinal)) % VALUE_PATTERNS.length;
+  return VALUE_PATTERNS[index] ?? 'none';
+}
+
+export function messageLineStyleOf(index: number): MessageLineStyle {
+  const slot = Math.abs(Math.trunc(index)) % MESSAGE_LINE_STYLES.length;
+  return MESSAGE_LINE_STYLES[slot] ?? 'solid';
+}
 
 /** 粗略字宽，仅用于估算标签占用与画布宽度（不做像素级排版）。 */
 const CHAR_WIDTH = 6.2;
@@ -72,6 +111,9 @@ export interface StructuredColumn {
   parallel?: boolean;
   /** 参数簇小标题「参数」的 y；无参数时缺省。 */
   parameterLabelY?: number;
+  /** R09：信道列在水平序列中从左到右的序号（0 基，只数信道列）；序号字形与线型以它为准，
+   * 与图例“按水平序列从左到右编号”的描述一致。index 是声明收集序号，不再用于信道指认。 */
+  channelOrder?: number;
 }
 
 export interface StructuredNode {
@@ -86,9 +128,18 @@ export interface StructuredNode {
   /** 节点标签全文；渲染方按 labelMaxChars 截断，全文进 title / aria-label。 */
   label: string;
   labelX: number;
-  labelAnchor: 'start' | 'middle';
+  labelAnchor: 'start' | 'middle' | 'end';
   labelMaxChars: number;
+  /** 事件标记的横向/纵向中心；仅事件节点有值。 */
+  markerX?: number;
+  markerY?: number;
+  /** 事件连接线的生命线锚点 x；仅事件节点有值。 */
+  anchorX?: number;
   span: SourceSpan;
+  /** C14：解析器不支持的语句按原文保留的行单元。 */
+  degraded?: boolean;
+  /** C4：insert 插入事实行单元（文本宽度胶囊）。 */
+  inserted?: boolean;
   stepIndex?: number;
   direction?: 'out' | 'in';
   channelName?: string;
@@ -103,6 +154,8 @@ export interface StructuredValueBlock {
   color: string;
   /** 值身份序号（09 / spec 65）：绑定全局序 1 起；色轮转超八后靠它区分同名色。 */
   ordinal: number;
+  /** 二阶图案：按序号循环，灰度下补充身份识别。 */
+  pattern: ValuePattern;
   occurrence: 'binding' | 'reference' | 'equality';
   x: number;
   y: number;
@@ -223,6 +276,8 @@ export interface StructuredEndpoint {
   direction: 'out' | 'in';
   roleX: number;
   channelX: number;
+  /** 未配对端点落在信道壁上的横向位置；配对端点仍以 channelX 为锚。 */
+  wireX?: number;
   y: number;
   channelName: string;
   termText: string;
@@ -235,6 +290,11 @@ export interface MessagePillar {
   id: string;
   color: string;
   sequence: number;
+  /** 消息线型：按 M 序号循环。 */
+  lineStyle: MessageLineStyle;
+  /** 信道内消息道序号与横向位置；多条消息的 y 区间重叠时使用不同道。 */
+  lane: number;
+  laneX: number;
   /** 柱来源：自动配对或含人工声明（广播分组按发送端归并，ADR-0007）。 */
   origin: PairingOrigin;
   channelName: string;
@@ -244,7 +304,7 @@ export interface MessagePillar {
   /** 一条消息只在信道帧内写一遍的词项（取发送端 wire term）与帧的中轴 y。 */
   termText: string;
   termPresentation: StructuredEndpoint['termPresentation'];
-  /** identity 接收去重时，接收绑定的值身份色以帧内色带标注，泳道省略同名词块。 */
+  /** identity 接收去重时，接收绑定的值身份色以帧内色带标注，角色列省略同名词块。 */
   termValueColor?: string;
   /** 信道帧宽度（09：随词项长度在 [56,132] 内伸缩，列间隙容纳不越列；截断预算由它派生）。 */
   frameWidth: number;
@@ -261,7 +321,7 @@ export interface StructuredConflict {
 
 /**
  * 角色内诊断条（ticket 10 / spec 71）：按源码区间归属该角色的降级/错误诊断，
- * 以带位置的原文标注段画在角色泳道顶部（参数簇之下、首行之上）。
+ * 以带位置的原文标注段画在角色角色列顶部（参数簇之下、首行之上）。
  * 每条 chip 的 y 与文字预算由布局给出，渲染器只画（几何单一来源）。
  */
 export interface StructuredRoleDiagnosticEntry {
@@ -346,7 +406,7 @@ export interface StructuredLayoutOptions {
 
 const METRICS = {
   margin: 32,
-  columnWidth: 154,
+  columnWidth: 168,
   channelWidth: 72,
   columnGap: 38,
   headerHeight: 58,
@@ -387,16 +447,16 @@ const METRICS = {
   wireMethodOffset: 58,
   /** 行标签起点相对生命线的缩进（避开方法盒右缘与值方块）。 */
   labelInset: 37,
-  /** 未配对线上芯片：置于该行值层之下的间隙与宽度上限（不越出自身泳道）。 */
+  /** 未配对线上芯片：置于该行值层之下的间隙与宽度上限（不越出自身角色列）。 */
   wireChipGap: 6,
   wireChipMaxWidth: 132,
-  /** 跨泳道消息线的禁置带半高：线两侧该范围内不放本列值层元素。 */
+  /** 跨角色列消息线的禁置带半高：线两侧该范围内不放本列值层元素。 */
   crossReserveHalf: 11,
   /** 信道帧宽度的下限 / 上限与文字内边距（09：下限沿用 ticket02 定稿 56，上限与线上芯片同宽）。 */
   messageFrameMinWidth: 56,
   messageFrameMaxWidth: 132,
   messageFramePad: 14,
-  /** 角色内诊断条（10）：每条诊断的行距与整条最大宽度（封在自身泳道内）。 */
+  /** 角色内诊断条（10）：每条诊断的行距与整条最大宽度（封在自身角色列内）。 */
   diagnosticPitch: 18,
   diagnosticStripMaxWidth: 200,
 } as const;
@@ -426,16 +486,41 @@ export function buildStructuredNarrativeLayout(
   });
   const needsLeftArmMargin = roles.some((role) => outwardByColumn.get(`role:${role.name}`) === -1
     && role.items.some((item) => item.kind === 'branch' && item.marker === 'branch'));
-  const margin = METRICS.margin + (needsLeftArmMargin ? METRICS.leftArmMargin : 0);
+  // C9/R05：最左角色的事件标签向外画在生命线左侧，必须给画布左缘留出足够槽位；
+  // 否则标签会被 SVG 视口裁掉只剩后半段。按该角色最长事件标签估算，仅左侧列需要。
+  const firstRoleNode = horizontal.nodes.find((node) => node.kind === 'role');
+  const firstRole = firstRoleNode === undefined ? undefined : roleByName.get(firstRoleNode.name);
+  const firstRoleOutward = firstRoleNode === undefined
+    ? 1
+    : outwardByColumn.get(columnKey(firstRoleNode)) ?? 1;
+  const firstRoleEventChars = firstRole?.items.reduce(
+    (longest, item) => item.kind === 'event' ? Math.max(longest, `event ${item.text}`.length) : longest,
+    0,
+  ) ?? 0;
+  const baseMargin = METRICS.margin + (needsLeftArmMargin ? METRICS.leftArmMargin : 0);
+  const leftEventMargin = firstRoleOutward === -1 && firstRoleEventChars > 0
+    ? Math.max(0, firstRoleEventChars * CHAR_WIDTH + 8 + (METRICS.valueWidth / 2 + 14) + 10
+      - METRICS.columnWidth / 2 - baseMargin)
+    : 0;
+  const margin = baseMargin + leftEventMargin;
   const columnX = (index: number): number => margin + index * (METRICS.columnWidth + METRICS.columnGap);
+  // R09：信道序号字形与线型按水平序列中从左到右的位置生成，与图例描述一致。
+  const channelOrderByName = new Map<string, number>();
+  for (const node of horizontal.nodes) {
+    if (node.kind === 'channel' && !channelOrderByName.has(node.name)) {
+      channelOrderByName.set(node.name, channelOrderByName.size);
+    }
+  }
   const columns: StructuredColumn[] = horizontal.nodes.map((node, index) => {
     const role = node.kind === 'role' ? roleByName.get(node.name) : undefined;
+    const channelOrder = node.kind === 'channel' ? channelOrderByName.get(node.name) : undefined;
     return {
       kind: node.kind,
       name: node.name,
       index: node.index,
       x: columnX(index),
       width: node.kind === 'channel' ? METRICS.channelWidth : METRICS.columnWidth,
+      ...(channelOrder === undefined ? {} : { channelOrder }),
       ...(role === undefined ? {} : {
         signatureText: signatureOf(role),
         replicated: role.replicated,
@@ -456,9 +541,21 @@ export function buildStructuredNarrativeLayout(
   const branchFolds: StructuredBranchFold[] = [];
   const operatorFolds: StructuredOperatorClusterFold[] = [];
   const roleDiagnostics: StructuredRoleDiagnostics[] = [];
-  // 归属只算一次（byRole 供泳道内诊断条，unassigned 随布局输出供画布下方平铺）。
+  // 归属只算一次（byRole 供角色列内诊断条，unassigned 随布局输出供画布下方平铺）。
   const diagnosticAttribution = attributeDiagnostics(roles, result.diagnostics);
   const diagnosticsByRole = diagnosticAttribution.byRole;
+  // C14：已 item 化的语句级降级诊断不再进角色诊断条（原文芯片已按源码位置呈现，避免双份）。
+  const degradedItemSpans = new Set(
+    roles.flatMap((role) => role.items
+      .filter((item): item is Extract<typeof item, { kind: 'local' }> => item.kind === 'local' && item.operation === 'degraded')
+      .map((item) => item.span.start.offset)),
+  );
+  const filteredByRole = new Map(diagnosticsByRole);
+  for (const [roleIndex, list] of filteredByRole) {
+    const kept = list.filter((diagnostic) =>
+      !(diagnostic.severity === 'degraded' && degradedItemSpans.has(diagnostic.span.start.offset)));
+    if (kept.length !== list.length) filteredByRole.set(roleIndex, kept);
+  }
   const endpoints: StructuredEndpoint[] = [];
   const bindingColors = assignBindingColors(roles);
   const collapsedBranches = new Set(options.collapsedBranches ?? []);
@@ -472,10 +569,12 @@ export function buildStructuredNarrativeLayout(
   // 禁置带收敛与显式冲突统一交给 core 的 solveSpacing（见下方单元构建段）。
   const roleIndexByName = new Map(roles.map((role, index) => [role.name, index]));
   const endpointChannelByRef = new Map<string, string>();
+  const messageItemIndexByRef = new Map<string, number>();
   roles.forEach((role, roleIndex) => {
-    role.items.forEach((item) => {
+    role.items.forEach((item, itemIndex) => {
       if (item.kind !== 'message') return;
       endpointChannelByRef.set(refOf(roleIndex, item.endpoint.stepIndex), renderTerm(item.endpoint.channel));
+      messageItemIndexByRef.set(refOf(roleIndex, item.endpoint.stepIndex), itemIndex);
     });
   });
   // 与消息柱构建同一条有效性规则（两端存在且同信道），无效配对不触发去重。
@@ -490,7 +589,7 @@ export function buildStructuredNarrativeLayout(
     pairedKeys.add(inKey);
   });
 
-  /** identity 接收（F5）：`in(c, x)` 词项恰为绑定变量且已配对 → 泳道省略绑定方块，帧内标值身份色。 */
+  /** identity 接收（F5）：`in(c, x)` 词项恰为绑定变量且已配对 → 角色列省略绑定方块，帧内标值身份色。 */
   const identityTermColorByRef = new Map<string, string>();
   const chainOfItem = (item: RoleItem, roleIndex: number): ChainEntry[] => {
     const chain = valueChainOf(item, bindingById, destructorNames);
@@ -506,7 +605,7 @@ export function buildStructuredNarrativeLayout(
     return filtered;
   };
 
-  /** 未配对端的线上芯片（F2）：词项不是裸绑定变量才画（裸变量已由泳道内的值方块写明）。 */
+  /** 未配对端的线上芯片（F2）：词项不是裸绑定变量才画（裸变量已由角色列内的值方块写明）。 */
   const wireChipOf = (item: RoleItem, roleIndex: number): boolean => {
     if (item.kind !== 'message') return false;
     if (pairedKeys.has(refOf(roleIndex, item.endpoint.stepIndex))) return false;
@@ -584,8 +683,11 @@ export function buildStructuredNarrativeLayout(
   }
   const expandedClusters = new Set(options.expandedOperatorClusters ?? []);
   const foldedClusterByStart = new Map<string, ClusterRange>();
-  // 绑定全局序（assignBindingColors 的插入序）：幽灵值块按它排列，稳定且与值身份色同源。
-  const globalBindingOrder = new Map([...bindingColors.keys()].map((id, index) => [id, index] as const));
+  // 绑定全局序：按角色与绑定在 IR 中的插入序去重；幽灵值块与值序号按它排列。
+  const globalBindingOrder = new Map(
+    [...new Set(roles.flatMap((role) => role.bindings.map((binding) => binding.id)))]
+      .map((id, index) => [id, index] as const),
+  );
   // 值身份序号（09 / spec 65）：绑定全局序 1 起，色与序号双通道（超八色同名靠序号区分）。
   // ?? -1 是防御性兜底：调用方传入的绑定都来自 role.bindings（与 assignBindingColors 同源），不可达。
   const ordinalOf = (bindingId: string): number => (globalBindingOrder.get(bindingId) ?? -1) + 1;
@@ -690,7 +792,7 @@ export function buildStructuredNarrativeLayout(
       });
     }
     // 角色内诊断条（ticket 10）：归属本角色的诊断整组占一个单元，紧随参数簇。
-    const roleDiagList = diagnosticsByRole.get(roleIndex);
+    const roleDiagList = filteredByRole.get(roleIndex);
     if (roleDiagList !== undefined && roleDiagList.length > 0) {
       units.push({
         id: `diag:${String(roleIndex)}`,
@@ -770,7 +872,10 @@ export function buildStructuredNarrativeLayout(
         rigid: false,
         messageEndpoint: message,
         ...(message
-          ? { crossedRoles: crossedRolesOf(role.name, renderTerm(item.endpoint.channel)) }
+          ? {
+              crossedRoles: crossedRolesOf(role.name, renderTerm(item.endpoint.channel)),
+              endpointSeparation: pairedKeys.has(refOf(roleIndex, item.endpoint.stepIndex)) ? 4 : 12,
+            }
           : {}),
         gapTier: prevIsBoundary ? 'group' : 'row',
       });
@@ -789,11 +894,26 @@ export function buildStructuredNarrativeLayout(
       prevIsBoundary = item.kind === 'branch' && item.marker === 'join';
     });
   });
+  const orderEdges = (options.pairings ?? []).flatMap((pairing) => {
+    const outRef = refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex);
+    const inRef = refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex);
+    if (!pairedKeys.has(outRef) || !pairedKeys.has(inRef)) return [];
+    if (pairing.outEnd.roleIndex === pairing.inEnd.roleIndex) return [];
+    const outItemIndex = messageItemIndexByRef.get(outRef);
+    const inItemIndex = messageItemIndexByRef.get(inRef);
+    if (outItemIndex === undefined || inItemIndex === undefined) return [];
+    return [{
+      before: rowKeyOf(pairing.outEnd.roleIndex, outItemIndex),
+      after: rowKeyOf(pairing.inEnd.roleIndex, inItemIndex),
+      minGap: 16,
+    }];
+  });
   const spacing = solveSpacing({
     unitsByRole,
     compactness,
     reserveHalf: METRICS.crossReserveHalf,
     startOffsetByRole: startOffsets,
+    orderEdges,
   });
   const rowYOf = (key: string, fallback: number): number => spacing.yByUnitId.get(key) ?? fallback;
 
@@ -803,8 +923,6 @@ export function buildStructuredNarrativeLayout(
     const outward = outwardByColumn.get(`role:${role.name}`) ?? 1;
     const inward: 1 | -1 = outward === 1 ? -1 : 1;
     const lifelineX = column.x + column.width / 2;
-    /** 值层竖向链的当前列（守卫盒 / 芯片 / 解构盒仍贴生命线；构造链另朝信道偏移）。 */
-    const rowX = lifelineX;
     const nextColumn = columns[(columnPosition.get(`role:${role.name}`) ?? 0) + 1];
     // 标签不越列（F7）：预算止于下一列左缘，不再借用信道总线——事件/守卫原文
     // 曾经穿过信道轨道压在总线块上；超预算由渲染方截断，全文进 title。
@@ -828,9 +946,9 @@ export function buildStructuredNarrativeLayout(
 
     // 角色内诊断条（ticket 10）：y 取解算输出（单元中心），条内按 pitch 逐条铺开；
     // 每条的可见文字（降级带原文、错误带中文消息，spec 71/72）与截断预算都在布局拼好。
-    const roleDiagList = diagnosticsByRole.get(roleIndex);
+    const roleDiagList = filteredByRole.get(roleIndex);
     if (roleDiagList !== undefined && roleDiagList.length > 0) {
-      const width = Math.min(METRICS.diagnosticStripMaxWidth, METRICS.columnWidth - 8);
+      const width = Math.min(METRICS.diagnosticStripMaxWidth, METRICS.columnWidth);
       const centerY = rowYOf(`diag:${String(roleIndex)}`, startOffsets[roleIndex] ?? margin);
       roleDiagnostics.push({
         roleIndex,
@@ -870,8 +988,8 @@ export function buildStructuredNarrativeLayout(
         const height = METRICS.branchFoldHeight;
         const y = rowYOf(`fold:${item.id}`, startOffsets[roleIndex] ?? margin);
         const label = `▸ ${branchLabel(item)} · +${String(hiddenCount)}`;
-        // 折叠条封在自身泳道内（F8）：不再越列压到邻列元素，文字随宽截断。
-        const width = foldBarWidthOf(label);
+        // C10：徽标 +N 固定在右端不参与截断；守卫文本按剩余预算截断（全文在 title/aria）。
+        const width = branchFoldWidthOf(branchLabel(item), `+${String(hiddenCount)}`);
         branchFolds.push({
           branchId: item.id,
           roleIndex,
@@ -892,7 +1010,7 @@ export function buildStructuredNarrativeLayout(
       const emittingCluster = foldedClusterAt(roleIndex, itemIndex);
       if (emittingCluster !== undefined) {
         const y = rowYOf(emittingCluster.clusterId, startOffsets[roleIndex] ?? margin);
-        // 折叠条封在自身泳道内（同分支折叠条 F8 口径），宽随文字截断。
+        // 折叠条封在自身角色列内（同分支折叠条 F8 口径），宽随文字截断。
         const width = foldBarWidthOf(emittingCluster.label);
         operatorFolds.push({
           clusterId: emittingCluster.clusterId,
@@ -993,11 +1111,32 @@ export function buildStructuredNarrativeLayout(
         }
       }
 
-      const labelX = stepItem === undefined ? lifelineX + METRICS.labelInset : lifelineX;
-      const labelAnchor: StructuredNode['labelAnchor'] = stepItem === undefined ? 'start' : 'middle';
+      // C7：分支臂内的事件与本地节点以臂道轨为基线（值层随之偏移、消息端点仍锚生命线）。
+      const armFrame = armStack[armStack.length - 1];
+      const armFrameRailX = armFrame === undefined ? undefined : armRuns[armFrame.runIndex]?.railX;
+      const inBranchArm = armFrameRailX !== undefined && (item.kind === 'event' || item.kind === 'local');
+      const baseX = inBranchArm ? armFrameRailX! : lifelineX;
+      // C4：insert 独立为文本宽度胶囊，标签居中（不再画空矩形）。
+      const isInsertNode = item.kind === 'local' && item.operation === 'insert';
+  // C14：降级语句以原文芯片入图（按源码位置占行单元，不再挂角色列顶端）。
+  const isDegradedNode = item.kind === 'local' && item.operation === 'degraded';
+      const labelX = stepItem === undefined ? baseX + METRICS.labelInset : baseX;
+      const labelAnchor: StructuredNode['labelAnchor'] = isInsertNode || isDegradedNode
+        ? 'middle'
+        : stepItem === undefined ? 'start' : 'middle';
       const labelBudget = labelAnchor === 'start'
-        ? Math.max(6, Math.floor((labelLimitX - labelX) / CHAR_WIDTH))
+        ? Math.max(1, Math.floor((labelLimitX - labelX) / CHAR_WIDTH))
         : Math.max(6, Math.floor((METRICS.nodeHeight * 2) / CHAR_WIDTH) + 2);
+      const eventMarkerX = item.kind === 'event' ? baseX + outward * (METRICS.valueWidth / 2 + 14) : undefined;
+      const nodeLabelX = eventMarkerX === undefined ? labelX : eventMarkerX + outward * 10;
+      const nodeLabelAnchor: StructuredNode['labelAnchor'] = eventMarkerX === undefined ? labelAnchor : outward > 0 ? 'start' : 'end';
+      const rolePosition = columnPosition.get(`role:${role.name}`) ?? 0;
+      const previousColumn = columns[rolePosition - 1];
+      const leftLabelLimitX = previousColumn === undefined ? 0 : previousColumn.x + previousColumn.width + 8;
+      const eventBudget = nodeLabelAnchor === 'start'
+        ? (Number.isFinite(labelLimitX) ? Math.max(1, Math.floor((labelLimitX - nodeLabelX) / CHAR_WIDTH)) : 24)
+        : Math.max(1, Math.floor((nodeLabelX - leftLabelLimitX - 8) / CHAR_WIDTH));
+      const nodeLabelBudget = item.kind === 'event' ? eventBudget : labelBudget;
       const label = stepItem !== undefined
         ? `${stepItem.endpoint.direction === 'out' ? '发出' : '接收'} · ${renderTerm(stepItem.endpoint.term)}`
         : item.kind === 'event'
@@ -1005,32 +1144,41 @@ export function buildStructuredNarrativeLayout(
           : item.kind === 'branch'
             ? branchLabel(item)
             : item.kind === 'local'
-              ? item.text
+              // C4：insert 的 item.text 只含实参，显示补 `insert` 前缀标注插入事实。
+              ? item.operation === 'insert' ? `insert${item.text}` : item.text
               : '';
+      const nodeWidth = isInsertNode || isDegradedNode
+        ? Math.min(148, 20 + label.length * CAPTION_CHAR_WIDTH)
+        : METRICS.nodeHeight * 2;
       nodes.push({
         id: item.id,
         roleIndex,
         itemIndex,
         kind: item.kind,
-        x: lifelineX - METRICS.nodeHeight,
+        x: baseX - nodeWidth / 2,
         y: y - baseHeightOf(item) / 2,
-        width: METRICS.nodeHeight * 2,
+        width: nodeWidth,
         height: baseHeightOf(item),
         label,
-        labelX,
-        labelAnchor,
-        labelMaxChars: labelBudget,
+        labelX: nodeLabelX,
+        labelAnchor: nodeLabelAnchor,
+        labelMaxChars: nodeLabelBudget,
+        ...(eventMarkerX === undefined ? {} : { markerX: eventMarkerX, markerY: y, anchorX: lifelineX }),
         span: item.span,
+        ...(isDegradedNode ? { degraded: true } : {}),
+        ...(isInsertNode ? { inserted: true } : {}),
         ...(stepItem === undefined ? {} : { stepIndex: stepItem.endpoint.stepIndex, direction: stepItem.endpoint.direction, channelName: renderTerm(stepItem.endpoint.channel) }),
         bindingIds: item.kind === 'local' && item.bindingId !== undefined ? [item.bindingId] : [],
       });
-      if (labelAnchor === 'start') {
-        maxTextRight = Math.max(maxTextRight, labelX + Math.min(label.length, labelBudget) * CHAR_WIDTH);
+      if (nodeLabelAnchor === 'start') {
+        maxTextRight = Math.max(maxTextRight, nodeLabelX + Math.min(label.length, nodeLabelBudget) * CHAR_WIDTH);
       }
 
       // 值层竖向链：紧贴生命线，值方块 20px 一格、方法盒 38px 一格（盒下留 caption），行高随链长增长。
       // 构造链例外：横置盒朝信道方向偏移，绑定的输出值块落在盒的远端（prototype 08 口径）。
       let slotTop = y - chainHeightOf(chain) / 2;
+      // C7：值层竖向链以节点基线为准（分支臂内随臂轨偏移，避免与主生命线值层混排）。
+      const chainX = baseX;
       const firstCheckIndex = chain.findIndex((entry) => entry.kind === 'check');
       let pendingConstruct: { entryIndex: number; boxY: number; outputX: number; outputBindingIds: readonly string[] } | null = null;
       chain.forEach((entry, entryIndex) => {
@@ -1049,20 +1197,20 @@ export function buildStructuredNarrativeLayout(
           valueBlocks.push(valueBlockOf(
             binding,
             roleIndex,
-            lifelineX,
+            chainX,
             slotY,
             entry.occurrence,
             bindingColors,
             ordinalOf(binding.id),
             valueBlocks.length,
           ));
-          maxTextRight = Math.max(maxTextRight, lifelineX + METRICS.valueWidth / 2);
+          maxTextRight = Math.max(maxTextRight, chainX + METRICS.valueWidth / 2);
           return;
         }
         if (entry.kind === 'check') {
           const operandY = slotTop + 9;
           entry.operands.forEach((operand, index) => {
-            const operandX = rowX + (entry.operands.length > 1 ? (index === 0 ? -27 : 27) : 0);
+            const operandX = chainX + (entry.operands.length > 1 ? (index === 0 ? -27 : 27) : 0);
             if (operand.kind === 'value') {
               const binding = bindingById.get(operand.bindingId);
               if (binding === undefined) return;
@@ -1070,7 +1218,7 @@ export function buildStructuredNarrativeLayout(
               return;
             }
             chips.push({
-              id: `${item.id}:operand:${String(index)}`,
+              id: `${item.id}:operand:${String(entryIndex)}:${String(index)}`,
               roleIndex,
               text: operand.text,
               kind: 'pattern',
@@ -1089,7 +1237,7 @@ export function buildStructuredNarrativeLayout(
             label: entry.op,
             direction: 'check',
             ...(entry.connector === undefined ? {} : { connector: entry.connector }),
-            x: rowX,
+            x: chainX,
             y: boxY,
             width: METRICS.methodWidth,
             height: METRICS.methodHeight,
@@ -1101,7 +1249,7 @@ export function buildStructuredNarrativeLayout(
               : {}),
             sourceSpan: item.span,
           });
-          maxTextRight = Math.max(maxTextRight, rowX + 27 + METRICS.chipWidth / 2);
+          maxTextRight = Math.max(maxTextRight, chainX + 27 + METRICS.chipWidth / 2);
           return;
         }
 
@@ -1109,17 +1257,17 @@ export function buildStructuredNarrativeLayout(
           const chipY = slotTop + METRICS.chipHeight / 2;
           slotTop += METRICS.valuePitch;
           chips.push({
-            id: `${item.id}:chip:${String(chips.length)}`,
+            id: `${item.id}:chip:${String(entryIndex)}`,
             roleIndex,
             text: entry.text,
             kind: entry.chipKind,
-            x: rowX,
+            x: chainX,
             y: chipY,
             width: METRICS.chipWidth,
             height: METRICS.chipHeight,
             sourceSpan: item.span,
           });
-          maxTextRight = Math.max(maxTextRight, rowX + METRICS.chipWidth / 2);
+          maxTextRight = Math.max(maxTextRight, chainX + METRICS.chipWidth / 2);
           return;
         }
 
@@ -1127,9 +1275,13 @@ export function buildStructuredNarrativeLayout(
         slotTop += METRICS.methodPitch;
         // 构造 = 横置梯形，朝信道方向偏移；解构 / 选择留在生命线上竖置。
         const isConstruct = entry.direction === 'construct';
-        const boxX = isConstruct ? lifelineX + inward * METRICS.chainConstructOffset : lifelineX;
+        const boxX = isConstruct ? chainX + inward * METRICS.chainConstructOffset : chainX;
+        // C6：构造盒宽端覆盖全部输入方块的整体跨度（max(66, 输入数 × 值距 + 12)）。
+        const methodWidth = isConstruct
+          ? Math.max(METRICS.methodWidth, entry.inputBindingIds.length * METRICS.valuePitch + 12)
+          : METRICS.methodWidth;
         methods.push({
-          id: `${item.id}:method`,
+          id: `${item.id}:method:${String(entryIndex)}`,
           roleIndex,
           label: entry.label,
           ...(entry.caption === undefined ? {} : { caption: entry.caption }),
@@ -1137,7 +1289,7 @@ export function buildStructuredNarrativeLayout(
           ...(isConstruct ? { narrowTowards: inward > 0 ? 'right' as const : 'left' as const } : {}),
           x: boxX,
           y: boxCenterY,
-          width: METRICS.methodWidth,
+          width: methodWidth,
           height: METRICS.methodHeight,
           inputBindingIds: entry.inputBindingIds,
           outputBindingIds: entry.outputBindingIds,
@@ -1147,11 +1299,11 @@ export function buildStructuredNarrativeLayout(
           pendingConstruct = {
             entryIndex,
             boxY: boxCenterY,
-            outputX: lifelineX + inward * METRICS.chainOutputOffset,
+            outputX: chainX + inward * METRICS.chainOutputOffset,
             outputBindingIds: entry.outputBindingIds,
           };
           maxTextRight = Math.max(maxTextRight, boxX + METRICS.methodWidth / 2 + 8);
-          maxTextRight = Math.max(maxTextRight, lifelineX + inward * (METRICS.chainOutputOffset + METRICS.valueWidth / 2));
+          maxTextRight = Math.max(maxTextRight, chainX + inward * (METRICS.chainOutputOffset + METRICS.valueWidth / 2));
         } else {
           pendingConstruct = null;
         }
@@ -1166,6 +1318,8 @@ export function buildStructuredNarrativeLayout(
         const channel = channelColumns.get(channelName);
         if (channel !== undefined) {
           const channelCenterX = channel.x + channel.width / 2;
+          const towardsChannel = Math.sign(channelCenterX - lifelineX) || 1;
+          const wireX = channelCenterX - towardsChannel * (channel.width / 2 - 6);
           endpoints.push({
             roleIndex,
             stepIndex: stepItem.endpoint.stepIndex,
@@ -1173,6 +1327,7 @@ export function buildStructuredNarrativeLayout(
             direction: stepItem.endpoint.direction,
             roleX: lifelineX,
             channelX: channelCenterX,
+            wireX,
             y,
             channelName,
             termText: renderTerm(stepItem.endpoint.term),
@@ -1185,7 +1340,6 @@ export function buildStructuredNarrativeLayout(
           if (stepItem.endpoint.direction === 'out') {
             const wire = wireMethodOf(stepItem.endpoint.term, destructorNames);
             if (wire !== null) {
-              const towardsChannel = Math.sign(channelCenterX - lifelineX) || 1;
               methods.push({
                 id: `${item.id}:wire-method`,
                 roleIndex,
@@ -1194,7 +1348,10 @@ export function buildStructuredNarrativeLayout(
                 ...(wire.direction === 'construct' ? { narrowTowards: towardsChannel > 0 ? 'right' as const : 'left' as const } : {}),
                 x: lifelineX + towardsChannel * METRICS.wireMethodOffset,
                 y,
-                width: METRICS.methodWidth,
+                // C6：线上构造盒同样覆盖全部输入方块跨度。
+                width: wire.direction === 'construct'
+                  ? Math.max(METRICS.methodWidth, wire.inputBindingIds.length * METRICS.valuePitch + 12)
+                  : METRICS.methodWidth,
                 height: METRICS.methodHeight,
                 inputBindingIds: wire.inputBindingIds,
                 outputBindingIds: [],
@@ -1249,26 +1406,55 @@ export function buildStructuredNarrativeLayout(
     group.manual = group.manual || pairing.origin === 'manual';
     groups.set(key, group);
   });
-  [...groups.values()].forEach((group, index) => {
+  const orderedGroups = [...groups.values()].sort((a, b) =>
+    a.out.y - b.out.y || a.out.sourceSpan.start.offset - b.out.sourceSpan.start.offset);
+  // 信道内消息道：按柱的 y 区间重叠关系做贪心分配；排序键已由 orderedGroups 固定。
+  const laneIntervals: Array<Array<{ top: number; bottom: number }>> = [];
+  const laneOfGroup = new Map<string, number>();
+  for (const group of orderedGroups) {
+    const members = [group.out, ...group.ins];
+    const top = Math.min(...members.map((member) => member.y)) - 6;
+    const bottom = Math.max(...members.map((member) => member.y)) + 6;
+    let lane = 0;
+    while (laneIntervals[lane] !== undefined && laneIntervals[lane]?.some((item) => top < item.bottom && bottom > item.top)) {
+      lane += 1;
+      if (lane >= 4) {
+        lane = 3;
+        break;
+      }
+    }
+    laneIntervals[lane] = [...(laneIntervals[lane] ?? []), { top, bottom }];
+    laneOfGroup.set(group.out.id, lane);
+  }
+  const laneCount = Math.max(1, laneIntervals.length);
+  const messagePalette = buildMessagePalette(orderedGroups.length);
+  orderedGroups.forEach((group, index) => {
     const channel = channelColumns.get(group.out.channelName);
     if (channel === undefined) return;
     const channelX = channel.x + channel.width / 2;
     const members = [group.out, ...group.ins];
+    const lane = laneOfGroup.get(group.out.id) ?? 0;
+    const laneX = channelX + (lane - (laneCount - 1) / 2) * 12;
     const frameWidth = messageFrameWidthOf(group.out.termText);
     // identity 接收去重的值身份色带（F5）：广播取第一个定义了 identity 色的接收端。
     const termValueColor = group.ins.flatMap((incoming) => {
       const color = identityTermColorByRef.get(refOf(incoming.roleIndex, incoming.stepIndex));
       return color === undefined ? [] : [color];
     })[0];
+    const top = Math.min(...members.map((member) => member.y));
+    const bottom = Math.max(...members.map((member) => member.y));
     pillars.push({
       id: `message-${String(index + 1)}`,
-      color: MESSAGE_COLORS[index % MESSAGE_COLORS.length],
+      color: messagePalette[index] ?? MESSAGE_COLORS[index % MESSAGE_COLORS.length],
       sequence: index + 1,
+      lineStyle: messageLineStyleOf(index),
+      lane,
+      laneX,
       origin: group.manual ? 'manual' : 'automatic',
       channelName: group.out.channelName,
       channelX,
-      top: Math.min(...members.map((member) => member.y)),
-      bottom: Math.max(...members.map((member) => member.y)),
+      top,
+      bottom,
       termText: group.out.termText,
       termPresentation: group.out.termPresentation,
       ...(termValueColor === undefined ? {} : { termValueColor }),
@@ -1378,25 +1564,14 @@ function valueChainOf(
     return entries;
   }
   if (item.operation === 'insert') return entries;
+  // C14：降级语句无值链，仅作为原文芯片行单元发射。
+  if (item.operation === 'degraded') return entries;
 
   const introduced = new Set(item.bindingIds);
   if (item.operation === 'get') {
+    // C5/U4.7：`get` 只保留分支侧的表模式 ∈ 检查盒（guardEntries），不再重复生成方法盒。
     const patternRefs = item.pattern === undefined ? [] : termBindingRefs(item.pattern);
-    pushValues(patternRefs.filter((ref) => !introduced.has(ref.bindingId)));
-    if (item.pattern !== undefined) {
-      const method = methodOfTerm(item.pattern, destructorNames, true);
-      if (method !== null) {
-        entries.push({
-          kind: 'method',
-          label: method.label,
-          direction: method.direction,
-          caption: methodCaptionOf(item.pattern),
-          inputBindingIds: patternRefs.filter((ref) => !introduced.has(ref.bindingId)).map((ref) => ref.bindingId),
-          outputBindingIds: item.bindingIds,
-        });
-      }
-    }
-    pushValues(patternRefs.filter((ref) => introduced.has(ref.bindingId)), introduced);
+    pushValues(patternRefs);
     return entries;
   }
 
@@ -1417,6 +1592,12 @@ function valueChainOf(
     // `let x = if c then a else b`：条件作盒外芯片（决策 13：选择盒不划臂区间）。
     if (item.term.kind === 'conditional') {
       entries.push({ kind: 'derived', text: renderCondition(item.term.condition), chipKind: 'condition' });
+    }
+    // C6：嵌套构造的可见性——外层词项内联的内层构造子以派生芯片标注原文，弥补逐层盒的列宽约束。
+    if (item.term.kind === 'application') {
+      item.term.args.forEach((argument) => {
+        if (argument.kind === 'application') entries.push({ kind: 'derived', text: renderTerm(argument), chipKind: 'derived' });
+      });
     }
   }
   if (item.pattern !== undefined) pushValues(termBindingRefs(item.pattern), introduced);
@@ -1612,13 +1793,7 @@ function termPresentation(term: PvTerm): StructuredEndpoint['termPresentation'] 
 }
 
 function assignBindingColors(roles: readonly PvRole[]): Map<string, string> {
-  const colors = new Map<string, string>();
-  for (const role of roles) {
-    for (const binding of role.bindings) {
-      if (!colors.has(binding.id)) colors.set(binding.id, VALUE_COLORS[colors.size % VALUE_COLORS.length]);
-    }
-  }
-  return colors;
+  return valueColorsOf(roles.flatMap((role) => role.bindings.map((binding) => binding.id)));
 }
 
 function valueBlockOf(
@@ -1638,6 +1813,7 @@ function valueBlockOf(
     label: binding.name,
     color: colors.get(binding.id) ?? VALUE_COLORS[0],
     ordinal,
+    pattern: patternKindOf(ordinal),
     occurrence,
     x,
     y,

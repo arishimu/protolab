@@ -87,8 +87,7 @@ describe('VerifyPanel 冒烟（ticket 08）', () => {
 });
 
 describe('QueryResultCard：逐条查询卡片的呈现（录制 stdout 真实数据）', () => {
-  it('被证伪的那条：用户原文 + 归一化形态 + 判定徽标 + 可展开的反例 trace', () => {
-    const source = fixtureSource('ns-original');
+  it('被证伪的那条：用户原文 + 判定徽标 + 可展开的反例 trace（R14：归一化等价不重复）', () => {    const source = fixtureSource('ns-original');
     const views = mapResultsToQueries(
       parseVerifyStdout(fixtureStdout('ns-original')),
       parsePv(source).queries,
@@ -98,8 +97,11 @@ describe('QueryResultCard：逐条查询卡片的呈现（录制 stdout 真实�
     expect(html).toContain('id="query-1"'); // 卡片锚点（cardId）
     expect(html).toContain('被证伪');
     expect(html).toContain('inj-event(endBparam(x)) ==&gt; inj-event(beginBparam(x))'); // 用户原文
-    expect(html).toContain('归一化形态');
-    expect(html).toContain('展开反例 / 攻击 trace 原文');
+    // R14：该条用户原文与归一化形态等价（仅记号差异归一化后相同），不再重复显示归一化行。
+    expect(html).not.toContain('归一化形态');
+    expect(html).toContain('攻击路径摘要与反例 trace');
+    expect(html).toContain('复制');
+    expect(html).toContain('下载');
     expect(html).toContain('Derivation:');
     expect(html).toContain('不成立'); // 解释文案
   });
@@ -123,12 +125,18 @@ describe('VerifyFailureNotice：按 kind 分派中文指引', () => {
     return renderToString(createElement(VerifyFailureNotice, { outcome: failure }));
   }
 
-  it('缺 ProVerif：安装 + PROVERIF_PATH 注入说明（ADR-0002 口径）', () => {
+  it('缺 ProVerif：安装 + PROVERIF_PATH 注入说明；R10 枚举只进技术细节折叠', () => {
     const html = renderFailure({ ok: false, kind: 'missing-executable', message: '未找到可执行文件' });
     expect(html).toContain('安装');
     expect(html).toContain('PROVERIF_PATH');
     expect(html).toContain('~/.opam/default/bin/proverif');
+    // R10：标题只显示中文类别；kind 枚举与 message 收进「技术细节」折叠。
+    expect(html).not.toContain('找不到 ProVerif（');
+    expect(html).toContain('<details class="verify-failure-tech"');
+    expect(html).toContain('技术细节');
     expect(html).toContain('missing-executable');
+    expect(html).not.toContain('ADR-0002');
+    expect(html).not.toContain('MVP');
   });
 
   it('模型报错：展示 exitCode / stdout / stderr，并提示按输出定位源码', () => {

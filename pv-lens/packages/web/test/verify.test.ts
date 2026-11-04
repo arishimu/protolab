@@ -186,6 +186,21 @@ describe('verify：requestVerification（HTTP 状态 / body → kind）', () => 
     expectFailure(outcome, 'bad-response');
   });
 
+  it('R10：502/504 响应体非 JSON（代理错误页）→ unreachable，状态码入 message', async () => {
+    const html502 = new Response('<html>502 Bad Gateway</html>', { status: 502 });
+    const failure502 = expectFailure(
+      await requestVerification(SOURCE, { fetchFn: stubFetch(html502) }),
+      'unreachable',
+    );
+    expect(failure502.message).toContain('HTTP 502');
+    const text504 = new Response('Gateway Time-out', { status: 504 });
+    const failure504 = expectFailure(
+      await requestVerification(SOURCE, { fetchFn: stubFetch(text504) }),
+      'unreachable',
+    );
+    expect(failure504.message).toContain('HTTP 504');
+  });
+
   it('fetch 抛 TypeError（非 abort）→ unreachable，且不抛异常', async () => {
     const fetchFn: VerifyFetch = () => Promise.reject(new TypeError('Failed to fetch'));
     const failure = expectFailure(await requestVerification(SOURCE, { fetchFn }), 'unreachable');
@@ -267,11 +282,24 @@ describe('verify：describeVerifyFailure', () => {
     expect(describeVerifyFailure('missing-executable')).toContain('opam install proverif');
     expect(describeVerifyFailure('missing-executable')).toContain('PROVERIF_PATH');
     expect(describeVerifyFailure('missing-executable')).toContain('~/.opam/default/bin/proverif');
-    expect(describeVerifyFailure('missing-executable')).toContain('ADR-0002');
+    // R10：面向用户的指引不再出现 ADR 编号、MVP 等内部术语与字面反引号。
+    expect(describeVerifyFailure('missing-executable')).not.toContain('ADR-');
+    expect(describeVerifyFailure('missing-executable')).not.toContain('MVP');
+    for (const kind of ['missing-executable', 'unreachable', 'bad-response', 'not-found', 'method-not-allowed'] as const) {
+      expect(describeVerifyFailure(kind)).not.toContain('`');
+    }
     expect(describeVerifyFailure('unreachable')).toContain('pnpm start');
+    expect(describeVerifyFailure('unreachable')).toContain('pv-lens');
     expect(describeVerifyFailure('unreachable')).toContain('127.0.0.1:8787');
     expect(describeVerifyFailure('timeout')).toContain('模型太复杂');
     expect(describeVerifyFailure('proverif-error')).toContain('模型');
+  });
+
+  it('R10：启动指引统一为在 pv-lens 目录执行 pnpm start，不再指向仓库根目录', () => {
+    expect(describeVerifyFailure('unreachable')).toContain('pv-lens 目录执行 pnpm start');
+    expect(describeVerifyFailure('bad-response')).toContain('pv-lens 目录执行 pnpm start');
+    expect(describeVerifyFailure('not-found')).not.toContain('仓库根目录');
+    expect(describeVerifyFailure('unreachable')).not.toContain('仓库根目录');
   });
 
   it('带上 server 的 message 时附在指引之后（不吞掉服务端说明）', () => {

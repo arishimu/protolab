@@ -23,9 +23,70 @@ body {
 }
 
 .app {
-  max-width: 900px;
+  max-width: min(1600px, 100%);
   margin: 0 auto;
   padding: 1.5rem 1rem 3rem;
+  overflow-x: clip;
+}
+
+/* E2 双栏布局（ADR-0015）：1280px 以上源码列与画布列并列，断点与 Home 文案共用 1280px。
+ * R08：窄屏上下堆叠时画布列在前、源码列在后，首屏先见画布标题与消息。 */
+.loaded-columns {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-column {
+  order: -1;
+  min-width: 0;
+}
+
+.source-column {
+  min-width: 0;
+}
+
+/* R08：显式隐藏源码列后，宽屏单列、画布占满宽度。 */
+.loaded-columns--source-hidden .source-column {
+  display: none;
+}
+
+/* R11：标题下的解析降级横幅（数量 + 定位入口）。 */
+.degraded-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px dashed #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
+@media (min-width: 1280px) {
+  .loaded-columns {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .canvas-column {
+    order: 0;
+  }
+
+  .loaded-columns--source-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .source-column {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+  }
 }
 
 .app-header {
@@ -50,6 +111,24 @@ body {
 /* ---- 首页样例列表 ---- */
 .home h2 {
   font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* R19：首次使用者的阅读路径（3–5 行，不依赖外部文档）。 */
+.reading-path {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 1.6rem;
+  border-left: 3px solid #bfdbfe;
+  font-size: 0.85rem;
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+.reading-path li {
+  margin: 0.15rem 0;
 }
 
 .sample-list {
@@ -145,13 +224,82 @@ body {
   color: #fff;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   filter: brightness(0.98);
 }
 
+/* D8 运行中按钮：降低对比、禁用悬停、光标 progress；配合旋转指示器。 */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  filter: none;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 0.4rem;
+  vertical-align: -1px;
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes btn-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.verify-run-state {
+  margin: 0.5rem 0 0;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+/* D7 已声明配对清单（画布下方，配对警告与拒绝诊断分色）。 */
+.manual-pairings {
+  margin-top: 1rem;
+}
+
+.manual-pairings-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  margin: 0 0 0.4rem;
+}
+
+.manual-pairings-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.manual-pairings-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.15rem 0;
+}
+
+.manual-pairings-revoke {
+  padding: 0.1rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.pairing-warning--type-mismatch {
+  color: #92400e;
+}
+
+/* R18：说明文字限行宽约 70 字符（1920 宽下单行不超过约 900px，阅读不跳行）；
+ * 画布、矩阵与图例不受影响。 */
 .hint {
   color: var(--muted);
   font-size: 0.85rem;
+  max-width: 70ch;
 }
 
 /* ---- 装载后视图 ---- */
@@ -233,6 +381,65 @@ body {
   overflow-x: auto;
 }
 
+/* R16：自动换行开关（长行不截断、不横向滚动）；面板工具行提示当前模式。 */
+.source-body--wrap {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: hidden;
+}
+
+.source-panel-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.35rem;
+}
+
+.source-panel-tools-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* R20：源码行键盘焦点可见（roving tabindex 下当前行聚焦时的左缘指示）。 */
+.source-line:focus-visible {
+  outline: none;
+  box-shadow: inset 2px 0 0 #1d4ed8;
+  background: #eff6ff;
+}
+
+/* R16：宽屏源码/画布列间可拖拽分隔条；窄屏（flex 堆叠）与隐藏源码时不显示。 */
+.column-divider {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .column-divider {
+    display: block;
+    align-self: stretch;
+    width: 6px;
+    margin: 0 -3px;
+    cursor: col-resize;
+    background: transparent;
+    position: relative;
+    z-index: 5;
+  }
+
+  .column-divider::after {
+    content: '';
+    position: absolute;
+    inset: 0 2px;
+    border-radius: 3px;
+    background: var(--border);
+    opacity: 0.4;
+  }
+
+  .column-divider:hover::after,
+  .column-divider:active::after {
+    opacity: 1;
+    background: #93c5fd;
+  }
+}
+
 .source-body code {
   font-family: inherit;
 }
@@ -258,11 +465,36 @@ body {
 }
 
 .source-line--highlight {
-  background: #fef3c7;
-  box-shadow: inset 2px 0 0 #d97706;
+  background: #fde68a;
+  box-shadow: inset 3px 0 0 #d97706;
 }
 
-/* ---- 规范叙事视图（泳道图，ticket 04） ---- */
+/* D3 双区间分色：声明行用主高亮，参数在首个消息步骤中的引用行用浅高亮。 */
+/* F4：行号槽的解析诊断标记（红点=错误、琥珀=降级），title 带定位与消息。 */
+.source-line-marker {
+  margin-right: 0.35em;
+  font-size: 0.7em;
+  vertical-align: 1px;
+}
+
+.source-line-marker--error {
+  color: #dc2626;
+}
+
+.source-line-marker--degraded {
+  color: #d97706;
+}
+
+.source-line--diagnostic {
+  background: #fff7f7;
+}
+
+.source-line--reference {
+  background: #fef3c7;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+/* ---- 规范叙事视图（叙事视图，ticket 04） ---- */
 .narrative {
   margin-top: 1.5rem;
 }
@@ -416,6 +648,39 @@ body {
 .verify-title {
   font-size: 1.05rem;
   margin: 0 0 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* R10：验证服务健康状态（载入即探测，不用等点运行才发现 server 未启动）。 */
+.verify-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.verify-health-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #cbd5e1;
+}
+
+.verify-health--up .verify-health-dot {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+.verify-health--down .verify-health-dot {
+  background: #b91c1c;
+  border-color: #b91c1c;
 }
 
 .verify-subtitle {
@@ -492,10 +757,13 @@ body {
   padding: 0;
   margin: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 
 .query-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: var(--panel);
   border: 1px solid var(--border);
   border-left: 4px solid var(--border);
@@ -588,6 +856,16 @@ body {
   color: #475569;
 }
 
+.query-card-proof {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.query-card-proof summary {
+  cursor: pointer;
+}
+
 .query-card-explanation {
   margin: 0.5rem 0 0;
   font-size: 0.88rem;
@@ -615,12 +893,57 @@ body {
   margin: 0;
   border-top: 1px solid var(--border);
   padding: 0.7rem;
+  max-width: 100%;
   max-height: 40vh;
   overflow: auto;
   font-family: var(--mono);
   font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre;
+}
+
+/* R12：适合宽度 = 自动换行，避免同一 <pre> 同时横向与纵向滚动。 */
+.raw-output-body--wrap,
+.counterexample-body.raw-output-body--wrap {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: hidden;
+}
+
+/* R12：输出折叠块的操作条（复制 / 下载 / 换行 / 展开全部）与分节容器。 */
+.raw-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0 0.35rem;
+}
+
+.btn--small {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.raw-output-copy-state {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.raw-output-copy-state--ok {
+  color: #15803d;
+}
+
+.raw-output-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+}
+
+.raw-output--section summary {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .verify-failure {
@@ -641,6 +964,26 @@ body {
   margin: 0;
   font-size: 0.88rem;
   white-space: pre-wrap;
+}
+
+/* R10：kind 枚举、HTTP 细节与退出码收进可折叠技术细节，不进主提示。 */
+.verify-failure-tech {
+  margin: 0.4rem 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.verify-failure-tech summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.verify-failure-tech p {
+  margin: 0.25rem 0 0;
+}
+
+.verify-failure-tech-message {
+  word-break: break-all;
 }
 
 .verify-failure-meta {
@@ -706,17 +1049,24 @@ body {
 }
 
 /* ---- 图例 ---- */
+/* R07：图例默认限高并内部滚动，长值清单不再把页面往下推；打印时放开。 */
 .narrative-legend {
   margin-top: 0.75rem;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .narrative-legend h4 {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
+  position: sticky;
+  top: -0.75rem;
+  background: var(--panel);
+  padding: 0.25rem 0;
 }
 
 .narrative-legend dl {
@@ -748,6 +1098,36 @@ body {
   background: #f4f4f7;
   border-radius: 4px;
   padding: 0.05rem 0.3rem;
+}
+
+/* R07：值序号清单独立面板，跨满图例全宽，不参与记法网格的行高计算。 */
+.legend-value-fold {
+  margin-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.35rem;
+}
+
+.legend-value-fold summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--muted);
+  user-select: none;
+}
+
+.legend-value-fold[open] summary {
+  margin-bottom: 0.2rem;
+}
+
+/* 打印与灰度场景不因折叠丢失信息：放开限高并强制显示折叠内容。 */
+@media print {
+  .narrative-legend {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .legend-value-fold > *:not(summary) {
+    display: block;
+  }
 }
 
 .legend-chip {
@@ -798,6 +1178,18 @@ body {
 
 .correspondence-controls {
   margin: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.correspondence-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .correspondence-matrix-wrap {
@@ -805,9 +1197,12 @@ body {
   margin: 0.5rem 0;
 }
 
+/* R13：矩阵占满面板可用宽度并限宽；宽屏下单元格与行高增大，符号可读（规则置于基础规则之后）。 */
 .correspondence-matrix {
   border-collapse: collapse;
   font-size: 0.78rem;
+  width: 100%;
+  max-width: 760px;
 }
 
 .correspondence-head {
@@ -835,6 +1230,21 @@ body {
   background: #eff6ff;
 }
 
+/* D5 弱高亮：选中单元另一端的行/列，仅提示关联，不与强高亮同级。 */
+.correspondence-head--related {
+  background: #f8fafc;
+  outline: 1px dashed #93c5fd;
+}
+
+.correspondence-row--related > .correspondence-head {
+  background: #f8fafc;
+}
+
+.correspondence-reflexive-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 .correspondence-cell {
   width: 30px;
   height: 26px;
@@ -851,6 +1261,55 @@ body {
 .correspondence-cell--cannot-be-proved { background: #fef9c3; border-color: #d4a72c; color: #713f12; }
 .correspondence-cell--pending { background: #f8fafc; color: #94a3b8; }
 .correspondence-cell--selected { outline: 2px solid #1d4ed8; outline-offset: -2px; }
+.correspondence-cell--declared { box-shadow: inset 0 0 0 1.5px #1d4ed8; }
+
+/* R13：宽屏下单元格与字号增大（置于基础规则之后以覆盖 30×26 默认值）。 */
+@media (min-width: 1280px) {
+  .correspondence-matrix {
+    font-size: 0.9rem;
+  }
+
+  .correspondence-cell {
+    width: 40px;
+    height: 32px;
+    font-size: 1rem;
+  }
+}
+
+/* R13：声明过滤视图——声明目标列表（判定徽标 + 查询原文 + 点击联动）。 */
+.declared-query-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.declared-query-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.declared-query-item--selected {
+  outline: 2px solid #1d4ed8;
+  outline-offset: -2px;
+}
+
+.declared-query-text {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
 
 .correspondence-reflexive-mark {
   position: absolute;
@@ -865,6 +1324,19 @@ body {
   padding: 0.5rem 0.75rem;
   border-left: 3px solid #2563eb;
   background: #ffffff;
+}
+
+.correspondence-detail-kind {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #1d4ed8;
+}
+
+.correspondence-detail-source {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .correspondence-detail-query code {

@@ -27,19 +27,19 @@ export const VERDICT_META: Record<Verdict, VerdictMeta> = {
     label: '成立',
     tone: 'positive',
     explanation:
-      'ProVerif 证明该查询成立（归一化输出里的 `is true`）：在 Dolev-Yao 攻击者模型下没有找到反例。',
+      'ProVerif 证明该查询成立（归一化输出里的 is true）：在 Dolev-Yao 攻击者模型下没有找到反例。',
   },
   false: {
     label: '被证伪',
     tone: 'negative',
     explanation:
-      'ProVerif 找到反例（归一化输出里的 `is false`）：该查询不成立，攻击路径见下方的反例 trace。',
+      'ProVerif 找到反例（归一化输出里的 is false）：该查询不成立，攻击路径见下方的反例 trace。',
   },
   'cannot-be-proved': {
     label: '未证出',
     tone: 'unknown',
     explanation:
-      'ProVerif 未能证明该查询，也未能证伪它（归一化输出里的 `cannot be proved`）——'
+      'ProVerif 未能证明该查询，也未能证伪它（归一化输出里的 cannot be proved）——'
       + '「未证出」不等于「不成立」：可能是模型太复杂、缺少必要假设，或该性质确实需要人工判断。',
   },
 };
@@ -59,10 +59,85 @@ export interface QueryResultView {
   variables: readonly string[];
   verdict: Verdict;
   verdictLabel: VerdictMeta['label'];
+  /** 查询性质：保密性、认证/对应性、可达性或其它。 */
+  propertyKind: QueryPropertyKind;
+  propertyLabel: string;
+  propertySubject: string;
+  /** 性质化徽标，例如“保密性成立”“认证被证伪”。 */
+  propertyVerdictLabel: string;
+  /** 性质化解释句。 */
+  propertyExplanation: string;
   counterexampleTrace: string | null;
   goalReachable: string | null;
   /** 是否映射到了某条用户查询（false ⇒ userText 为 null）。 */
   matched: boolean;
+}
+
+export type QueryPropertyKind = 'secrecy' | 'correspondence' | 'reachability' | 'other';
+
+export interface QueryProperty {
+  kind: QueryPropertyKind;
+  /** 性质名，用于徽标前缀。 */
+  label: string;
+  /** 被查询的主体，用于解释句。 */
+  subject: string;
+}
+
+/** 从用户原文或归一化原文判断查询性质。归一化文本先去掉 `not ` 与 `[]`。 */
+export function propertyOf(text: string): QueryProperty {
+  const normalized = text.replace(/\bnot\s+/gi, '').replace(/\[\]/g, '').trim();
+  const attacker = /^attacker\s*\((.*)\)$/is.exec(normalized);
+  if (attacker !== null) {
+    return { kind: 'secrecy', label: '保密性', subject: attacker[1]?.trim() ?? normalized };
+  }
+  const correspondence = normalized.includes('==>') && /(inj-)?event\s*\(/i.test(normalized);
+  if (correspondence) {
+    const injective = /\binj-event\s*\(/i.test(normalized);
+    return {
+      kind: 'correspondence',
+      label: injective ? '认证' : '对应性',
+      subject: normalized,
+    };
+  }
+  if (/^(inj-)?event\s*\(/i.test(normalized)) {
+    return { kind: 'reachability', label: '可达性', subject: normalized };
+  }
+  return { kind: 'other', label: '查询', subject: normalized };
+}
+
+function propertyVerdictLabel(property: QueryProperty, verdict: Verdict): string {
+  if (property.kind === 'reachability') {
+    if (verdict === 'true') return '目标可达';
+    if (verdict === 'false') return '目标不可达';
+    return '可达性未证出';
+  }
+  if (property.kind === 'other') return VERDICT_META[verdict].label;
+  return `${property.label}${VERDICT_META[verdict].label}`;
+}
+
+function propertyExplanation(property: QueryProperty, verdict: Verdict): string {
+  if (property.kind === 'secrecy') {
+    if (verdict === 'true') {
+      return `ProVerif 证明攻击者无法获得 ${property.subject}；归一化输出为 is true，在 Dolev-Yao 模型下没有找到反例。`;
+    }
+    if (verdict === 'false') {
+      return `ProVerif 找到反例：攻击者可以获得 ${property.subject}；该保密性查询不成立，攻击路径见下方的反例 trace。`;
+    }
+    return `ProVerif 未能证明攻击者无法获得 ${property.subject}，也未能证伪；未证出不等于该秘密已泄露。`;
+  }
+  if (property.kind === 'correspondence') {
+    if (verdict === 'true') return `ProVerif 证明该${property.label}目标成立；归一化输出为 is true，在 Dolev-Yao 模型下没有找到反例。`;
+    if (verdict === 'false') {
+      return `ProVerif 找到反例：该${property.label}目标不成立，已被证伪；攻击路径见下方的反例 trace。`;
+    }
+    return `ProVerif 未能证明该${property.label}目标，也未能证伪；未证出不等于性质为假。`;
+  }
+  if (property.kind === 'reachability') {
+    if (verdict === 'true') return `ProVerif 证明该目标在攻击者模型下可达；归一化输出为 is true。`;
+    if (verdict === 'false') return `ProVerif 证明该目标不可达；归一化输出为 is false。`;
+    return `ProVerif 未能证明该目标可达或不可达；未证出不等于目标不存在。`;
+  }
+  return VERDICT_META[verdict].explanation;
 }
 
 /**
@@ -100,6 +175,7 @@ export function mapResultsToQueries(
     }
 
     const meta = VERDICT_META[result.verdict];
+    const property = propertyOf(query?.text ?? result.query);
     return {
       cardId: `query-${String(index + 1)}`,
       normalizedQuery: result.query,
@@ -107,6 +183,11 @@ export function mapResultsToQueries(
       variables: query?.variables ?? [],
       verdict: result.verdict,
       verdictLabel: meta.label,
+      propertyKind: property.kind,
+      propertyLabel: property.label,
+      propertySubject: property.subject,
+      propertyVerdictLabel: propertyVerdictLabel(property, result.verdict),
+      propertyExplanation: propertyExplanation(property, result.verdict),
       counterexampleTrace: result.counterexampleTrace,
       goalReachable: result.goalReachable,
       matched: query !== undefined,
