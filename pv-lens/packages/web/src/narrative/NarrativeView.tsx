@@ -1,8 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useToggleSet } from './toggle-set';
-import type { MessagePairing, OperationKind, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
-import { deriveCryptoGroups } from '@pv-lens/core';
+import type { ExchangeSegment, MessagePairing, OperationKind, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
+import { buildExchangeDag, deriveCryptoGroups } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   UNPAIRED_COLOR,
@@ -27,6 +27,8 @@ import type { SelectableEndpoint } from './pairing-selection';
 import { Legend } from './Legend';
 import { CryptoGroupToggle, CryptoOperationGroupSvg } from './CryptoOperationGroup';
 import { GroupAuditPanel } from './GroupAuditPanel';
+import { MessageList } from './MessageList';
+import { CrossSegmentEdgeSvg, ExchangeSegmentBandSvg, ExchangeSegmentFoldSvg } from './ExchangeSegmentBand';
 import './v2.css';
 
 /** 事件旗标与对应性矩阵的联动绑定（ticket 08）：形状按事件在查询中的角色区分。 */
@@ -81,6 +83,10 @@ export interface NarrativeViewProps {
   initialExpandedClusters?: readonly string[];
   /** 初始即折叠的密码操作组 id；缺省全部展开（展开态保持基线结构）。 */
   initialCollapsedCryptoGroups?: readonly string[];
+  /** 初始交换段（会话内存注入，测试或外部恢复用）。 */
+  initialExchangeSegments?: readonly ExchangeSegment[];
+  /** 初始即折叠的交换段 id。 */
+  initialCollapsedExchangeSegments?: readonly string[];
   /** 人工配对诊断（拒绝与顺序环），渲染为画布旁的警告条。 */
   manualDiagnostics?: readonly PairingDiagnostic[];
   /** 人工配对点选：当前选中的未配对发送端 id。 */
@@ -114,6 +120,8 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   initialCollapsedBranches = [],
   initialExpandedClusters = [],
   initialCollapsedCryptoGroups = [],
+  initialExchangeSegments = [],
+  initialCollapsedExchangeSegments = [],
   manualDiagnostics = [],
   pendingOutId = null,
   selectionNotice = null,
@@ -144,6 +152,9 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   // 密码操作组默认展开（展开态保持基线）；集合语义 = 已折叠的组。
   const [collapsedCryptoGroups, toggleCryptoGroup, setCryptoGroupsCollapsed] = useToggleSet(initialCollapsedCryptoGroups);
   const [cryptoGroupOverrides, setCryptoGroupOverrides] = useState<Readonly<Record<string, OperationKind>>>({});
+  const exchangeDag = useMemo(() => buildExchangeDag(result, pairings), [result, pairings]);
+  const [exchangeSegments, setExchangeSegments] = useState<readonly ExchangeSegment[]>(initialExchangeSegments);
+  const [collapsedExchangeSegments, toggleExchangeSegment, setExchangeSegmentsCollapsed] = useToggleSet(initialCollapsedExchangeSegments);
   // 切换协议即清空会话内的折叠状态与用户覆盖（决策 01 第 5.3 条）。
   const lastGroupResultRef = useRef(result);
   useEffect(() => {
@@ -151,7 +162,9 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
     lastGroupResultRef.current = result;
     setCryptoGroupOverrides({});
     setCryptoGroupsCollapsed([], false);
-  }, [result, setCryptoGroupsCollapsed]);
+    setExchangeSegments([]);
+    setExchangeSegmentsCollapsed([], false);
+  }, [result, setCryptoGroupsCollapsed, setExchangeSegmentsCollapsed]);
 
   const visibleRoleNames = useMemo(
     () => new Set(result.roles.length > 0 ? result.roles.map((role) => role.name) : result.mainProcess === null ? [] : [result.mainProcess.name]),
@@ -194,6 +207,24 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
     sourceLink?.onSelectSpan(group.sourceSpan);
     scrollOffsetRangeIntoView(group.sourceSpan.start.offset, group.sourceSpan.end.offset);
   };
+  const addExchangeSegment = (segment: ExchangeSegment): void => {
+    setExchangeSegments((current) => [...current, segment]);
+    setExchangeSegmentsCollapsed([segment.id], false);
+  };
+  const renameExchangeSegment = (segmentId: string, label: string | null): void => {
+    setExchangeSegments((current) => current.map((segment) =>
+      segment.id === segmentId ? { ...segment, label } : segment));
+  };
+  const removeExchangeSegment = (segmentId: string): void => {
+    setExchangeSegments((current) => current.filter((segment) => segment.id !== segmentId));
+    setExchangeSegmentsCollapsed([segmentId], false);
+  };
+  const collapseAllExchangeSegments = (): void => {
+    setExchangeSegmentsCollapsed(exchangeSegments.map((segment) => segment.id), true);
+  };
+  const expandAllExchangeSegments = (): void => {
+    setExchangeSegmentsCollapsed(exchangeSegments.map((segment) => segment.id), false);
+  };
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
       pairings,
@@ -202,8 +233,11 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
       expandedOperatorClusters: expandedClusters,
       collapsedCryptoGroups,
       cryptoGroups,
+      exchangeDag,
+      exchangeSegments,
+      collapsedExchangeSegments,
     }),
-    [result, pairings, compactness, collapsedBranches, expandedClusters, collapsedCryptoGroups, cryptoGroups],
+    [result, pairings, compactness, collapsedBranches, expandedClusters, collapsedCryptoGroups, cryptoGroups, exchangeDag, exchangeSegments, collapsedExchangeSegments],
   );
   const legacy = useMemo(
     () => buildNarrativeLayout(result, { pairings: pairings.map((pairing) => ({ from: pairing.outEnd, to: pairing.inEnd })) }),
@@ -427,6 +461,24 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               >展开密码组</button>
             </>
           )}
+          {exchangeSegments.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="icon-btn icon-btn--wide"
+                aria-label="折叠全部交换段"
+                title="折叠全部交换段；段头计数、事件芯片与跨段边保留"
+                onClick={collapseAllExchangeSegments}
+              >折叠交换段</button>
+              <button
+                type="button"
+                className="icon-btn icon-btn--wide"
+                aria-label="展开全部交换段"
+                title="展开全部交换段；消息回到原有因果位置"
+                onClick={expandAllExchangeSegments}
+              >展开交换段</button>
+            </>
+          )}
           <button
             type="button"
             className="icon-btn"
@@ -547,6 +599,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               onToggleBranch={toggleBranch}
               onToggleCluster={toggleOperatorCluster}
               onToggleCryptoGroup={toggleCryptoGroup}
+              onToggleExchangeSegment={toggleExchangeSegment}
               pendingOutId={pendingOutId}
               pairingMode={pairingMode}
               onEndpointSelect={onEndpointSelect}
@@ -593,6 +646,18 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               <p className="hint">冲突表示布局为保证可读性做了避让；不影响协议语义与验证结论。</p>
             </section>
           )}
+          <MessageList
+            result={result}
+            dag={exchangeDag}
+            segments={exchangeSegments}
+            collapsedSegments={new Set(collapsedExchangeSegments)}
+            onCreate={addExchangeSegment}
+            onToggleSegment={toggleExchangeSegment}
+            onRenameSegment={renameExchangeSegment}
+            onRemoveSegment={removeExchangeSegment}
+            onCollapseAll={collapseAllExchangeSegments}
+            onExpandAll={expandAllExchangeSegments}
+          />
           <GroupAuditPanel
             groups={structured.cryptoGroups}
             autoGroups={autoCryptoGroups}
@@ -627,6 +692,7 @@ function StructuredNarrativeCanvas({
   onToggleBranch,
   onToggleCluster,
   onToggleCryptoGroup,
+  onToggleExchangeSegment,
   pendingOutId,
   pairingMode,
   onEndpointSelect,
@@ -639,6 +705,7 @@ function StructuredNarrativeCanvas({
   onToggleBranch: (branchId: string) => void;
   onToggleCluster: (clusterId: string) => void;
   onToggleCryptoGroup: (groupId: string) => void;
+  onToggleExchangeSegment: (segmentId: string) => void;
   pendingOutId: string | null;
   pairingMode: boolean;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
@@ -704,6 +771,16 @@ function StructuredNarrativeCanvas({
           </pattern>
         </defs>
         <StructuredColumns layout={layout} />
+        <g className="structured-exchange-band-layer">
+          {layout.exchangeSegmentBands.map((band) => (
+            <ExchangeSegmentBandSvg
+              key={band.id}
+              band={band}
+              onToggle={onToggleExchangeSegment}
+              {...sourcePropsOf(band.sourceSpan, band.id)}
+            />
+          ))}
+        </g>
         <g className="structured-arm-layer">
           {layout.armRuns.map((run) => <ArmRunSvg key={run.id} run={run} />)}
         </g>
@@ -728,6 +805,9 @@ function StructuredNarrativeCanvas({
         {/* 信道帧置顶（B1）：端点线在帧外停止，帧内文字压在连线上。 */}
         <g className="structured-frame-layer">
           {layout.pillars.map((pillar) => <MessageFrameSvg key={`frame-${pillar.id}`} pillar={pillar} />)}
+        </g>
+        <g className="structured-cross-edge-layer">
+          {layout.crossSegmentEdges.map((edge) => <CrossSegmentEdgeSvg key={edge.id} edge={edge} />)}
         </g>
         <g className="structured-value-layer">
           {layout.methods.map((method) => (
@@ -778,6 +858,15 @@ function StructuredNarrativeCanvas({
               key={block.id}
               block={block}
               {...sourcePropsOf(block.sourceSpan, block.bindingId)}
+            />
+          ))}
+        </g>
+        <g className="structured-exchange-fold-layer">
+          {layout.exchangeSegmentFolds.map((fold) => (
+            <ExchangeSegmentFoldSvg
+              key={`${fold.segmentId}:${String(fold.roleIndex)}`}
+              fold={fold}
+              onToggle={onToggleExchangeSegment}
             />
           ))}
         </g>

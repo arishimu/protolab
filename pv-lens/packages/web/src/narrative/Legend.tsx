@@ -31,6 +31,7 @@ export type LegendKey =
   | 'local-ops'
   | 'crypto-group'
   | 'density-fold'
+  | 'exchange-segment'
   | 'diagnostics';
 
 /** 本图实际出现的消息序号 token（09：图例与画布共用消息柱的 M 序号与色）。 */
@@ -91,6 +92,7 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
   if (layout.nodes.some((node) => node.kind === 'local')) keys.push('local-ops');
   if (layout.cryptoGroups.length > 0) keys.push('crypto-group');
   if (layout.operatorFolds.length > 0) keys.push('density-fold');
+  if (layout.exchangeSegmentBands.length > 0) keys.push('exchange-segment');
   if (result.diagnostics.length > 0) keys.push('diagnostics');
   // 实际身份对照（09）：消息按柱序 M1..Mn；值按绑定全局序去重（首现即全部信息）。
   const messages = layout.pillars.map((pillar) => ({ sequence: pillar.sequence, color: pillar.color, termText: pillar.termText }));
@@ -273,6 +275,16 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
               </dt>
               <dd>
                 密度折叠：角色内连续多个算子步骤收成一格，按算子数量自动判断；展开状态与密码操作组互相独立，折叠格下方同样保留虚线幽灵值块。
+              </dd>
+            </div>
+          )}
+          {present.has('exchange-segment') && (
+            <div className="legend-item">
+              <dt>
+                <span className="legend-exchange-segment">▾ 交换段</span>
+              </dt>
+              <dd>
+                交换段：双线边框与边界标记圈住一段连续、因果凸的完整消息；段头列出消息区间、角色、信道与未配对/分支/冲突计数。折叠只隐藏段体，段头与跨段边保留；跨段边沿段框外侧 gutter 绕行。
               </dd>
             </div>
           )}

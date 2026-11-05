@@ -3,6 +3,8 @@ import type {
   BranchItem,
   Condition,
   CryptoOperationGroup,
+  ExchangeDag,
+  ExchangeSegment,
   GroupConfidence,
   GroupingOrigin,
   MessagePairing,
@@ -16,7 +18,7 @@ import type {
   RoleItem,
   SourceSpan,
 } from '@pv-lens/core';
-import { deriveCryptoGroups, narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
+import { buildExchangeDag, deriveCryptoGroups, narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
 import { diagnosticSeverityLabel } from './layout';
 import { gapUnitOf, solveSpacing } from '@pv-lens/core';
 import type { SpacingUnit } from '@pv-lens/core';
@@ -320,6 +322,50 @@ export interface StructuredCryptoGroupFold {
   ghostBindingIds: readonly string[];
 }
 
+/** 交换段段带：覆盖参与角色与信道的矩形，段头在带上缘外侧。 */
+export interface StructuredExchangeSegmentBand {
+  id: string;
+  label: string;
+  roles: readonly string[];
+  channels: readonly string[];
+  x: number;
+  width: number;
+  top: number;
+  bottom: number;
+  collapsed: boolean;
+  messageCount: number;
+  firstSequence: number;
+  lastSequence: number;
+  counts: ExchangeSegment['hiddenCounts'];
+  events: readonly { id: string; name: string }[];
+  sourceSpan: SourceSpan;
+}
+
+/** 折叠态每角色一条的段体摘要。 */
+export interface StructuredExchangeSegmentFold {
+  segmentId: string;
+  roleIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  sourceSpan: SourceSpan;
+}
+
+/** 跨段边：一端在折叠段内、另一端仍可见的因果边。 */
+export interface StructuredCrossSegmentEdge {
+  id: string;
+  segmentId: string;
+  roleIndex: number;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  label: string;
+  sourceSpan: SourceSpan;
+}
+
 export interface StructuredEndpoint {
   roleIndex: number;
   stepIndex: number;
@@ -411,6 +457,14 @@ export interface StructuredNarrativeLayout {
   cryptoGroups: readonly CryptoOperationGroup[];
   /** 折叠态的密码操作组摘要；展开态为空（不额外占几何）。 */
   cryptoGroupFolds: readonly StructuredCryptoGroupFold[];
+  /** 本次布局使用的交换段（会话内存输入）。 */
+  exchangeSegments: readonly ExchangeSegment[];
+  /** 全部交换段段带（展开与折叠都画框）。 */
+  exchangeSegmentBands: readonly StructuredExchangeSegmentBand[];
+  /** 折叠态每角色的段体摘要。 */
+  exchangeSegmentFolds: readonly StructuredExchangeSegmentFold[];
+  /** 折叠段的跨段边（保持可见，绕开段头）。 */
+  crossSegmentEdges: readonly StructuredCrossSegmentEdge[];
   roleDiagnostics: readonly StructuredRoleDiagnostics[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
@@ -467,6 +521,12 @@ export interface StructuredLayoutOptions {
   cryptoGroups?: readonly CryptoOperationGroup[];
   /** 用户覆盖（组 id → 操作种类）；与 cryptoGroups 同时传入时后者优先。 */
   cryptoGroupOverrides?: Readonly<Record<string, OperationKind>>;
+  /** 会话内交换段；缺省为空。 */
+  exchangeSegments?: readonly ExchangeSegment[];
+  /** 已折叠的交换段 id；缺省为空 = 全部展开。 */
+  collapsedExchangeSegments?: readonly string[];
+  /** 已构造的交换段 DAG；缺省时由 result + pairings 自动构造。 */
+  exchangeDag?: ExchangeDag;
 }
 
 const METRICS = {
@@ -508,6 +568,10 @@ const METRICS = {
   /** 折叠密码操作组摘要的高度与槽位（两行：种类/方向 + 载荷/密钥/计数）。 */
   cryptoGroupHeight: 22,
   cryptoGroupPitch: 24,
+  /** 折叠交换段的每角色摘要高度与段头高度。 */
+  exchangeSegmentFoldHeight: 24,
+  exchangeSegmentFoldPitch: 30,
+  exchangeSegmentHeaderHeight: 20,
   chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
@@ -561,6 +625,47 @@ export function buildStructuredNarrativeLayout(
     list.push(group);
     cryptoGroupsByItem.set(group.itemId, list);
   }
+
+  const exchangeSegments = options.exchangeSegments ?? [];
+  const collapsedExchangeSegments = new Set(options.collapsedExchangeSegments ?? []);
+  const exchangeDag = options.exchangeDag ?? buildExchangeDag(result, options.pairings ?? []);
+  const exchangeMessageById = new Map(exchangeDag.messages.map((message) => [message.id, message]));
+  const activeExchangeSegments = exchangeSegments.filter((segment) =>
+    segment.messageIds.length > 0 && segment.messageIds.every((id) => exchangeMessageById.has(id)));
+  const hiddenItemToSegment = new Map<string, string>();
+  const suppressedItemToSegment = new Map<string, string>();
+  const hiddenEndpointIds = new Set<string>();
+  const hiddenMessageToSegment = new Map<string, string>();
+  const hiddenEndpointRefs = new Set<string>();
+  for (const segment of activeExchangeSegments) {
+    if (!collapsedExchangeSegments.has(segment.id)) continue;
+    for (const itemId of segment.hiddenItemIds) {
+      hiddenItemToSegment.set(itemId, segment.id);
+      suppressedItemToSegment.set(itemId, segment.id);
+    }
+    for (const event of segment.events) suppressedItemToSegment.set(event.id, segment.id);
+    for (const endpointId of segment.endpointIds) {
+      hiddenEndpointIds.add(endpointId);
+    }
+    for (const messageId of segment.messageIds) {
+      hiddenMessageToSegment.set(messageId, segment.id);
+      const message = exchangeMessageById.get(messageId);
+      if (message === undefined) continue;
+      for (const endpoint of message.endpoints) {
+        if (hiddenEndpointIds.has(endpoint.id)) hiddenEndpointRefs.add(refOf(endpoint.roleIndex, endpoint.stepIndex));
+      }
+    }
+  }
+  const allPairings = options.pairings ?? [];
+  const effectivePairings = allPairings.filter((pairing) =>
+    !hiddenEndpointRefs.has(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex))
+    && !hiddenEndpointRefs.has(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex)));
+  const useExchangeSequence = true;
+  const exchangeSequenceByOutRef = new Map<string, number>();
+  for (const message of exchangeDag.messages) {
+    const out = message.endpoints.find((endpoint) => endpoint.direction === 'out');
+    if (out !== undefined) exchangeSequenceByOutRef.set(refOf(out.roleIndex, out.stepIndex), message.sequence);
+  }
   const roleByName = new Map(roles.map((role) => [role.name, role]));
   // 臂道画在信道外侧、构造链画在内侧（朝信道）——与 prototype 08 同口径。
   const channelPositions = horizontal.nodes.flatMap((node, position) => node.kind === 'channel' ? [position] : []);
@@ -608,7 +713,7 @@ export function buildStructuredNarrativeLayout(
     });
   });
   const frameWidthByChannel = new Map<string, number>();
-  (options.pairings ?? []).forEach((pairing) => {
+  effectivePairings.forEach((pairing) => {
     const out = endpointInfoByRef.get(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex));
     const incoming = endpointInfoByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
     if (out === undefined || incoming === undefined || out.channel !== incoming.channel) return;
@@ -660,6 +765,7 @@ export function buildStructuredNarrativeLayout(
   const branchFolds: StructuredBranchFold[] = [];
   const operatorFolds: StructuredOperatorClusterFold[] = [];
   const cryptoGroupFolds: StructuredCryptoGroupFold[] = [];
+  const exchangeSegmentFolds: StructuredExchangeSegmentFold[] = [];
   const roleDiagnostics: StructuredRoleDiagnostics[] = [];
   // 归属只算一次（byRole 供角色列内诊断条，unassigned 随布局输出供画布下方平铺）。
   const diagnosticAttribution = attributeDiagnostics(roles, result.diagnostics);
@@ -699,7 +805,7 @@ export function buildStructuredNarrativeLayout(
   });
   // 与消息柱构建同一条有效性规则（两端存在且同信道），无效配对不触发去重。
   const pairedKeys = new Set<string>();
-  (options.pairings ?? []).forEach((pairing) => {
+  effectivePairings.forEach((pairing) => {
     const outKey = refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex);
     const inKey = refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex);
     const outChannel = endpointChannelByRef.get(outKey);
@@ -925,6 +1031,10 @@ export function buildStructuredNarrativeLayout(
       run = [];
     };
     role.items.forEach((item, itemIndex) => {
+      if (suppressedItemToSegment.has(item.id)) {
+        flushRun();
+        return;
+      }
       if (item.kind === 'branch') {
         if (item.marker === 'branch') branchDepth += 1;
         else if (item.marker === 'join') branchDepth = Math.max(0, branchDepth - 1);
@@ -985,11 +1095,29 @@ export function buildStructuredNarrativeLayout(
     }
     let foldedDepth = 0;
     let prevIsBoundary = parameterCount > 0;
+    const emittedSegmentFolds = new Set<string>();
     // 07b：折叠算子簇吞掉 `[start, end]` 区间——区间内的行不进单元序列（forEach 无法跳区间，
     // 用哨兵变量把区间内 item 短路成空操作）。
     let clusterSkipUntil = -1;
     role.items.forEach((item, itemIndex) => {
       if (itemIndex <= clusterSkipUntil) return;
+      const collapsedSegmentId = suppressedItemToSegment.get(item.id);
+      if (collapsedSegmentId !== undefined) {
+        if (!emittedSegmentFolds.has(collapsedSegmentId)) {
+          units.push({
+            id: `segment-fold:${collapsedSegmentId}:${String(roleIndex)}`,
+            roleIndex,
+            kind: 'fold-group',
+            height: METRICS.exchangeSegmentFoldPitch,
+            rigid: true,
+            messageEndpoint: false,
+            gapTier: prevIsBoundary ? 'group' : 'row',
+          });
+          emittedSegmentFolds.add(collapsedSegmentId);
+          prevIsBoundary = true;
+        }
+        return;
+      }
       if (foldedDepth > 0) {
         if (isBranchStart(item)) foldedDepth += 1;
         else if (isBranchJoin(item)) foldedDepth -= 1;
@@ -1068,7 +1196,7 @@ export function buildStructuredNarrativeLayout(
       prevIsBoundary = item.kind === 'branch' && item.marker === 'join';
     });
   });
-  const orderEdges = (options.pairings ?? []).flatMap((pairing) => {
+  const orderEdges = effectivePairings.flatMap((pairing) => {
     const outRef = refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex);
     const inRef = refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex);
     if (!pairedKeys.has(outRef) || !pairedKeys.has(inRef)) return [];
@@ -1150,8 +1278,32 @@ export function buildStructuredNarrativeLayout(
     // 07b：折叠算子簇同样以哨兵短路区间内的常规发射，簇本身在首 item 处一次发射。
     let foldedDepth = 0;
     let clusterSkipUntil = -1;
+    const emittedSegmentFolds = new Set<string>();
     role.items.forEach((item, itemIndex) => {
       if (itemIndex <= clusterSkipUntil) return;
+      const collapsedSegmentId = suppressedItemToSegment.get(item.id);
+      if (collapsedSegmentId !== undefined) {
+        if (!emittedSegmentFolds.has(collapsedSegmentId)) {
+          const segment = activeExchangeSegments.find((candidate) => candidate.id === collapsedSegmentId);
+          const y = rowYOf(`segment-fold:${collapsedSegmentId}:${String(roleIndex)}`, startOffsets[roleIndex] ?? margin);
+          const width = Math.min(METRICS.columnWidth, 150);
+          exchangeSegmentFolds.push({
+            segmentId: collapsedSegmentId,
+            roleIndex,
+            x: lifelineX,
+            y,
+            width,
+            height: METRICS.exchangeSegmentFoldHeight,
+            label: segment === undefined
+              ? '交换段'
+              : `交换段 · M${String(segment.firstSequence)}–M${String(segment.lastSequence)} · ${String(segment.hiddenCounts.messages)} 条`,
+            sourceSpan: segment?.sourceSpans[0] ?? item.span,
+          });
+          maxTextRight = Math.max(maxTextRight, lifelineX + width / 2);
+          emittedSegmentFolds.add(collapsedSegmentId);
+        }
+        return;
+      }
       if (foldedDepth > 0) {
         if (isBranchStart(item)) foldedDepth += 1;
         else if (isBranchJoin(item)) foldedDepth -= 1;
@@ -1624,7 +1776,7 @@ export function buildStructuredNarrativeLayout(
   // 同一 out 的全部有效配对合成一根多端柱——一条发送段进信道、N 条接收段出信道；
   // 合流是不同 out 组共享同一 in，各柱独立（信道是扇出/合流唯一结点，ADR-0008）。
   const groups = new Map<string, { out: StructuredEndpoint; ins: StructuredEndpoint[]; manual: boolean }>();
-  (options.pairings ?? []).forEach((pairing) => {
+  effectivePairings.forEach((pairing) => {
     const out = endpointByRef.get(refOf(pairing.outEnd.roleIndex, pairing.outEnd.stepIndex));
     const incoming = endpointByRef.get(refOf(pairing.inEnd.roleIndex, pairing.inEnd.stepIndex));
     if (out === undefined || incoming === undefined || out.channelName !== incoming.channelName) return;
@@ -1659,7 +1811,7 @@ export function buildStructuredNarrativeLayout(
     laneOfGroup.set(group.out.id, lane);
   }
   const laneCount = Math.max(1, laneIntervals.length);
-  const messagePalette = buildMessagePalette(orderedGroups.length);
+  const messagePalette = buildMessagePalette(useExchangeSequence ? Math.max(exchangeDag.messages.length, orderedGroups.length) : orderedGroups.length);
   orderedGroups.forEach((group, index) => {
     const channel = channelColumns.get(group.out.channelName);
     if (channel === undefined) return;
@@ -1675,11 +1827,14 @@ export function buildStructuredNarrativeLayout(
     })[0];
     const top = Math.min(...members.map((member) => member.y));
     const bottom = Math.max(...members.map((member) => member.y));
+    const sequence = useExchangeSequence
+      ? exchangeSequenceByOutRef.get(refOf(group.out.roleIndex, group.out.stepIndex)) ?? index + 1
+      : index + 1;
     pillars.push({
-      id: `message-${String(index + 1)}`,
-      color: messagePalette[index] ?? MESSAGE_COLORS[index % MESSAGE_COLORS.length],
-      sequence: index + 1,
-      lineStyle: messageLineStyleOf(index),
+      id: `message-${String(sequence)}`,
+      color: messagePalette[sequence - 1] ?? MESSAGE_COLORS[(sequence - 1) % MESSAGE_COLORS.length],
+      sequence,
+      lineStyle: messageLineStyleOf(sequence - 1),
       lane,
       laneX,
       origin: group.manual ? 'manual' : 'automatic',
@@ -1702,6 +1857,87 @@ export function buildStructuredNarrativeLayout(
     ...pillar,
     endpoints: pillar.endpoints.map((endpoint) => finalEndpoints.find((candidate) => candidate.id === endpoint.id) ?? endpoint),
   }));
+  // 交换段段带：展开态圈住原有消息 y；折叠态圈住各角色摘要。段头在带上缘外侧，
+  // 跨段边沿段框外侧 gutter 绕行，不穿过段头。
+  const exchangeSegmentBands: StructuredExchangeSegmentBand[] = [];
+  const crossSegmentEdges: StructuredCrossSegmentEdge[] = [];
+  for (const segment of activeExchangeSegments) {
+    const memberIds = new Set(segment.endpointIds);
+    const visibleMembers = finalEndpoints.filter((endpoint) => memberIds.has(endpoint.id));
+    const folds = exchangeSegmentFolds.filter((fold) => fold.segmentId === segment.id);
+    const ys = visibleMembers.length > 0
+      ? visibleMembers.map((endpoint) => endpoint.y)
+      : folds.map((fold) => fold.y);
+    if (ys.length === 0) continue;
+    const involvedColumns = [
+      ...segment.roles.flatMap((roleName) => {
+        const column = roleColumns.get(roleName);
+        return column === undefined ? [] : [column];
+      }),
+      ...segment.channels.flatMap((channelName) => {
+        const column = channelColumns.get(channelName);
+        return column === undefined ? [] : [column];
+      }),
+    ];
+    if (involvedColumns.length === 0) continue;
+    const x = Math.min(...involvedColumns.map((column) => column.x));
+    const right = Math.max(...involvedColumns.map((column) => column.x + column.width));
+    const top = Math.min(...ys) - 10;
+    const bottom = Math.max(...ys) + 10;
+    const band: StructuredExchangeSegmentBand = {
+      id: segment.id,
+      label: segment.label ?? '未命名段',
+      roles: segment.roles,
+      channels: segment.channels,
+      x,
+      width: right - x,
+      top,
+      bottom,
+      collapsed: collapsedExchangeSegments.has(segment.id),
+      messageCount: segment.hiddenCounts.messages,
+      firstSequence: segment.firstSequence,
+      lastSequence: segment.lastSequence,
+      counts: segment.hiddenCounts,
+      events: segment.events.map((event) => ({ id: event.id, name: event.name })),
+      sourceSpan: segment.sourceSpans[0] ?? visibleMembers[0]?.sourceSpan ?? folds[0]?.sourceSpan ?? { start: { offset: 0, line: 1, column: 1 }, end: { offset: 0, line: 1, column: 1 } },
+    };
+    exchangeSegmentBands.push(band);
+  }
+  const seenCrossEdges = new Set<string>();
+  for (const edge of exchangeDag.edges) {
+    const fromSegment = hiddenMessageToSegment.get(edge.from);
+    const toSegment = hiddenMessageToSegment.get(edge.to);
+    if ((fromSegment === undefined) === (toSegment === undefined)) continue;
+    const hiddenId = fromSegment === undefined ? edge.to : edge.from;
+    const visibleId = fromSegment === undefined ? edge.from : edge.to;
+    const segmentId = hiddenMessageToSegment.get(hiddenId);
+    const band = segmentId === undefined ? undefined : exchangeSegmentBands.find((candidate) => candidate.id === segmentId);
+    const hiddenMessage = exchangeMessageById.get(hiddenId);
+    const visibleMessage = exchangeMessageById.get(visibleId);
+    if (band === undefined || hiddenMessage === undefined || visibleMessage === undefined) continue;
+    const commonRoles = hiddenMessage.roles.filter((roleName) => visibleMessage.roles.includes(roleName));
+    const visibleEndpoint = visibleMessage.endpoints.find((endpoint) => commonRoles.includes(endpoint.roleName))
+      ?? visibleMessage.endpoints[0];
+    const visible = visibleEndpoint === undefined ? undefined : finalEndpoints.find((endpoint) => endpoint.id === visibleEndpoint.id);
+    if (visible === undefined) continue;
+    const key = `${band.id}:${visible.id}`;
+    if (seenCrossEdges.has(key)) continue;
+    seenCrossEdges.add(key);
+    const targetY = visible.y < band.top ? band.top : visible.y > band.bottom ? band.bottom : band.top;
+    const gutterX = visible.roleX < band.x ? band.x - 12 : band.x + band.width + 12;
+    crossSegmentEdges.push({
+      id: `cross:${key}`,
+      segmentId: band.id,
+      roleIndex: visible.roleIndex,
+      x: visible.wireX ?? visible.roleX,
+      y: visible.y,
+      targetX: gutterX,
+      targetY,
+      label: `跨段边 · M${String(visibleMessage.sequence)} ↔ 折叠段`,
+      sourceSpan: visible.sourceSpan,
+    });
+  }
+
   // 冲突全部来自解算器（ticket 07）：消息端为禁置带或全局 y 唯一性让位时显式标记并加高，
   // 不静默重排；解算器已保证 y 唯一，旧的事后 global-y 兜底检查随之退役。
   // ticket 27：补角色名与源码行，并自上而下编号（标记与列表共用同一顺序），
@@ -1721,6 +1957,12 @@ export function buildStructuredNarrativeLayout(
       ...(line === undefined ? {} : { sourceLine: line.line }),
     };
   }).sort((a, b) => a.y - b.y || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const exchangeSegmentBandsWithConflicts = exchangeSegmentBands.map((band) => {
+    const inside = conflicts.filter((conflict) =>
+      conflict.y >= band.top && conflict.y <= band.bottom
+      && (conflict.roleName === undefined || band.roles.includes(conflict.roleName))).length;
+    return inside === 0 ? band : { ...band, counts: { ...band.counts, conflicts: band.counts.conflicts + inside } };
+  });
   const columnsRight = columns.length === 0
     ? margin
     : columns[columns.length - 1].x + columns[columns.length - 1].width;
@@ -1736,6 +1978,10 @@ export function buildStructuredNarrativeLayout(
     operatorFolds,
     cryptoGroups,
     cryptoGroupFolds,
+    exchangeSegments: activeExchangeSegments,
+    exchangeSegmentBands: exchangeSegmentBandsWithConflicts,
+    exchangeSegmentFolds,
+    crossSegmentEdges,
     roleDiagnostics,
     endpoints: finalEndpoints,
     pillars: finalPillars,
