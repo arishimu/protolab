@@ -217,6 +217,27 @@ export { deriveCryptoGroups } from './grouping/crypto-group.js';
 export type { CryptoGroupOptions, CryptoOperationGroup, GroupConfidence } from './grouping/crypto-group.js';
 
 /**
+ * 概念注解（ADR-0018，阶段 4）：操作、来源、折叠、查询、判定与图例记法的统一定义。
+ */
+export {
+  CONCEPTS,
+  CONCEPT_IDS,
+  conceptOf,
+  notationConceptId,
+  operationConceptId,
+  originConceptId,
+  queryConceptId,
+  verdictConceptId,
+} from './explain/concepts.js';
+export type {
+  Concept,
+  ConceptAnchor,
+  ConceptCategory,
+  ConceptId,
+  ConceptQueryKind,
+} from './explain/concepts.js';
+
+/**
  * 交换段（ADR-0018，阶段 3）：逻辑消息因果 DAG、凸闭包校验与段创建。
  */
 export {
