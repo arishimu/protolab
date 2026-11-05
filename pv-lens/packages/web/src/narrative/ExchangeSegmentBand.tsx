@@ -49,7 +49,7 @@ export function ExchangeSegmentBandSvg({
     `未配对 ${String(band.counts.unpaired)}`,
     `分支 ${String(band.counts.branches)}`,
     `冲突 ${String(band.counts.conflicts)}`,
-    band.events.length > 0 ? `事件 ${String(band.events.length)}` : '',
+    band.events.length > 0 ? `事件 ${band.events.map((event) => event.name).join('、')}` : '',
   ].filter(Boolean).join(' · ');
   return (
     <g
