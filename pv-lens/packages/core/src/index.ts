@@ -238,6 +238,34 @@ export type {
 } from './explain/concepts.js';
 
 /**
+ * 反例 trace 归因（ADR-0018，阶段 5）：按 derivation 消息步分组知识项。
+ */
+export { attributeCounterexample } from './attribution/trace-attribution.js';
+export type { TraceAttribution, TraceAttributionEntry, TraceEntryKind } from './attribution/trace-attribution.js';
+
+/**
+ * 会话目标（ADR-0018，阶段 5）：保密性、认证/对应性、可达性目标与派生文本。
+ */
+export {
+  buildSessionGoalSource,
+  createAuthenticationGoal,
+  createReachabilityGoal,
+  roleLocalFreshHint,
+  roleLocalFreshNames,
+  secrecyCandidates,
+  sessionGoalQueryBody,
+  sessionGoalQueryTexts,
+} from './goals/session-goal.js';
+export type {
+  RoleLocalFreshName,
+  SessionAuthenticationGoal,
+  SessionGoal,
+  SessionGoalKind,
+  SessionReachabilityGoal,
+  SessionSecrecyGoal,
+} from './goals/session-goal.js';
+
+/**
  * 交换段（ADR-0018，阶段 3）：逻辑消息因果 DAG、凸闭包校验与段创建。
  */
 export {
@@ -287,7 +315,7 @@ export type { StepPairing, StepPairingAnchor } from './pairing.js';
 export { solveHorizontalSequence, collectChannels } from './horizontal-sequence.js';
 export type { HorizontalNode, HorizontalOrderConstraint, HorizontalSequence } from './horizontal-sequence.js';
 export { composeMessagePairings } from './message-pairing.js';
-export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles, declaredEventPairOfQuery } from './correspondence.js';
+export { createCorrespondencePlan, collectEventReferences, generateCorrespondenceQueries, injectCorrespondenceQueries, buildCorrespondenceMatrix, deriveEventRoles, declaredEventPairOfQuery, correspondenceQueryText } from './correspondence.js';
 export { solveSpacing, gapUnitOf, gapOf } from './spacing.js';
 export type { GapTier, SpacingUnit, SpacingRequest, SpacingConflict, SpacingSolution, SpacingOrderEdge } from './spacing.js';
 export type {

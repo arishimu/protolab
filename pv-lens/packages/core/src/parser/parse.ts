@@ -559,7 +559,7 @@ function parseFunDeclaration(cursor: TokenCursor): FunctionSignature | null {
  */
 function parseNameDeclaration(cursor: TokenCursor): TypedName[] {
   const keyword = cursor.next();
-  const names: string[] = [];
+  const names: Array<{ name: string; start: SourceSpan['start'] }> = [];
 
   for (;;) {
     const token = cursor.peek();
@@ -569,26 +569,38 @@ function parseNameDeclaration(cursor: TokenCursor): TypedName[] {
       return [];
     }
     cursor.next();
-    names.push(token.text);
+    names.push({ name: token.text, start: token.span.start });
     if (cursor.match(',')) continue;
     break;
   }
 
-  let typeName: string | undefined;
-  if (cursor.atPunct(':')) {
-    const colon = cursor.next();
-    const typeToken = cursor.peek();
-    if (typeToken.kind !== 'ident') {
-      cursor.error('类型标注缺少类型名：`:` 后应为类型名', cursor.span(colon.span.start));
-      recoverToDeclarationEnd(cursor);
-      return [];
-    }
-    cursor.next();
-    typeName = typeToken.text;
-  }
-
+  const typeName = parseTypeAscription(cursor);
+  const end = cursor.previousEnd();
+  const attributes = parseDeclarationAttributes(cursor);
   if (!finishDeclaration(cursor, keyword.span.start)) return [];
-  return names.map((name) => (typeName === undefined ? { name } : { name, typeName }));
+  return names.map((name) => ({
+    name: name.name,
+    ...(typeName === undefined ? {} : { typeName }),
+    ...(attributes.includes('private') ? { private: true } : {}),
+    span: { start: name.start, end },
+  }));
+}
+
+/** 读取声明后缀属性（`[private]` 等）并返回属性名；括号不配对时只降级。 */
+function parseDeclarationAttributes(cursor: TokenCursor): string[] {
+  const attributes: string[] = [];
+  while (cursor.atPunct('[')) {
+    const open = cursor.next();
+    let depth = 1;
+    while (!cursor.atEnd && depth > 0) {
+      const token = cursor.next();
+      if (token.kind === 'punct' && token.text === '[') depth += 1;
+      else if (token.kind === 'punct' && token.text === ']') depth -= 1;
+      else if (token.kind === 'ident') attributes.push(token.text);
+    }
+    if (depth > 0) cursor.degraded('声明属性缺少结尾的 `]`', cursor.span(open.span.start));
+  }
+  return attributes;
 }
 
 /** 消费 `[private]` / `[data,typeConverter]` 之类的属性后缀，然后要求声明以 `.` 收尾。 */

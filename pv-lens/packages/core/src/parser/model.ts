@@ -250,6 +250,10 @@ export interface FunctionSignature {
 export interface TypedName {
   name: string;
   typeName?: string;
+  /** 是否带 `[private]` 属性（顶层自由秘密名）。 */
+  private?: boolean;
+  /** 名字与类型标注在源码中的区间。 */
+  span?: SourceSpan;
 }
 
 export interface ChannelDeclaration {

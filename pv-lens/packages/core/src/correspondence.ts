@@ -1,4 +1,5 @@
 import type { EventDeclaration, ParseResult, SourceSpan } from './parser/model.js';
+import { tokenize } from './parser/lexer.js';
 import type { VerificationResult } from './verify-result.js';
 
 export interface EventReference {
@@ -83,7 +84,7 @@ export function generateCorrespondenceQueries(
 
 const FALLBACK_EVENT_ARG_TYPE = 'bitstring';
 
-function correspondenceQueryText(
+export function correspondenceQueryText(
   from: EventReference,
   to: EventReference,
   typesByName: ReadonlyMap<string, readonly string[]>,
@@ -119,10 +120,11 @@ function correspondenceQueryText(
 /** 只在 process 关键字前插入批量 query，源文本本身不被修改。 */
 export function injectCorrespondenceQueries(source: string, queries: readonly CorrespondenceQuery[]): string {
   if (queries.length === 0) return source;
-  const processMatch = /\bprocess\b/.exec(source);
   const insertion = `${queries.map((query) => `query ${query.text}.`).join('\n')}\n\n`;
-  if (processMatch === null) return `${insertion}${source}`;
-  return `${source.slice(0, processMatch.index)}${insertion}${source.slice(processMatch.index)}`;
+  const processToken = tokenize(source).tokens.find((token) => token.kind === 'ident' && token.text === 'process');
+  if (processToken === undefined) return `${insertion}${source}`;
+  const offset = processToken.span.start.offset;
+  return `${source.slice(0, offset)}${insertion}${source.slice(offset)}`;
 }
 
 /** 从一条源码查询文本提取事件名有序对；非对应性查询返回 null。 */

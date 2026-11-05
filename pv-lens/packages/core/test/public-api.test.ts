@@ -47,8 +47,10 @@ describe('core 无 Node / 浏览器 API 泄漏（src 纯净性守卫）', () => 
   it('扫描范围覆盖 src 下全部代码文件', () => {
     expect(files.length).toBeGreaterThanOrEqual(7);
     expect(files.map((f) => relative(srcDir, f)).sort()).toEqual([
+      'attribution/trace-attribution.ts',
       'correspondence.ts',
       'explain/concepts.ts',
+      'goals/session-goal.ts',
       'grouping/crypto-group.ts',
       'grouping/exchange-segment.ts',
       'grouping/operation-registry.ts',
