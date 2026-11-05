@@ -49,6 +49,7 @@ describe('core 无 Node / 浏览器 API 泄漏（src 纯净性守卫）', () => 
     expect(files.map((f) => relative(srcDir, f)).sort()).toEqual([
       'correspondence.ts',
       'grouping/crypto-group.ts',
+      'grouping/exchange-segment.ts',
       'grouping/operation-registry.ts',
       'horizontal-sequence.ts',
       'index.ts',

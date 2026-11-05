@@ -1,0 +1,24 @@
+(* 测试用 fixture：两方、双信道、未配对步骤与分支；不注册为内置样例。 *)
+
+type bitstring.
+
+free c1, c2: channel.
+
+fun senc(bitstring, bitstring): bitstring.
+
+event aDone(bitstring).
+
+let alice(k: bitstring) =
+  out(c1, senc(a, k));
+  in(c1, x: bitstring);
+  if x = a then
+    event aDone(x);
+    out(c1, senc(x, k));
+  out(c2, senc(x, k)).
+
+let bob(k: bitstring) =
+  in(c1, y: bitstring);
+  out(c1, senc(y, k));
+  in(c2, z: bitstring).
+
+process alice(k) | bob(k).

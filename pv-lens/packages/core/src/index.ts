@@ -217,6 +217,29 @@ export { deriveCryptoGroups } from './grouping/crypto-group.js';
 export type { CryptoGroupOptions, CryptoOperationGroup, GroupConfidence } from './grouping/crypto-group.js';
 
 /**
+ * 交换段（ADR-0018，阶段 3）：逻辑消息因果 DAG、凸闭包校验与段创建。
+ */
+export {
+  buildExchangeDag,
+  createExchangeSegment,
+  exchangeMessageSequence,
+  validateExchangeSegment,
+} from './grouping/exchange-segment.js';
+export type {
+  ExchangeDag,
+  ExchangeDagEdge,
+  ExchangeDagEdgeKind,
+  ExchangeMessage,
+  ExchangeMessageEndpoint,
+  ExchangeSegment,
+  ExchangeSegmentCheck,
+  ExchangeSegmentCheckId,
+  ExchangeSegmentEvent,
+  ExchangeSegmentOptions,
+  ExchangeSegmentValidation,
+} from './grouping/exchange-segment.js';
+
+/**
  * core 公开能力：词项符号化渲染（spec.md「core 公开能力」第 2 条）。
  *
  * 纯函数 `renderTerm`：构造子 → 密码学惯用记法（未知构造子回退函数调用写法）；
