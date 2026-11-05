@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useToggleSet } from './toggle-set';
-import type { MessagePairing, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
+import type { MessagePairing, OperationKind, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
+import { deriveCryptoGroups } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   UNPAIRED_COLOR,
@@ -24,6 +25,8 @@ import type {
 } from './structured-layout';
 import type { SelectableEndpoint } from './pairing-selection';
 import { Legend } from './Legend';
+import { CryptoGroupToggle, CryptoOperationGroupSvg } from './CryptoOperationGroup';
+import { GroupAuditPanel } from './GroupAuditPanel';
 import './v2.css';
 
 /** 事件旗标与对应性矩阵的联动绑定（ticket 08）：形状按事件在查询中的角色区分。 */
@@ -76,6 +79,8 @@ export interface NarrativeViewProps {
   initialCollapsedBranches?: readonly string[];
   /** 初始即展开的算子簇（07b / spec 51：簇默认折叠，此 prop 供测试与外层控制初始态）。 */
   initialExpandedClusters?: readonly string[];
+  /** 初始即折叠的密码操作组 id；缺省全部展开（展开态保持基线结构）。 */
+  initialCollapsedCryptoGroups?: readonly string[];
   /** 人工配对诊断（拒绝与顺序环），渲染为画布旁的警告条。 */
   manualDiagnostics?: readonly PairingDiagnostic[];
   /** 人工配对点选：当前选中的未配对发送端 id。 */
@@ -108,6 +113,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   pairings = [],
   initialCollapsedBranches = [],
   initialExpandedClusters = [],
+  initialCollapsedCryptoGroups = [],
   manualDiagnostics = [],
   pendingOutId = null,
   selectionNotice = null,
@@ -135,14 +141,69 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   const [collapsedBranches, toggleBranch] = useToggleSet(initialCollapsedBranches);
   // 高密度算子簇默认折叠（spec 51，与分支相反）；集合语义 = 用户已点开的簇。
   const [expandedClusters, toggleOperatorCluster] = useToggleSet(initialExpandedClusters);
+  // 密码操作组默认展开（展开态保持基线）；集合语义 = 已折叠的组。
+  const [collapsedCryptoGroups, toggleCryptoGroup, setCryptoGroupsCollapsed] = useToggleSet(initialCollapsedCryptoGroups);
+  const [cryptoGroupOverrides, setCryptoGroupOverrides] = useState<Readonly<Record<string, OperationKind>>>({});
+  // 切换协议即清空会话内的折叠状态与用户覆盖（决策 01 第 5.3 条）。
+  const lastGroupResultRef = useRef(result);
+  useEffect(() => {
+    if (lastGroupResultRef.current === result) return;
+    lastGroupResultRef.current = result;
+    setCryptoGroupOverrides({});
+    setCryptoGroupsCollapsed([], false);
+  }, [result, setCryptoGroupsCollapsed]);
+
+  const visibleRoleNames = useMemo(
+    () => new Set(result.roles.length > 0 ? result.roles.map((role) => role.name) : result.mainProcess === null ? [] : [result.mainProcess.name]),
+    [result],
+  );
+  const autoCryptoGroups = useMemo(
+    () => deriveCryptoGroups(result).filter((group) => visibleRoleNames.has(group.roleName)),
+    [result, visibleRoleNames],
+  );
+  const cryptoGroups = useMemo(
+    () => deriveCryptoGroups(result, { overrides: cryptoGroupOverrides }).filter((group) => visibleRoleNames.has(group.roleName)),
+    [result, cryptoGroupOverrides, visibleRoleNames],
+  );
+  const setCryptoGroupKind = (groupId: string, kind: OperationKind): void => {
+    const automatic = autoCryptoGroups.find((group) => group.id === groupId)?.kind;
+    setCryptoGroupOverrides((current) => {
+      const next = { ...current };
+      if (automatic === kind) delete next[groupId];
+      else next[groupId] = kind;
+      return next;
+    });
+  };
+  const resetCryptoGroup = (groupId: string): void => {
+    setCryptoGroupOverrides((current) => {
+      if (!(groupId in current)) return current;
+      const next = { ...current };
+      delete next[groupId];
+      return next;
+    });
+  };
+  const collapseAllCryptoGroups = (): void => {
+    setCryptoGroupsCollapsed(cryptoGroups.map((group) => group.id), true);
+  };
+  const expandAllCryptoGroups = (): void => {
+    setCryptoGroupsCollapsed(cryptoGroups.map((group) => group.id), false);
+  };
+  const locateCryptoGroup = (groupId: string): void => {
+    const group = cryptoGroups.find((candidate) => candidate.id === groupId);
+    if (group === undefined) return;
+    sourceLink?.onSelectSpan(group.sourceSpan);
+    scrollOffsetRangeIntoView(group.sourceSpan.start.offset, group.sourceSpan.end.offset);
+  };
   const structured = useMemo(
     () => buildStructuredNarrativeLayout(result, {
       pairings,
       compactness,
       collapsedBranches,
       expandedOperatorClusters: expandedClusters,
+      collapsedCryptoGroups,
+      cryptoGroups,
     }),
-    [result, pairings, compactness, collapsedBranches, expandedClusters],
+    [result, pairings, compactness, collapsedBranches, expandedClusters, collapsedCryptoGroups, cryptoGroups],
   );
   const legacy = useMemo(
     () => buildNarrativeLayout(result, { pairings: pairings.map((pairing) => ({ from: pairing.outEnd, to: pairing.inEnd })) }),
@@ -348,6 +409,24 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             <span className="narrative-compactness-ticks" aria-hidden="true">宽松 · 紧凑</span>
             <output className="narrative-compactness-readout" aria-live="polite">{compactness.toFixed(1)} · {compactnessTierOf(compactness)}</output>
           </label>
+          {structured.cryptoGroups.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="icon-btn icon-btn--wide"
+                aria-label="折叠全部密码操作组"
+                title="折叠全部密码操作组；保留用户声明与密度折叠状态"
+                onClick={collapseAllCryptoGroups}
+              >折叠密码组</button>
+              <button
+                type="button"
+                className="icon-btn icon-btn--wide"
+                aria-label="展开全部密码操作组"
+                title="展开全部密码操作组；保留用户声明与密度折叠状态"
+                onClick={expandAllCryptoGroups}
+              >展开密码组</button>
+            </>
+          )}
           <button
             type="button"
             className="icon-btn"
@@ -467,6 +546,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               legacy={legacy}
               onToggleBranch={toggleBranch}
               onToggleCluster={toggleOperatorCluster}
+              onToggleCryptoGroup={toggleCryptoGroup}
               pendingOutId={pendingOutId}
               pairingMode={pairingMode}
               onEndpointSelect={onEndpointSelect}
@@ -513,6 +593,18 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               <p className="hint">冲突表示布局为保证可读性做了避让；不影响协议语义与验证结论。</p>
             </section>
           )}
+          <GroupAuditPanel
+            groups={structured.cryptoGroups}
+            autoGroups={autoCryptoGroups}
+            collapsed={new Set(collapsedCryptoGroups)}
+            overrides={new Map(Object.entries(cryptoGroupOverrides))}
+            onToggle={toggleCryptoGroup}
+            onOverride={setCryptoGroupKind}
+            onReset={resetCryptoGroup}
+            onCollapseAll={collapseAllCryptoGroups}
+            onExpandAll={expandAllCryptoGroups}
+            onLocate={locateCryptoGroup}
+          />
           <Legend layout={structured} result={result} />
         </>
       )}
@@ -534,6 +626,7 @@ function StructuredNarrativeCanvas({
   legacy,
   onToggleBranch,
   onToggleCluster,
+  onToggleCryptoGroup,
   pendingOutId,
   pairingMode,
   onEndpointSelect,
@@ -545,6 +638,7 @@ function StructuredNarrativeCanvas({
   legacy: ReturnType<typeof buildNarrativeLayout>;
   onToggleBranch: (branchId: string) => void;
   onToggleCluster: (clusterId: string) => void;
+  onToggleCryptoGroup: (groupId: string) => void;
   pendingOutId: string | null;
   pairingMode: boolean;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
@@ -641,7 +735,16 @@ function StructuredNarrativeCanvas({
               key={method.id}
               method={method}
               onToggleBranch={onToggleBranch}
+              onToggleCryptoGroup={onToggleCryptoGroup}
               {...sourcePropsOf(method.sourceSpan, method.id)}
+            />
+          ))}
+          {layout.cryptoGroupFolds.map((fold) => (
+            <CryptoOperationGroupSvg
+              key={fold.groupId}
+              fold={fold}
+              onToggle={onToggleCryptoGroup}
+              {...sourcePropsOf(fold.sourceSpan, fold.groupId)}
             />
           ))}
           {layout.chips.map((chip) => {
@@ -655,6 +758,7 @@ function StructuredNarrativeCanvas({
                 chip={chip}
                 pairingMode={pairingMode}
                 selectable={selectable}
+                onToggleCryptoGroup={onToggleCryptoGroup}
                 onSelectEndpoint={selectable && endpoint !== undefined
                   ? () => onEndpointSelect?.({
                     id: endpoint.id,
@@ -1129,11 +1233,13 @@ function StructuredNodeSvg({
 function StructuredMethodSvg({
   method,
   onToggleBranch,
+  onToggleCryptoGroup,
   sourceSelected,
   onSourceSelect,
 }: {
   method: StructuredNarrativeLayout['methods'][number];
   onToggleBranch: (branchId: string) => void;
+  onToggleCryptoGroup: (groupId: string) => void;
   sourceSelected?: boolean;
   onSourceSelect?: () => void;
 }) {
@@ -1202,6 +1308,16 @@ function StructuredMethodSvg({
       )}
       {method.branchId !== undefined && (
         <BranchToggleSvg method={method} onToggleBranch={onToggleBranch} />
+      )}
+      {method.groupId !== undefined && (
+        <CryptoGroupToggle
+          x={method.x + halfWidth - 7}
+          y={method.y - halfHeight + 5}
+          groupId={method.groupId}
+          expanded={method.groupExpanded ?? true}
+          nested={method.groupNested === true}
+          onToggle={onToggleCryptoGroup}
+        />
       )}
     </g>
   );
@@ -1492,6 +1608,7 @@ function StructuredChipSvg({
   pairingMode,
   selectable,
   onSelectEndpoint,
+  onToggleCryptoGroup,
   sourceSelected,
   onSourceSelect,
 }: {
@@ -1499,6 +1616,7 @@ function StructuredChipSvg({
   pairingMode?: boolean;
   selectable?: boolean;
   onSelectEndpoint?: () => void;
+  onToggleCryptoGroup?: (groupId: string) => void;
   sourceSelected?: boolean;
   onSourceSelect?: () => void;
 }) {
@@ -1534,6 +1652,16 @@ function StructuredChipSvg({
       )}
       <rect x={chip.x - chip.width / 2} y={chip.y - chip.height / 2} width={chip.width} height={chip.height} rx="4" stroke={chip.color} />
       <text x={chip.x} y={chip.y + 4} textAnchor="middle">{truncate(chip.text, maxChars)}</text>
+      {chip.groupId !== undefined && onToggleCryptoGroup !== undefined && (
+        <CryptoGroupToggle
+          x={chip.x + chip.width / 2 - 7}
+          y={chip.y - chip.height / 2 + 1}
+          groupId={chip.groupId}
+          expanded={chip.groupExpanded ?? true}
+          nested
+          onToggle={onToggleCryptoGroup}
+        />
+      )}
     </g>
   );
 }

@@ -29,6 +29,8 @@ export type LegendKey =
   | 'event'
   | 'branch-lane'
   | 'local-ops'
+  | 'crypto-group'
+  | 'density-fold'
   | 'diagnostics';
 
 /** 本图实际出现的消息序号 token（09：图例与画布共用消息柱的 M 序号与色）。 */
@@ -87,6 +89,8 @@ export function legendContentFor(layout: StructuredNarrativeLayout, result: Pars
   if (layout.nodes.some((node) => node.kind === 'event')) keys.push('event');
   if (layout.nodes.some((node) => node.kind === 'branch')) keys.push('branch-lane');
   if (layout.nodes.some((node) => node.kind === 'local')) keys.push('local-ops');
+  if (layout.cryptoGroups.length > 0) keys.push('crypto-group');
+  if (layout.operatorFolds.length > 0) keys.push('density-fold');
   if (result.diagnostics.length > 0) keys.push('diagnostics');
   // 实际身份对照（09）：消息按柱序 M1..Mn；值按绑定全局序去重（首现即全部信息）。
   const messages = layout.pillars.map((pillar) => ({ sequence: pillar.sequence, color: pillar.color, termText: pillar.termText }));
@@ -250,6 +254,26 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
                 <span className="legend-method-box">方法</span>
               </dt>
               <dd>方法盒：竖向梯形表示解构、横向表示构造、<code>?:</code> 表示产出单个值的条件选择；输入取自上方同色值方块，输出为下方值块；<code>=</code> / <code>∈</code> 检查盒无输出</dd>
+            </div>
+          )}
+          {present.has('crypto-group') && (
+            <div className="legend-item">
+              <dt>
+                <span className="legend-crypto-group">▸ 组</span>
+              </dt>
+              <dd>
+                密码操作组（语义折叠）：把一次密码操作的方法盒与输入/输出值收成一行摘要，摘要列出种类、方向、关键参数、密钥身份与隐藏计数；实线矩形为构造、虚线矩形为解构，暖色描边表示用户声明。它区别于密度折叠（另一条折叠条），未识别函数不建组也不折叠。
+              </dd>
+            </div>
+          )}
+          {present.has('density-fold') && (
+            <div className="legend-item">
+              <dt>
+                <span className="legend-density-fold">▸ 算子簇</span>
+              </dt>
+              <dd>
+                密度折叠：角色内连续多个算子步骤收成一格，按算子数量自动判断；展开状态与密码操作组互相独立，折叠格下方同样保留虚线幽灵值块。
+              </dd>
             </div>
           )}
           {present.has('wire-chip') && (

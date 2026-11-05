@@ -2,7 +2,12 @@ import type {
   Binding,
   BranchItem,
   Condition,
+  CryptoOperationGroup,
+  GroupConfidence,
+  GroupingOrigin,
   MessagePairing,
+  OperationDirection,
+  OperationKind,
   PairingOrigin,
   ParseResult,
   PvDiagnostic,
@@ -11,12 +16,13 @@ import type {
   RoleItem,
   SourceSpan,
 } from '@pv-lens/core';
-import { narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
+import { deriveCryptoGroups, narrativeRoleOrder, renderTerm, solveHorizontalSequence } from '@pv-lens/core';
 import { diagnosticSeverityLabel } from './layout';
 import { gapUnitOf, solveSpacing } from '@pv-lens/core';
 import type { SpacingUnit } from '@pv-lens/core';
 import type { HorizontalNode, HorizontalSequence } from '@pv-lens/core';
 import { MESSAGE_COLOR_TOKENS, buildMessagePalette, valueColorsOf } from './identity-color';
+import { OPERATION_DIRECTION_LABELS, OPERATION_KIND_LABELS } from './crypto-group-labels';
 
 export const MESSAGE_COLORS = MESSAGE_COLOR_TOKENS;
 export const VALUE_COLORS = ['#BFDBFE', '#A5F3FC', '#BBF7D0', '#FED7AA', '#FECACA', '#DDD6FE', '#FBCFE8', '#CBD5E1'] as const;
@@ -33,6 +39,13 @@ const clusterKeyOf = (roleIndex: number, itemIndex: number): string => `opcluste
 /** 折叠条宽度：封在自身角色列内，随文字截断（分支折叠条与算子折叠条同式，F8 口径）。 */
 function foldBarWidthOf(label: string): number {
   return Math.min(METRICS.branchFoldMaxWidth, METRICS.columnWidth - 8, 24 + label.length * CHAR_WIDTH);
+}
+
+/** 密码操作组摘要宽度：首行要放下「类型 · 方向」与右侧隐藏计数，次行放载荷/密钥。 */
+function cryptoGroupWidthOf(label: string, detail: string): number {
+  const labelWidth = 18 + label.length * 8.8 + 6 + 30 + 7;
+  const detailWidth = 18 + detail.length * 5.6 + 7;
+  return Math.min(METRICS.columnWidth - 8, Math.max(141, labelWidth, detailWidth));
 }
 
 /** C10：分支折叠条宽度——守卫文本与右侧固定徽标（+N）分开计宽，徽标不参与截断。 */
@@ -188,6 +201,11 @@ export interface StructuredMethod {
   /** 该检查盒是某个分支的守卫时，记录分支 item id 与守卫原文（折叠开关用）。 */
   branchId?: string;
   branchText?: string;
+  /** 该方法盒对应的密码操作组（点击盒体折叠 / 展开）。 */
+  groupId?: string;
+  groupExpanded?: boolean;
+  /** 嵌套组的方法盒带缩进标记（当前仅在组摘要上体现，保留给渲染方）。 */
+  groupNested?: boolean;
   sourceSpan: SourceSpan;
 }
 
@@ -205,6 +223,9 @@ export interface StructuredChip {
   y: number;
   width: number;
   height: number;
+  /** 派生芯片对应的嵌套密码操作组（点击芯片折叠 / 展开子组）。 */
+  groupId?: string;
+  groupExpanded?: boolean;
   sourceSpan: SourceSpan;
 }
 
@@ -267,6 +288,36 @@ export interface StructuredOperatorClusterFold {
   /** 被折叠隐藏的步骤数。 */
   hiddenCount: number;
   sourceSpan: SourceSpan;
+}
+
+/**
+ * 折叠后的密码操作组摘要（ADR-0018 / 阶段 2）：占据该 item 值层链的纵向单元，
+ * 展开时退回基线方法盒与值方块。组摘要本身是折叠态专有对象，展开态不额外占几何。
+ */
+export interface StructuredCryptoGroupFold {
+  /** 组 id（与 core `CryptoOperationGroup.id` 相同，用户覆盖与折叠状态共用）。 */
+  groupId: string;
+  roleIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: OperationKind;
+  direction: OperationDirection;
+  origin: GroupingOrigin | 'user';
+  confidence: GroupConfidence;
+  /** 首行：`非对称加密 · 解构`。 */
+  label: string;
+  /** 次行：`载荷 sign(...) · 密钥 pkX · 隐藏 4`。 */
+  detail: string;
+  hiddenCount: number;
+  childCount: number;
+  functor: string;
+  /** 是否为父组内的嵌套摘要。 */
+  nested: boolean;
+  sourceSpan: SourceSpan;
+  equationSpan?: SourceSpan;
+  ghostBindingIds: readonly string[];
 }
 
 export interface StructuredEndpoint {
@@ -356,6 +407,10 @@ export interface StructuredNarrativeLayout {
   armRuns: readonly StructuredArmRun[];
   branchFolds: readonly StructuredBranchFold[];
   operatorFolds: readonly StructuredOperatorClusterFold[];
+  /** 本次布局使用的自动/覆盖后密码操作组（审计面板与测试共用同一份）。 */
+  cryptoGroups: readonly CryptoOperationGroup[];
+  /** 折叠态的密码操作组摘要；展开态为空（不额外占几何）。 */
+  cryptoGroupFolds: readonly StructuredCryptoGroupFold[];
   roleDiagnostics: readonly StructuredRoleDiagnostics[];
   endpoints: readonly StructuredEndpoint[];
   pillars: readonly MessagePillar[];
@@ -406,6 +461,12 @@ export interface StructuredLayoutOptions {
    * 集合语义为「用户已点开的簇」，缺省为空 = 全部折叠。
    */
   expandedOperatorClusters?: readonly string[];
+  /** 已折叠的密码操作组 id；缺省为空 = 全部展开（展开态保持基线结构）。 */
+  collapsedCryptoGroups?: readonly string[];
+  /** 已用用户覆盖派生好的操作组；缺省时由 result 自动派生。 */
+  cryptoGroups?: readonly CryptoOperationGroup[];
+  /** 用户覆盖（组 id → 操作种类）；与 cryptoGroups 同时传入时后者优先。 */
+  cryptoGroupOverrides?: Readonly<Record<string, OperationKind>>;
 }
 
 const METRICS = {
@@ -444,6 +505,9 @@ const METRICS = {
   branchFoldMaxWidth: 200,
   /** 折叠算子簇格的高度（spec 51：一格列算子名与数量）。 */
   operatorFoldHeight: 24,
+  /** 折叠密码操作组摘要的高度与槽位（两行：种类/方向 + 载荷/密钥/计数）。 */
+  cryptoGroupHeight: 22,
+  cryptoGroupPitch: 24,
   chainPadding: 6,
   methodWidth: 66,
   methodHeight: 24,
@@ -488,6 +552,15 @@ export function buildStructuredNarrativeLayout(
   const compactness = clamp(options.compactness ?? 0, 0, 1);
   const gapUnit = gapUnitOf(compactness);
   const horizontal = solveHorizontalSequence(result);
+  const cryptoGroups = options.cryptoGroups
+    ?? deriveCryptoGroups(result, options.cryptoGroupOverrides === undefined ? {} : { overrides: options.cryptoGroupOverrides });
+  const collapsedCryptoGroups = new Set(options.collapsedCryptoGroups ?? []);
+  const cryptoGroupsByItem = new Map<string, CryptoOperationGroup[]>();
+  for (const group of cryptoGroups) {
+    const list = cryptoGroupsByItem.get(group.itemId) ?? [];
+    list.push(group);
+    cryptoGroupsByItem.set(group.itemId, list);
+  }
   const roleByName = new Map(roles.map((role) => [role.name, role]));
   // 臂道画在信道外侧、构造链画在内侧（朝信道）——与 prototype 08 同口径。
   const channelPositions = horizontal.nodes.flatMap((node, position) => node.kind === 'channel' ? [position] : []);
@@ -586,6 +659,7 @@ export function buildStructuredNarrativeLayout(
   const armRuns: StructuredArmRun[] = [];
   const branchFolds: StructuredBranchFold[] = [];
   const operatorFolds: StructuredOperatorClusterFold[] = [];
+  const cryptoGroupFolds: StructuredCryptoGroupFold[] = [];
   const roleDiagnostics: StructuredRoleDiagnostics[] = [];
   // 归属只算一次（byRole 供角色列内诊断条，unassigned 随布局输出供画布下方平铺）。
   const diagnosticAttribution = attributeDiagnostics(roles, result.diagnostics);
@@ -637,18 +711,71 @@ export function buildStructuredNarrativeLayout(
 
   /** identity 接收（F5）：`in(c, x)` 词项恰为绑定变量且已配对 → 角色列省略绑定方块，帧内标值身份色。 */
   const identityTermColorByRef = new Map<string, string>();
+  const rootGroupOfItem = (itemId: string): CryptoOperationGroup | undefined =>
+    (cryptoGroupsByItem.get(itemId) ?? []).find((group) => group.parentId === null);
+  const rootGroupCollapsed = (itemId: string): boolean => {
+    const group = rootGroupOfItem(itemId);
+    return group !== undefined && collapsedCryptoGroups.has(group.id);
+  };
+
   const chainOfItem = (item: RoleItem, roleIndex: number): ChainEntry[] => {
     const chain = valueChainOf(item, bindingById, destructorNames);
-    if (item.kind !== 'message' || item.endpoint.direction !== 'in') return chain;
+    if (item.kind !== 'message' || item.endpoint.direction !== 'in') return applyCryptoGroupFolding(item, chain);
     const ref = refOf(roleIndex, item.endpoint.stepIndex);
     const term = item.endpoint.term;
-    if (!pairedKeys.has(ref) || term.kind !== 'variable' || term.bindingId === undefined) return chain;
+    if (!pairedKeys.has(ref) || term.kind !== 'variable' || term.bindingId === undefined) return applyCryptoGroupFolding(item, chain);
     const filtered = chain.filter((entry) => !(entry.kind === 'value' && entry.bindingId === term.bindingId && entry.occurrence === 'binding'));
     if (filtered.length !== chain.length) {
       const color = bindingColors.get(term.bindingId);
       if (color !== undefined) identityTermColorByRef.set(ref, color);
     }
-    return filtered;
+    return applyCryptoGroupFolding(item, filtered);
+  };
+
+  /**
+   * 语义分组折叠（ADR-0018 / 阶段 2）：只替换该 item 的值层链，不动消息行与角色列。
+   * 展开态原样返回基线链，仅给方法盒/派生芯片挂组开关；折叠态以组摘要 + 幽灵值替换。
+   */
+  const applyCryptoGroupFolding = (item: RoleItem, chain: ChainEntry[]): ChainEntry[] => {
+    const groups = cryptoGroupsByItem.get(item.id) ?? [];
+    if (groups.length === 0) return chain;
+    const roots = groups.filter((group) => group.parentId === null);
+    // 多根并列（元组消息等）不猜视觉归属：保持基线，审计面板仍可逐组覆盖。
+    if (roots.length !== 1) return chain;
+    const root = roots[0];
+    if (root === undefined) return chain;
+
+    if (collapsedCryptoGroups.has(root.id)) {
+      const ghosts: ChainEntry[] = root.ghostBindingIds
+        .filter((bindingId) => bindingById.has(bindingId))
+        .map((bindingId) => ({ kind: 'value', bindingId, occurrence: 'binding', ghost: true }));
+      return [{ kind: 'group-summary', group: root, nested: false }, ...ghosts];
+    }
+
+    const children = groups.filter((group) => group.parentId !== null);
+    const usedChildren = new Set<string>();
+    const result = chain.map((entry): ChainEntry => {
+      if (entry.kind === 'derived') {
+        const child = children.find((candidate) => !usedChildren.has(candidate.id) && candidate.termText === entry.text);
+        if (child !== undefined) {
+          usedChildren.add(child.id);
+          if (collapsedCryptoGroups.has(child.id)) {
+            return { kind: 'group-summary', group: child, nested: true };
+          }
+          return { ...entry, groupId: child.id, groupExpanded: true };
+        }
+      }
+      if (entry.kind === 'method' && entry.label === root.functor) {
+        return { ...entry, groupId: root.id, groupExpanded: true };
+      }
+      return entry;
+    });
+    // 线上构造没有内层派生芯片：折叠的子组仍以摘要追加在链尾，保证逐层展开可见。
+    for (const child of children) {
+      if (usedChildren.has(child.id) || !collapsedCryptoGroups.has(child.id)) continue;
+      result.push({ kind: 'group-summary', group: child, nested: true });
+    }
+    return result;
   };
 
   /** 未配对端的线上芯片（F2）：词项不是裸绑定变量才画（裸变量已由角色列内的值方块写明）。 */
@@ -708,7 +835,7 @@ export function buildStructuredNarrativeLayout(
       rowMetaByKey.set(rowKeyOf(roleIndex, itemIndex), {
         chain,
         rowHeight,
-        chip: wireChipOf(item, roleIndex),
+        chip: wireChipOf(item, roleIndex) && !rootGroupCollapsed(item.id),
         refs: chainBindingIds(chain),
       });
     });
@@ -751,7 +878,13 @@ export function buildStructuredNarrativeLayout(
         const endIndex = run[run.length - 1] ?? 0;
         const memberLabels = run.flatMap((itemIndex) => {
           const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
-          return (meta?.chain ?? []).flatMap((entry) => entry.kind === 'method' ? [entry.label] : entry.kind === 'check' ? [entry.op] : []);
+          return (meta?.chain ?? []).flatMap((entry) => entry.kind === 'method'
+            ? [entry.label]
+            : entry.kind === 'check'
+              ? [entry.op]
+              : entry.kind === 'group-summary'
+                ? [entry.group.functor]
+                : []);
         });
         // 主导算子名：出现最多者，并列取先出现者；数量按算子盒总数（spec 51）。
         const counts = new Map<string, number>();
@@ -801,7 +934,7 @@ export function buildStructuredNarrativeLayout(
       // 分支内部与被折叠分支吞掉的区间都不参与成簇；非算子本地步骤（new/insert/纯绑定）断簇。
       const inFoldedBranch = branchDepth > 0;
       const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
-      const hasBox = (meta?.chain ?? []).some((entry) => entry.kind === 'method' || entry.kind === 'check');
+      const hasBox = (meta?.chain ?? []).some((entry) => entry.kind === 'method' || entry.kind === 'check' || entry.kind === 'group-summary');
       if (!inFoldedBranch && item.kind === 'local' && hasBox) {
         run.push(itemIndex);
         return;
@@ -907,7 +1040,7 @@ export function buildStructuredNarrativeLayout(
       const meta = rowMetaByKey.get(rowKeyOf(roleIndex, itemIndex));
       const chain = meta?.chain ?? chainOfItem(item, roleIndex);
       const rowHeight = meta?.rowHeight ?? Math.max(baseHeightOf(item), chainHeightOf(chain) + METRICS.chainPadding);
-      const chip = meta?.chip ?? wireChipOf(item, roleIndex);
+      const chip = meta?.chip ?? (wireChipOf(item, roleIndex) && !rootGroupCollapsed(item.id));
       const message = item.kind === 'message';
       const key = rowKeyOf(roleIndex, itemIndex);
       // ticket 27：未配对词项芯片并入消息行单元。无值层链时芯片以消息线 y 居中（压在线上，
@@ -1223,9 +1356,56 @@ export function buildStructuredNarrativeLayout(
       const firstCheckIndex = chain.findIndex((entry) => entry.kind === 'check');
       let pendingConstruct: { entryIndex: number; boxY: number; outputX: number; outputBindingIds: readonly string[] } | null = null;
       chain.forEach((entry, entryIndex) => {
+        if (entry.kind === 'group-summary') {
+          const group = entry.group;
+          const height = METRICS.cryptoGroupHeight;
+          const centerY = slotTop + height / 2;
+          slotTop += METRICS.cryptoGroupPitch;
+          const label = `${OPERATION_KIND_LABELS[group.kind]} · ${OPERATION_DIRECTION_LABELS[group.direction]}${group.origin === 'user' ? ' · 用户声明' : ''}`;
+          const payload = group.operands.payload === undefined ? undefined : renderTerm(group.operands.payload.term);
+          const key = group.operands.key === undefined ? undefined : renderTerm(group.operands.key.term);
+          const detail = [
+            key === undefined ? undefined : `密钥 ${key}`,
+            payload === undefined ? undefined : `载荷 ${payload}`,
+          ].filter((part): part is string => part !== undefined).join(' · ') || '无关键参数';
+          const width = cryptoGroupWidthOf(label, detail);
+          cryptoGroupFolds.push({
+            groupId: group.id,
+            roleIndex,
+            x: chainX,
+            y: centerY,
+            width,
+            height,
+            kind: group.kind,
+            direction: group.direction,
+            origin: group.origin,
+            confidence: group.confidence,
+            label: entry.nested ? `└ ${label}` : label,
+            detail,
+            hiddenCount: group.hiddenCount,
+            childCount: cryptoGroups.filter((candidate) => candidate.parentId === group.id).length,
+            functor: group.functor,
+            nested: entry.nested,
+            sourceSpan: group.sourceSpan,
+            ...(group.equationSpan === undefined ? {} : { equationSpan: group.equationSpan }),
+            ghostBindingIds: group.ghostBindingIds,
+          });
+          maxTextRight = Math.max(maxTextRight, chainX + width / 2);
+          return;
+        }
         if (entry.kind === 'value') {
           const binding = bindingById.get(entry.bindingId);
           if (binding === undefined) return;
+          if (entry.ghost === true) {
+            const slotY = slotTop + METRICS.valuePitch / 2;
+            slotTop += METRICS.valuePitch;
+            valueBlocks.push({
+              ...valueBlockOf(binding, roleIndex, chainX, slotY, entry.occurrence, bindingColors, ordinalOf(binding.id), valueBlocks.length),
+              ghost: true,
+            });
+            maxTextRight = Math.max(maxTextRight, chainX + METRICS.valueWidth / 2);
+            return;
+          }
           const outputSlot = pendingConstruct === null ? -1 : pendingConstruct.outputBindingIds.indexOf(entry.bindingId);
           if (pendingConstruct !== null && outputSlot >= 0 && entryIndex === pendingConstruct.entryIndex + 1 + outputSlot) {
             const outputCount = pendingConstruct.outputBindingIds.length;
@@ -1284,6 +1464,7 @@ export function buildStructuredNarrativeLayout(
             height: METRICS.methodHeight,
             inputBindingIds: entry.operands.filter((operand) => operand.kind === 'value').map((operand) => operand.bindingId),
             outputBindingIds: [],
+            ...(entry.groupId === undefined ? {} : { groupId: entry.groupId, groupExpanded: true }),
             // 复合守卫会有多行检查盒，折叠开关只挂在第一行，一个分支一个开关。
             ...(isBranchStart(item) && entryIndex === firstCheckIndex
               ? { branchId: item.id, branchText: guardTextOf(item), outward }
@@ -1306,6 +1487,7 @@ export function buildStructuredNarrativeLayout(
             y: chipY,
             width: METRICS.chipWidth,
             height: METRICS.chipHeight,
+            ...(entry.groupId === undefined ? {} : { groupId: entry.groupId, groupExpanded: true }),
             sourceSpan: item.span,
           });
           maxTextRight = Math.max(maxTextRight, chainX + METRICS.chipWidth / 2);
@@ -1334,6 +1516,11 @@ export function buildStructuredNarrativeLayout(
           height: METRICS.methodHeight,
           inputBindingIds: entry.inputBindingIds,
           outputBindingIds: entry.outputBindingIds,
+          ...(entry.groupId === undefined ? {} : {
+            groupId: entry.groupId,
+            groupExpanded: entry.groupExpanded ?? true,
+            groupNested: entry.groupNested ?? false,
+          }),
           sourceSpan: item.span,
         });
         if (isConstruct) {
@@ -1380,7 +1567,8 @@ export function buildStructuredNarrativeLayout(
           // 不再写 caption——紧邻的信道帧已经写全了同一个词项，caption 会和帧打架。
           if (stepItem.endpoint.direction === 'out') {
             const wire = wireMethodOf(stepItem.endpoint.term, destructorNames);
-            if (wire !== null) {
+            const rootGroup = rootGroupOfItem(item.id);
+            if (wire !== null && !rootGroupCollapsed(item.id)) {
               methods.push({
                 id: `${item.id}:wire-method`,
                 roleIndex,
@@ -1396,6 +1584,7 @@ export function buildStructuredNarrativeLayout(
                 height: METRICS.methodHeight,
                 inputBindingIds: wire.inputBindingIds,
                 outputBindingIds: [],
+                ...(rootGroup === undefined ? {} : { groupId: rootGroup.id, groupExpanded: true }),
                 sourceSpan: item.span,
               });
             }
@@ -1545,6 +1734,8 @@ export function buildStructuredNarrativeLayout(
     armRuns,
     branchFolds,
     operatorFolds,
+    cryptoGroups,
+    cryptoGroupFolds,
     roleDiagnostics,
     endpoints: finalEndpoints,
     pillars: finalPillars,
@@ -1565,7 +1756,7 @@ type CheckOperand =
   | { kind: 'chip'; text: string };
 
 type ChainEntry =
-  | { kind: 'value'; bindingId: string; occurrence: StructuredValueBlock['occurrence'] }
+  | { kind: 'value'; bindingId: string; occurrence: StructuredValueBlock['occurrence']; ghost?: boolean }
   | {
       kind: 'method';
       label: string;
@@ -1574,9 +1765,19 @@ type ChainEntry =
       connector?: '&&' | '||';
       inputBindingIds: readonly string[];
       outputBindingIds: readonly string[];
+      groupId?: string;
+      groupExpanded?: boolean;
+      groupNested?: boolean;
     }
-  | { kind: 'check'; op: string; operands: readonly CheckOperand[]; connector?: '&&' | '||' }
-  | { kind: 'derived'; text: string; chipKind: 'derived' | 'condition' };
+  | { kind: 'check'; op: string; operands: readonly CheckOperand[]; connector?: '&&' | '||'; groupId?: string }
+  | {
+      kind: 'derived';
+      text: string;
+      chipKind: 'derived' | 'condition';
+      groupId?: string;
+      groupExpanded?: boolean;
+    }
+  | { kind: 'group-summary'; group: CryptoOperationGroup; nested: boolean };
 
 /**
  * 一个 item 在值层里的竖向链（自上而下）：
@@ -1736,6 +1937,7 @@ interface TermBindingRef {
 function chainHeightOf(chain: readonly ChainEntry[]): number {
   return chain.reduce((total, entry) => {
     if (entry.kind === 'method') return total + METRICS.methodPitch;
+    if (entry.kind === 'group-summary') return total + METRICS.cryptoGroupPitch;
     if (entry.kind === 'check') return total + METRICS.checkPitch;
     return total + METRICS.valuePitch;
   }, 0);
