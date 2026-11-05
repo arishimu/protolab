@@ -37,6 +37,8 @@
 > **2026-11-05 语义分组阶段 1 更新**：按 `PLAN.md` 完成阶段 1 的解析与分类基础设施，未改动验证链与界面。`ParseResult` 新增结构化 `reduc` 方程（析构子、`forall` 参数、左右词项、属性与 span）；新增 `grouping/operation-registry.ts`（方程优先、名称启发兜底）与 `grouping/crypto-group.ts`（方法盒级分组、嵌套父子、`members`/`hiddenCount`、未知兜底与用户覆盖）；新增测试 fixture `crypto-nested.pv`、`crypto-unknown.pv` 与[实现票 28](../.scratch/pv-lens-grouping/issues/28-crypto-group.md)。四个内置样例与两个 fixture 的分类回归通过；阶段 2 未开工。当前测试基线为 52 个测试文件、466 项测试（新增 20 项专项测试与 2 个纯代码守卫），`pnpm -r typecheck` 与 `pnpm -r run build` 通过。
 >
 > **2026-11-05 语义分组阶段 2 更新**：完成密码操作组的画布渲染与审计交互，新增[实现票 29](../.scratch/pv-lens-grouping/issues/29-crypto-group-render.md)。折叠态把 item 值层链替换为组摘要（种类、方向、载荷/密钥、隐藏计数）并保留同色幽灵值块；展开态不额外占几何，组开关叠在方法盒与派生芯片角上；支持父组/子组逐层折叠、线上构造子组的链尾内层摘要、全部折叠/展开、审计面板种类覆盖与重置、源码定位、协议切换清理。core 的 `CryptoOperationGroup` 补充 `itemId`、`nodePath`、`functor`、`termText`、`equationSpan` 与 `ghostBindingIds`。真实 Chromium 在 1440×1000 与 1024×800 下完成 8 项交互检查，四视口（1920×1080、1440×813、1280×720、1024×768）折叠态无文字越界，灰度/打印复核通过，截图 9 张存于 `gui-test/23-screenshots/`（`sg2-*`）。当前测试基线为 53 个测试文件、477 项测试（471 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 3 尚未开工。
+>
+> **2026-11-05 语义分组阶段 3 更新**：完成交换段的因果 DAG、消息列表与段带渲染，新增[实现票 30](../.scratch/pv-lens-grouping/issues/30-exchange-segment.md)。core 新增 `grouping/exchange-segment.ts`：配对端点合并为完整消息，配对边与同角色本地序构成 DAG，输出确定性拓扑序、SCC、凸闭包与逐项校验；web 新增 `MessageList.tsx` 与 `ExchangeSegmentBand.tsx`，支持整条勾选、实时校验、扩展到凸闭包、切半拒绝、创建/重命名/折叠/移除、段头计数、事件芯片与跨段边。V1 仅允许两方、单层、单信道段，多角色协议入口禁用；切换协议清空全部段状态。真实 Chromium 11 项交互检查通过，四视口（1920×1080、1440×813、1280×720、1024×768）折叠段无文字越界，灰度/打印复核通过；9 张 `sg3-*` 截图存于 `gui-test/23-screenshots/`。当前测试基线为 55 个测试文件、498 项测试（492 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 4 尚未开工。
 
 ## 一句话判断
 

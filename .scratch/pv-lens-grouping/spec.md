@@ -1,6 +1,6 @@
 # pv-lens 语义分组：规格
 
-Status: active（阶段 0 已验收；阶段 1、2 已实现待验收，2026-11-05）
+Status: active（阶段 0 已验收；阶段 1、2、3 已实现待验收，2026-11-05）
 Baseline: `dev` @ `98dfeec`（51 个测试文件、444 项测试）
 依据：`PLAN.md`、`CONTEXT.md`、`docs/adr/0001`–`0018`、`requirements.md`
 决策票：[01 密码操作组](decisions/01-crypto-operation-group.md)、[02 交换段](decisions/02-exchange-segment.md)
