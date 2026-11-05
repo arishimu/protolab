@@ -32,6 +32,12 @@
 >
 > **2026-11-04 结项后补丁（ticket 26/27）**：ticket 26 将信道列宽按该信道最长消息帧加宽（无帧保持 72px），值方块文字提至 11px、序号 8px、列签名 10.5px，对应性面板说明解除 70ch 限宽；ticket 27 将无值层链的未配对词项芯片以消息线居中，带链芯片保留在值层下方并预留行高，布局冲突补角色名与源码行、按 y 自上而下编号并统一为“冲突 N”，标记改锚定角色名并落在列间空隙（非末列向右、末列向左），不再压住值方块、线上芯片或事件。结项后补丁未改核心解析与验证链；测试基线为 51 个测试文件、444 项测试全部成功，`pnpm -r typecheck` 与 `pnpm build` 通过。合并前复核截图存于 `gui-test/22-screenshots/`，实施记录见 `gui-test/gui-test-remediation-2.md` 第 13 节。
 
+> **2026-11-05 语义分组阶段 0 更新**：按 `PLAN.md` 完成阶段 0 的文档、决策票与原型，未改动生产代码，测试基线保持 51 个测试文件、444 项测试。新增 [ADR-0018](adr/0018-semantic-grouping.md)（状态：已接受，2026-11-05 用户复核通过），两张决策票 `01-crypto-operation-group.md`、`02-exchange-segment.md` 均标 `resolved`，规格草案存于 `.scratch/pv-lens-grouping/spec.md`。`CONTEXT.md` 补“语义分组”术语节，`requirements.md` 补 U2.6、U3.12、U10.1–U10.9 并修订 U8.2 区分语义折叠与密度折叠。两个自包含原型（密码操作组、交换段）覆盖折叠/展开/嵌套/段边界/值身份/拒绝路径；按复核意见补充了每个可操作控件的可见语义，并修正切半标记、创建后清空选择、校验清单、段名编辑与冲突/协议切换的演示边界。27 张 PNG 与 2 份打印 PDF 存于 `gui-test/23-screenshots/`。阶段 1 尚未开工。
+>
+> **2026-11-05 语义分组阶段 1 更新**：按 `PLAN.md` 完成阶段 1 的解析与分类基础设施，未改动验证链与界面。`ParseResult` 新增结构化 `reduc` 方程（析构子、`forall` 参数、左右词项、属性与 span）；新增 `grouping/operation-registry.ts`（方程优先、名称启发兜底）与 `grouping/crypto-group.ts`（方法盒级分组、嵌套父子、`members`/`hiddenCount`、未知兜底与用户覆盖）；新增测试 fixture `crypto-nested.pv`、`crypto-unknown.pv` 与[实现票 28](../.scratch/pv-lens-grouping/issues/28-crypto-group.md)。四个内置样例与两个 fixture 的分类回归通过；阶段 2 未开工。当前测试基线为 52 个测试文件、466 项测试（新增 20 项专项测试与 2 个纯代码守卫），`pnpm -r typecheck` 与 `pnpm -r run build` 通过。
+>
+> **2026-11-05 语义分组阶段 2 更新**：完成密码操作组的画布渲染与审计交互，新增[实现票 29](../.scratch/pv-lens-grouping/issues/29-crypto-group-render.md)。折叠态把 item 值层链替换为组摘要（种类、方向、载荷/密钥、隐藏计数）并保留同色幽灵值块；展开态不额外占几何，组开关叠在方法盒与派生芯片角上；支持父组/子组逐层折叠、线上构造子组的链尾内层摘要、全部折叠/展开、审计面板种类覆盖与重置、源码定位、协议切换清理。core 的 `CryptoOperationGroup` 补充 `itemId`、`nodePath`、`functor`、`termText`、`equationSpan` 与 `ghostBindingIds`。真实 Chromium 在 1440×1000 与 1024×800 下完成 8 项交互检查，四视口（1920×1080、1440×813、1280×720、1024×768）折叠态无文字越界，灰度/打印复核通过，截图 9 张存于 `gui-test/23-screenshots/`（`sg2-*`）。当前测试基线为 53 个测试文件、477 项测试（471 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 3 尚未开工。
+
 ## 一句话判断
 
 这个仓库的 **ProVerif 学习资料和 pv-lens v1 验证链已经形成可运行的成果**；“安全协议可视化建模”这一产品目标仍未实现，因为应用目前只读，不能从画布创建或修改 `.pv`。v2 已做出大量视觉与语义设计，部分 IR、值层和分支画法进入代码，但消息路由、人工配对、事件查询矩阵、完整布局约束和源码联动等核心体验尚未闭环。因而“项目已经失败”不能理解为代码不能运行；更准确的风险是**产品目标、设计范围与当前交付能力持续分离**。
