@@ -263,6 +263,35 @@ export interface DestructorDeclaration {
   span?: SourceSpan;
 }
 
+/** 带源码区间的词项引用：分类与分组只保存引用，不复制词项文本。 */
+export interface TermReference {
+  term: PvTerm;
+  span: SourceSpan;
+}
+
+/** `reduc` 方程的形式参数（`forall m: bitstring, k: key`）。 */
+export interface ReducParameter {
+  name: string;
+  typeName?: string;
+  span: SourceSpan;
+}
+
+/**
+ * 结构化 `reduc` 方程：`forall ...; left = right [attrs]`。
+ *
+ * `destructor` 是左侧最外层构造子；方程无法结构化时不会进入本列表，
+ * 而是以 `degraded` 诊断保留原文。
+ */
+export interface ReducEquation {
+  destructor: string;
+  parameters: readonly ReducParameter[];
+  left: TermReference;
+  right: TermReference;
+  /** 方程后缀属性（如 `[convergent]`）的原文记号。 */
+  attributes: readonly string[];
+  span: SourceSpan;
+}
+
 /** 事件声明 `event name(t1, t2).`：形参类型供对应性查询生成变量声明。 */
 export interface EventDeclaration {
   name: string;
@@ -296,6 +325,8 @@ export interface ParseResult {
   names: readonly TypedName[];
   channels: readonly ChannelDeclaration[];
   destructors: readonly DestructorDeclaration[];
+  /** `reduc` 声明的结构化方程；未知或损坏的方程只留诊断，不在此列。 */
+  equations: readonly ReducEquation[];
   bindings: readonly Binding[];
   diagnostics: readonly PvDiagnostic[];
 }

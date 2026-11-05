@@ -1,0 +1,43 @@
+(* 测试用 fixture：嵌套密码操作、签名、哈希与密钥派生；不注册为内置样例。 *)
+
+type bitstring.
+type key.
+type skey.
+type pkey.
+type hashvalue.
+
+free c: channel.
+free s: bitstring [private].
+
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+fun pk(skey): pkey.
+fun aenc(bitstring, pkey): bitstring.
+reduc forall m: bitstring, sk: skey; adec(aenc(m,pk(sk)),sk) = m.
+
+fun spk(skey): pkey.
+fun sign(bitstring, skey): bitstring.
+reduc forall m: bitstring, sk: skey; getmess(sign(m,sk)) = m.
+reduc forall m: bitstring, sk: skey; checksign(sign(m,sk),spk(sk)) = m.
+
+fun hash(bitstring): hashvalue.
+
+event wrapped(bitstring).
+
+query attacker(s).
+
+let alice(skA: skey, k: key) =
+  new n: bitstring;
+  let h = hash(senc(n, k)) in
+  let p = pk(skA) in
+  out(c, aenc(sign(h, skA), p));
+  let msg = sdec(senc(n, k), k) in
+  event wrapped(msg).
+
+let bob(skA: skey, k: key) =
+  in(c, x: bitstring);
+  let m = adec(x, skA) in
+  out(c, senc(m, k)).
+
+process alice(skA, k) | bob(skA, k).

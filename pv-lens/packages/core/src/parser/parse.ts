@@ -14,7 +14,7 @@
  *   顶层词项绑定 `let`）宽容解析：整体跳过，不建模、不报错。
  */
 
-import type { EventDeclaration, FunctionSignature, ParseResult, PvDiagnostic, PvQuery, PvRole, RoleParameter, SourceSpan, TypedName } from './model.js';
+import type { DestructorDeclaration, EventDeclaration, FunctionSignature, ParseResult, PvDiagnostic, PvQuery, PvRole, ReducEquation, ReducParameter, RoleParameter, SourcePosition, SourceSpan, TermReference, TypedName } from './model.js';
 import { tokenize, type Token } from './lexer.js';
 import {
   TokenCursor,
@@ -26,7 +26,7 @@ import {
 } from './state.js';
 import { newBodyScan, scanProcessBody, type BodyScan, type InvocationFact } from './process.js';
 import { buildRoleItems } from './ir.js';
-import { parseTypeAscription } from './terms.js';
+import { parseTypeAscription, parseTerm } from './terms.js';
 
 /** 内联主进程在模型里的固定角色名。 */
 export const MAIN_PROCESS_NAME = 'main';
@@ -79,7 +79,8 @@ export function parsePv(source: string): ParseResult {
   const queries: PvQuery[] = [];
   const functions: FunctionSignature[] = [];
   const names: TypedName[] = [];
-  const destructors: { name: string; span: SourceSpan }[] = [];
+  const destructors: DestructorDeclaration[] = [];
+  const equations: ReducEquation[] = [];
   const eventDeclarations: EventDeclaration[] = [];
   let main: MutableRole | null = null;
 
@@ -99,7 +100,9 @@ export function parsePv(source: string): ParseResult {
         continue;
       }
       if (cursor.atIdent('reduc')) {
-        destructors.push(...parseReducDeclaration(cursor));
+        const parsed = parseReducDeclaration(cursor);
+        destructors.push(...parsed.destructors);
+        equations.push(...parsed.equations);
         continue;
       }
       if (cursor.atIdent('event')) {
@@ -143,6 +146,7 @@ export function parsePv(source: string): ParseResult {
       typeName: name.typeName,
     })),
     destructors,
+    equations,
     bindings: [...roles, ...(mainProcess === null ? [] : [mainProcess])].flatMap((role) => role.bindings),
     diagnostics: sorted,
   };
@@ -337,28 +341,160 @@ function parseEventDeclaration(cursor: TokenCursor): EventDeclaration | null {
   return { name: nameToken.text, argTypes, span: nameToken.span };
 }
 
-function parseReducDeclaration(cursor: TokenCursor): { name: string; span: SourceSpan }[] {
+interface ReducParseResult {
+  destructors: DestructorDeclaration[];
+  equations: ReducEquation[];
+}
+
+/** 方程 span 的终点：右侧词项末尾；有属性时取最后一个属性的末尾。 */
+function equationEnd(right: SourceSpan, attributesEnd: SourcePosition | undefined): SourcePosition {
+  return attributesEnd ?? right.end;
+}
+
+/** 解析 `reduc [forall x:t, ... ;] eq1 [; eq2 ...] .`；坏方程降级为诊断后跳过。 */
+function parseReducDeclaration(cursor: TokenCursor): ReducParseResult {
   const keyword = cursor.next();
-  const stop = findTopLevelToken(cursor, cursor.position, ['.']);
-  const end = stop < 0 ? cursor.tokens.length - 1 : stop;
-  const result: { name: string; span: SourceSpan }[] = [];
-  let expectDestructor = false;
-  for (let index = cursor.position; index < end; index++) {
-    const token = cursor.tokens[index];
-    if (token.text === ';') {
-      expectDestructor = true;
+  const destructors: DestructorDeclaration[] = [];
+  const equations: ReducEquation[] = [];
+
+  const parameters = parseReducParameters(cursor);
+  if (parameters === null) {
+    recoverToDeclarationEnd(cursor);
+    return { destructors, equations };
+  }
+  const scope = new Set(parameters.map((parameter) => parameter.name));
+
+  while (!cursor.atEnd && !cursor.atPunct('.')) {
+    // 允许 `;;` 这类空段，但不允许静默吞掉未识别的记号。
+    if (cursor.match(';')) continue;
+
+    const before = cursor.position;
+    const equation = parseReducEquation(cursor, keyword.span.start, parameters, scope);
+    if (equation === null) {
+      skipToEquationBoundary(cursor);
+      if (cursor.position === before) cursor.next();
       continue;
     }
-    if (expectDestructor && token.kind === 'ident' && cursor.tokens[index + 1]?.text === '(') {
-      if (!result.some((entry) => entry.name === token.text)) {
-        result.push({ name: token.text, span: token.span });
-      }
-      expectDestructor = false;
+    equations.push(equation);
+    if (!destructors.some((destructor) => destructor.name === equation.destructor)) {
+      destructors.push({ name: equation.destructor, span: equation.left.span });
+    }
+    if (!cursor.atPunct(';') && !cursor.atPunct('.')) {
+      cursor.error('`reduc` 方程之间缺少 `;` 或结尾 `.`', cursor.span(keyword.span.start));
+      skipToEquationBoundary(cursor);
     }
   }
-  cursor.position = stop < 0 ? end : stop + 1;
-  if (stop < 0) cursor.error('`reduc` 声明缺少结尾的 `.`', cursor.span(keyword.span.start));
-  return result;
+
+  if (!cursor.match('.')) cursor.error('`reduc` 声明缺少结尾的 `.`', cursor.span(keyword.span.start));
+  return { destructors, equations };
+}
+
+/** 解析 `forall name: type, ...;`；没有 `forall` 时返回空参数表。 */
+function parseReducParameters(cursor: TokenCursor): ReducParameter[] | null {
+  if (!cursor.atIdent('forall')) return [];
+  const keyword = cursor.next();
+  const parameters: ReducParameter[] = [];
+
+  if (cursor.match(';')) return parameters;
+  for (;;) {
+    const nameToken = cursor.peek();
+    if (nameToken.kind !== 'ident') {
+      cursor.error('`reduc forall` 参数应为名字', cursor.span(keyword.span.start));
+      return null;
+    }
+    const start = nameToken.span.start;
+    cursor.next();
+    if (!cursor.match(':')) {
+      cursor.error('`reduc forall` 参数缺少类型（`:`）', cursor.span(keyword.span.start));
+      return null;
+    }
+    const typeToken = cursor.peek();
+    if (typeToken.kind !== 'ident') {
+      cursor.error('`reduc forall` 参数类型应为类型名', cursor.span(keyword.span.start));
+      return null;
+    }
+    cursor.next();
+    parameters.push({ name: nameToken.text, typeName: typeToken.text, span: cursor.span(start) });
+    if (cursor.match(',')) continue;
+    break;
+  }
+  if (!cursor.match(';')) {
+    cursor.error('`reduc forall` 参数列表缺少结尾的 `;`', cursor.span(keyword.span.start));
+    return null;
+  }
+  return parameters;
+}
+
+function parseReducEquation(
+  cursor: TokenCursor,
+  reducStart: SourcePosition,
+  parameters: readonly ReducParameter[],
+  scope: ReadonlySet<string>,
+): ReducEquation | null {
+  const start = cursor.peek().span.start;
+  const leftTerm = parseTerm(cursor, scope);
+  if (leftTerm === null) return null;
+  const leftSpan = cursor.span(start);
+
+  if (leftTerm.kind !== 'application') {
+    cursor.degraded('`reduc` 方程左侧不是构造子应用，已跳过该方程', leftSpan);
+    return null;
+  }
+  if (!cursor.match('=')) {
+    cursor.degraded('`reduc` 方程缺少 `=`，已跳过该方程', cursor.span(reducStart));
+    return null;
+  }
+
+  const rightStart = cursor.peek().span.start;
+  const rightTerm = parseTerm(cursor, scope);
+  if (rightTerm === null) return null;
+  const rightSpan = cursor.span(rightStart);
+  const attributes = parseEquationAttributes(cursor);
+  const left: TermReference = { term: leftTerm, span: leftSpan };
+  const right: TermReference = { term: rightTerm, span: rightSpan };
+
+  return {
+    destructor: leftTerm.functor,
+    parameters,
+    left,
+    right,
+    attributes: attributes.names,
+    span: { start, end: equationEnd(rightSpan, attributes.span?.end) },
+  };
+}
+
+/** 解析方程后缀属性 `[convergent]`；括号不配对时只降级，不中断声明。 */
+function parseEquationAttributes(cursor: TokenCursor): { names: string[]; span?: SourceSpan } {
+  if (!cursor.atPunct('[')) return { names: [] };
+  const start = cursor.peek().span.start;
+  cursor.next();
+  const names: string[] = [];
+  let depth = 1;
+  while (!cursor.atEnd && depth > 0) {
+    const token = cursor.next();
+    if (token.kind === 'punct' && token.text === '[') depth += 1;
+    else if (token.kind === 'punct' && token.text === ']') depth -= 1;
+    else if (token.kind === 'ident') names.push(token.text);
+  }
+  if (depth > 0) cursor.degraded('`reduc` 方程属性缺少结尾的 `]`', cursor.span(start));
+  return { names, span: cursor.span(start) };
+}
+
+/** 出错后跳到当前方程的分隔符 `;` 或声明结尾 `.`，不消费分隔符。 */
+function skipToEquationBoundary(cursor: TokenCursor): void {
+  let depth = 0;
+  while (!cursor.atEnd) {
+    const token = cursor.peek();
+    if (token.kind === 'punct') {
+      if (OPEN_PUNCT.includes(token.text)) depth += 1;
+      else if (CLOSE_PUNCT.includes(token.text)) {
+        if (depth > 0) depth -= 1;
+      } else if (depth === 0 && (token.text === ';' || token.text === '.')) {
+        return;
+      }
+    }
+    cursor.next();
+  }
 }
 
 /**

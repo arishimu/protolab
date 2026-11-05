@@ -182,16 +182,39 @@ export type {
   PvQuery,
   PvRole,
   PvTerm,
+  ReducEquation,
+  ReducParameter,
   RoleItem,
   RoleParameter,
   SourcePosition,
   SourceSpan,
   StepAnnotations,
+  TermReference,
   TupleTerm,
   TypedName,
   UnknownTerm,
   VariableTerm,
 } from './parser/model.js';
+
+/**
+ * 语义分组（ADR-0018，阶段 1）：密码操作注册表与密码操作组派生。
+ *
+ * 纯函数：方程优先、名称启发兜底；未识别函数不建组；用户覆盖只改派生结果，不回写 `.pv`。
+ */
+export {
+  buildOperationRegistry,
+  classifyEquation,
+} from './grouping/operation-registry.js';
+export type {
+  Confidence,
+  GroupingOrigin,
+  OperationDescriptor,
+  OperationDirection,
+  OperationKind,
+  OperationRegistry,
+} from './grouping/operation-registry.js';
+export { deriveCryptoGroups } from './grouping/crypto-group.js';
+export type { CryptoGroupOptions, CryptoOperationGroup, GroupConfidence } from './grouping/crypto-group.js';
 
 /**
  * core 公开能力：词项符号化渲染（spec.md「core 公开能力」第 2 条）。

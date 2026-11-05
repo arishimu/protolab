@@ -1,0 +1,29 @@
+(* 测试用 fixture：未知函数不产生密码操作组；不注册为内置样例。 *)
+
+type bitstring.
+type key.
+
+free c: channel.
+free s: bitstring [private].
+
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+fun opaque(bitstring): bitstring.
+fun mix(bitstring, bitstring): bitstring.
+fun mystery(bitstring, bitstring): bitstring.
+
+query attacker(s).
+
+let alice(k: key) =
+  new n: bitstring;
+  let known = senc(n, k) in
+  let x = mix(known, n) in
+  let y = opaque(x) in
+  out(c, mystery(x, y)).
+
+let bob(k: key) =
+  in(c, z: bitstring);
+  out(c, z).
+
+process alice(k) | bob(k).
