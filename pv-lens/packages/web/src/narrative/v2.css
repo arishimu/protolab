@@ -1813,3 +1813,252 @@
   font-size: 0.73rem;
   color: #475569;
 }
+
+/* 会话目标（阶段 5）：三类目标构建器与来源徽标。 */
+.session-goals {
+  margin-top: 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: #f8fbff;
+}
+
+.session-goals > summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.86rem;
+  color: #1e3a8a;
+}
+
+.session-goal-builders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.session-goal-builder {
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 0.45rem 0.55rem;
+  background: #ffffff;
+}
+
+.session-goal-builder h5 {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+}
+
+.session-goal-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.74rem;
+}
+
+.session-goal-options li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.session-goal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: end;
+  font-size: 0.74rem;
+}
+
+.session-goal-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: #475569;
+}
+
+.session-goal-row select {
+  font: inherit;
+  font-size: 0.72rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  padding: 0.1rem 0.25rem;
+  max-width: 12rem;
+}
+
+.session-goal-injective {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.25rem !important;
+}
+
+.session-goal-hints {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: #92400e;
+}
+
+.session-goal-hints ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.session-goal-list {
+  margin-top: 0.55rem;
+}
+
+.session-goal-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.session-goal-list ul {
+  list-style: none;
+  margin: 0.3rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.session-goal-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: center;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 0.74rem;
+}
+
+.session-goal-tag {
+  border: 1px solid #1d4ed8;
+  border-radius: 999px;
+  padding: 0.02rem 0.4rem;
+  color: #1e3a8a;
+  background: #eff6ff;
+  font-size: 0.68rem;
+}
+
+.session-goal-source pre {
+  max-height: 240px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+}
+
+.query-origin-badge {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.02rem 0.42rem;
+  font-size: 0.68rem;
+  color: #475569;
+}
+
+.query-origin-badge--session {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.query-origin-badge--declared {
+  border-color: #0f766e;
+  background: #f0fdfa;
+  color: #115e59;
+}
+
+/* 反例归因（阶段 5）：列表级“从哪条消息获得什么”，不绘制几何路径。 */
+.trace-attribution {
+  margin: 0.45rem 0;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  padding: 0.45rem 0.55rem;
+  background: #fff7f7;
+}
+
+.trace-attribution h5 {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #991b1b;
+}
+
+.trace-attribution-summary {
+  margin: 0.25rem 0;
+  font-size: 0.73rem;
+  color: #7f1d1d;
+}
+
+.trace-attribution-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.trace-attribution-entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  align-items: baseline;
+  font-size: 0.73rem;
+}
+
+.trace-attribution-entry--output strong {
+  color: #b91c1c;
+}
+
+.trace-attribution-entry--input strong {
+  color: #9a3412;
+}
+
+.trace-attribution-entry--construction strong,
+.trace-attribution-entry--hypothesis strong {
+  color: #475569;
+}
+
+.trace-attribution-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.trace-attribution-terms code {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 0.02rem 0.25rem;
+  font-size: 0.68rem;
+}
+
+.trace-attribution-raw {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.trace-attribution-raw pre {
+  max-height: 220px;
+  overflow: auto;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 0.4rem;
+  border-radius: 5px;
+}
+
+.session-goal-declared {
+  font-size: 0.7rem;
+  color: #0f766e;
+}

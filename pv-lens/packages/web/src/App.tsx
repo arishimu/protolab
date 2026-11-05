@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { composeMessagePairings, createCorrespondencePlan, narrativeRoleOrder, parsePv } from '@pv-lens/core';
-import type { PairingIntent, SourceSpan } from '@pv-lens/core';
+import { buildSessionGoalSource, composeMessagePairings, createCorrespondencePlan, narrativeRoleOrder, parsePv, sessionGoalQueryBody } from '@pv-lens/core';
+import type { PairingIntent, SessionGoal, SourceSpan } from '@pv-lens/core';
 import { CorrespondencePanel } from './CorrespondencePanel';
 import { CurrentProtocolProvider, useCurrentProtocol } from './CurrentProtocolContext';
 import { Home } from './Home';
@@ -9,6 +9,7 @@ import { SourcePanel } from './SourcePanel';
 import type { SourceFocusRequest } from './SourcePanel';
 import { NarrativeView } from './narrative/NarrativeView';
 import { SampleGuidePanel } from './narrative/SampleGuidePanel';
+import { SessionGoalPanel } from './narrative/SessionGoalPanel';
 import type { EventCorrespondenceBinding, NarrativeViewHandle, SourceLinkBinding } from './narrative/NarrativeView';
 import { firstReferenceSpanOf } from './source-reference';
 import { reducePairingSelection } from './narrative/pairing-selection';
@@ -46,6 +47,13 @@ function LoadedView() {
   // 解析是纯转换（不进 server）。在这里解析一次、按 source 记忆化，叙事视图与验证面板共用，
   // 避免两处各解析一遍；`current` 为空时解析空串，随后立即返回（不在条件里调 hook）。
   const parseResult = useMemo(() => parsePv(current?.source ?? ''), [current?.source]);
+  // 阶段 5：会话目标只进入派生验证文本，不改写当前 .pv 与叙事解析结果。
+  const [sessionGoals, setSessionGoals] = useState<readonly SessionGoal[]>([]);
+  const verificationSource = useMemo(
+    () => buildSessionGoalSource(current?.source ?? '', sessionGoals),
+    [current?.source, sessionGoals],
+  );
+  const verificationParseResult = useMemo(() => parsePv(verificationSource), [verificationSource]);
   // 人工配对是会话内存里的声明式意图边（ADR-0005/0007）：切换协议即清空，不回写 `.pv`。
   const [manualIntents, setManualIntents] = useState<readonly PairingIntent[]>([]);
   const [manualIntentChannels, setManualIntentChannels] = useState<readonly string[]>([]);
@@ -98,6 +106,7 @@ function LoadedView() {
     setManualIntentChannels([]);
     setSelection({ pendingOut: null });
     setSelectionNotice(null);
+    setSessionGoals([]);
   }, [current]);
   // 统一 IR：自动配对 + 会话内人工声明合成，诊断驱动画布旁的配对警告条。
   const pairingComposition = useMemo(
@@ -269,6 +278,15 @@ function LoadedView() {
     revealPanelBySelector('.source-column');
   };
   /** 阶段 4：查询卡的源码锚点——复用源码联动选中并滚动画布。 */
+  const addSessionGoal = (goal: SessionGoal): void => {
+    setSessionGoals((currentGoals) => currentGoals.some((existing) => existing.id === goal.id)
+      ? currentGoals
+      : [...currentGoals, goal]);
+  };
+  const removeSessionGoal = (goalId: string): void => {
+    setSessionGoals((currentGoals) => currentGoals.filter((goal) => goal.id !== goalId));
+  };
+  const clearSessionGoals = (): void => setSessionGoals([]);
   const handleLocateQuerySpan = (span: SourceSpan): void => {
     handleSelectLine(span);
   };
@@ -430,11 +448,23 @@ function LoadedView() {
             selectedQueryId={selectedQueryId}
             onSelectQuery={handleSelectQuery}
           />
+          <SessionGoalPanel
+            result={parseResult}
+            goals={sessionGoals}
+            verificationSource={verificationSource}
+            onAdd={addSessionGoal}
+            onRemove={removeSessionGoal}
+            onClear={clearSessionGoals}
+          />
           <VerifyPanel
-            source={current.source}
-            parseResult={parseResult}
+            source={verificationSource}
+            parseResult={verificationParseResult}
             onLocateSpan={handleLocateQuerySpan}
             onSelectEvent={handleSelectQueryEvent}
+            sessionQueries={sessionGoals.map((goal) => ({
+              queryText: sessionGoalQueryBody(goal.queryText),
+              ...(goal.sourceSpan === undefined ? {} : { sourceSpan: goal.sourceSpan }),
+            }))}
           />
         </div>
       </div>

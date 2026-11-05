@@ -11,11 +11,11 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { ParseResult, PvQuery, SourceSpan } from '@pv-lens/core';
-import { parseProverifLocations, sanitizeStdout } from '@pv-lens/core';
+import { attributeCounterexample, parseProverifLocations, sanitizeStdout } from '@pv-lens/core';
 import { describeVerifyFailureKind, requestVerification, verifyFailureGuidance } from './verify';
 import type { VerifyFailure, VerifyOutcome } from './verify';
 import { mapResultsToQueries, normalizeQueryForMatch, summarizeCoverage, VERDICT_META } from './query-presentation';
-import type { QueryResultView, VerificationCoverage } from './query-presentation';
+import type { QueryResultView, SessionQueryRef, VerificationCoverage } from './query-presentation';
 import { useVerifyServiceHealth, verifyServiceHealthText } from './use-service-health';
 
 /** 超时输入框的默认值（毫秒），与 server 适配器的默认值一致。 */
@@ -30,6 +30,8 @@ export interface VerifyPanelProps {
   onLocateSpan?: (span: SourceSpan) => void;
   /** 定位查询涉及的事件（App 负责联动旗标与对应性矩阵）。 */
   onSelectEvent?: (span: SourceSpan) => void;
+  /** 会话目标的查询正文与原始锚点，用于标注来源并避免派生行号错位。 */
+  sessionQueries?: readonly SessionQueryRef[];
 }
 
 /** 面板的最近一次运行状态：未跑 / 正在跑 / 跑完（成功或失败）。 */
@@ -38,7 +40,7 @@ type RunState =
   | { status: 'running' }
   | { status: 'done'; outcome: VerifyOutcome };
 
-export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent }: VerifyPanelProps) {
+export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent, sessionQueries = [] }: VerifyPanelProps) {
   const [timeoutText, setTimeoutText] = useState(String(DEFAULT_TIMEOUT_MS));
   const [state, setState] = useState<RunState>({ status: 'idle' });
   const [finishedAt, setFinishedAt] = useState<Date | null>(null);
@@ -53,7 +55,7 @@ export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent }
 
   const views = useMemo(() => {
     if (outcome === null || !outcome.ok) return [];
-    return mapResultsToQueries(outcome.results, parseResult.queries, parseResult);
+    return mapResultsToQueries(outcome.results, parseResult.queries, parseResult, sessionQueries);
   }, [outcome, parseResult.queries]);
 
   async function run(): Promise<void> {
@@ -272,6 +274,8 @@ function VerifyResults({
   queries: readonly PvQuery[];
   onLocateSpan?: (span: SourceSpan) => void;
   onSelectEvent?: (span: SourceSpan) => void;
+  /** 会话目标的查询正文与原始锚点，用于标注来源并避免派生行号错位。 */
+  sessionQueries?: readonly SessionQueryRef[];
 }) {
   const coverage = summarizeCoverage(views, queries);
   return (
@@ -309,7 +313,8 @@ function CoverageSummary({ coverage }: { coverage: VerificationCoverage }) {
       <div className="coverage-summary-head">
         <h5>验证覆盖摘要</h5>
         <span className="coverage-counts">
-          声明 {coverage.declaredQueries} · 已验证 {coverage.verifiedQueries} · 匹配 {coverage.matchedQueries}
+          查询 {coverage.declaredQueries} · 已验证 {coverage.verifiedQueries} · 匹配 {coverage.matchedQueries}
+          {' · '}声明目标 {coverage.byOrigin.declared} / 会话目标 {coverage.byOrigin.session}
           {' · '}保密性 {coverage.byKind.secrecy} / 认证 {coverage.byKind.correspondence} / 可达性 {coverage.byKind.reachability}
         </span>
       </div>
@@ -333,16 +338,23 @@ export function QueryResultCard({
   view: QueryResultView;
   onLocateSpan?: (span: SourceSpan) => void;
   onSelectEvent?: (span: SourceSpan) => void;
+  /** 会话目标的查询正文与原始锚点，用于标注来源并避免派生行号错位。 */
+  sessionQueries?: readonly SessionQueryRef[];
 }) {
   const meta = VERDICT_META[view.verdict];
   // R14：与 query-presentation 的兜底匹配同口径——去 not / [] / 空白后比较。
   const normalizedSame = view.userText !== null
     && normalizeQueryForMatch(view.userText) === normalizeQueryForMatch(view.normalizedQuery);
   const [traceWrap, setTraceWrap] = useState(false);
+  const attribution = useMemo(
+    () => view.counterexampleTrace === null ? null : attributeCounterexample(view.counterexampleTrace),
+    [view.counterexampleTrace],
+  );
   return (
     <li id={view.cardId} className={`query-card query-card--${meta.tone}`}>
       <div className="query-card-head">
         <span className="query-card-index">查询 {index + 1}</span>
+        <span className={`query-origin-badge query-origin-badge--${view.origin}`}>{view.originLabel}</span>
         <span className={`verdict-badge verdict-badge--${meta.tone}`}>{view.propertyVerdictLabel}</span>
       </div>
       <p className="query-card-label">用户书写的查询</p>
@@ -394,6 +406,30 @@ export function QueryResultCard({
             <p className="query-card-goal"><code>{view.goalReachable}</code></p>
           )}
         </details>
+      )}
+      {attribution !== null && (
+        <section className="trace-attribution" aria-label="反例归因">
+          <h5>攻击者从哪条消息获得什么</h5>
+          <p className="trace-attribution-summary">{attribution.summary}</p>
+          <ul className="trace-attribution-list">
+            {attribution.entries.map((entry) => (
+              <li key={entry.id} className={`trace-attribution-entry trace-attribution-entry--${entry.kind}`}>
+                <strong>{entry.title}</strong>
+                {entry.terms.length > 0 && (
+                  <span className="trace-attribution-terms">
+                    {entry.terms.map((term) => <code key={term}>{term}</code>)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {attribution.unattributed.length > 0 && (
+            <details className="trace-attribution-raw">
+              <summary>未归因原文（{attribution.unattributed.length} 行）</summary>
+              <pre>{attribution.unattributed.join('\n')}</pre>
+            </details>
+          )}
+        </section>
       )}
       {view.counterexampleTrace !== null && (
         <details className="counterexample">

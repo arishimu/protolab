@@ -72,6 +72,9 @@ export interface QueryResultView {
   goalReachable: string | null;
   /** 是否映射到了某条用户查询（false ⇒ userText 为 null）。 */
   matched: boolean;
+  /** 声明目标或会话目标。 */
+  origin: QueryOrigin;
+  originLabel: string;
   /** 查询在源码中的区间；未匹配到用户查询时为 null。 */
   sourceSpan: SourceSpan | null;
   /** 查询文本里出现的事件在画布上的锚点。 */
@@ -90,6 +93,14 @@ export interface QueryEventAnchor {
 }
 
 export type QueryPropertyKind = 'secrecy' | 'correspondence' | 'reachability' | 'other';
+
+export type QueryOrigin = 'declared' | 'session';
+
+/** 会话目标的查询正文与原始锚点（派生文本中的行号不能直接用于原源码）。 */
+export interface SessionQueryRef {
+  queryText: string;
+  sourceSpan?: SourceSpan;
+}
 
 export interface QueryProperty {
   kind: QueryPropertyKind;
@@ -170,6 +181,7 @@ export function mapResultsToQueries(
   results: readonly VerificationResult[],
   queries: readonly PvQuery[],
   parseResult?: ParseResult,
+  sessionQueries: readonly SessionQueryRef[] = [],
 ): QueryResultView[] {
   const positional = results.length === queries.length;
   const claimed = new Set<number>();
@@ -194,6 +206,8 @@ export function mapResultsToQueries(
     const meta = VERDICT_META[result.verdict];
     const property = propertyOf(query?.text ?? result.query);
     const queryText = query?.text ?? result.query;
+    const sessionRef = sessionQueries.find((candidate) =>
+      normalizeQueryForMatch(candidate.queryText) === normalizeQueryForMatch(queryText));
     return {
       cardId: `query-${String(index + 1)}`,
       normalizedQuery: result.query,
@@ -206,10 +220,12 @@ export function mapResultsToQueries(
       propertySubject: property.subject,
       propertyVerdictLabel: propertyVerdictLabel(property, result.verdict),
       propertyExplanation: propertyExplanation(property, result.verdict),
-      counterexampleTrace: result.counterexampleTrace,
-      goalReachable: result.goalReachable,
+      counterexampleTrace: result.counterexampleTrace ?? null,
+      goalReachable: result.goalReachable ?? null,
       matched: query !== undefined,
-      sourceSpan: query?.span ?? null,
+      origin: sessionRef === undefined ? 'declared' : 'session',
+      originLabel: sessionRef === undefined ? '声明目标' : '会话目标',
+      sourceSpan: sessionRef?.sourceSpan ?? query?.span ?? null,
       eventAnchors: eventAnchorsOf(queryText, parseResult),
       protocolQuestion: protocolQuestionOf(property),
       proverifReading: proverifReadingOf(property),
@@ -281,6 +297,7 @@ export interface VerificationCoverage {
   verifiedQueries: number;
   matchedQueries: number;
   byKind: Readonly<Record<QueryPropertyKind, number>>;
+  byOrigin: Readonly<Record<QueryOrigin, number>>;
   declaredKinds: readonly QueryPropertyKind[];
   uncovered: readonly { kind: QueryPropertyKind; label: string }[];
   note: string;
@@ -291,7 +308,8 @@ export function summarizeCoverage(
   queries: readonly PvQuery[],
 ): VerificationCoverage {
   const byKind: Record<QueryPropertyKind, number> = { secrecy: 0, correspondence: 0, reachability: 0, other: 0 };
-  views.forEach((view) => { byKind[view.propertyKind] += 1; });
+  const byOrigin: Record<QueryOrigin, number> = { declared: 0, session: 0 };
+  views.forEach((view) => { byKind[view.propertyKind] += 1; byOrigin[view.origin] += 1; });
   const declaredKinds = [...new Set(queries.map((query) => propertyOf(query.text).kind))];
   const required: readonly QueryPropertyKind[] = ['secrecy', 'correspondence', 'reachability'];
   const uncovered = required
@@ -299,7 +317,7 @@ export function summarizeCoverage(
     .map((kind) => ({ kind, label: propertyLabelOf(kind) }));
   const note = queries.length === 0
     ? '当前 .pv 没有声明任何 query：本次运行不会给出安全性结论。'
-    : `本次声明 ${String(queries.length)} 条查询，已验证 ${String(views.length)} 条。`
+    : `本次查询 ${String(queries.length)} 条（声明目标 ${String(byOrigin.declared)} / 会话目标 ${String(byOrigin.session)}），已验证 ${String(views.length)} 条。`
       + '查询全部成立只说明这些查询在 Dolev-Yao 模型下成立，不等于协议整体安全；'
       + (uncovered.length === 0 ? '三类查询维度均已声明。' : `未覆盖维度：${uncovered.map((entry) => entry.label).join('、')}。`);
   return {
@@ -307,6 +325,7 @@ export function summarizeCoverage(
     verifiedQueries: views.length,
     matchedQueries: views.filter((view) => view.matched).length,
     byKind,
+    byOrigin,
     declaredKinds,
     uncovered,
     note,
