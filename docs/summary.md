@@ -39,6 +39,8 @@
 > **2026-11-05 语义分组阶段 2 更新**：完成密码操作组的画布渲染与审计交互，新增[实现票 29](../.scratch/pv-lens-grouping/issues/29-crypto-group-render.md)。折叠态把 item 值层链替换为组摘要（种类、方向、载荷/密钥、隐藏计数）并保留同色幽灵值块；展开态不额外占几何，组开关叠在方法盒与派生芯片角上；支持父组/子组逐层折叠、线上构造子组的链尾内层摘要、全部折叠/展开、审计面板种类覆盖与重置、源码定位、协议切换清理。core 的 `CryptoOperationGroup` 补充 `itemId`、`nodePath`、`functor`、`termText`、`equationSpan` 与 `ghostBindingIds`。真实 Chromium 在 1440×1000 与 1024×800 下完成 8 项交互检查，四视口（1920×1080、1440×813、1280×720、1024×768）折叠态无文字越界，灰度/打印复核通过，截图 9 张存于 `gui-test/23-screenshots/`（`sg2-*`）。当前测试基线为 53 个测试文件、477 项测试（471 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 3 尚未开工。
 >
 > **2026-11-05 语义分组阶段 3 更新**：完成交换段的因果 DAG、消息列表与段带渲染，新增[实现票 30](../.scratch/pv-lens-grouping/issues/30-exchange-segment.md)。core 新增 `grouping/exchange-segment.ts`：配对端点合并为完整消息，配对边与同角色本地序构成 DAG，输出确定性拓扑序、SCC、凸闭包与逐项校验；web 新增 `MessageList.tsx` 与 `ExchangeSegmentBand.tsx`，支持整条勾选、实时校验、扩展到凸闭包、切半拒绝、创建/重命名/折叠/移除、段头计数、事件芯片与跨段边。V1 仅允许两方、单层、单信道段，多角色协议入口禁用；切换协议清空全部段状态。真实 Chromium 11 项交互检查通过，四视口（1920×1080、1440×813、1280×720、1024×768）折叠段无文字越界，灰度/打印复核通过；9 张 `sg3-*` 截图存于 `gui-test/23-screenshots/`。当前测试基线为 55 个测试文件、498 项测试（492 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 4 尚未开工。
+>
+> **2026-11-05 语义分组阶段 4 更新**：完成解释与任务层，新增[实现票 31](../.scratch/pv-lens-grouping/issues/31-explain.md)。core 新增 `explain/concepts.ts`（43 条概念，覆盖 8 种操作、4 种来源、4 种折叠状态、4 种查询性质、3 种判定与 20 条图例记法），每条含定义、协议问题、ProVerif 读法与文档/画布锚点；web 新增概念抽屉，图例、组摘要徽标与审计面板均可打开。查询卡扩展为「协议问题 / ProVerif 读法 / 判定含义」三行，并附源码 span 与事件锚点；新增验证覆盖摘要，统计声明/已验证/匹配条数与查询类型、列出未覆盖维度，明确查询成立不等于协议整体安全。四个内置样例各有 3–5 步导读，每步可定位真实源码、事件或查询。真实 Chromium 8 项交互检查与四视口复核通过，概念/导读/验证截图 9 张存于 `gui-test/23-screenshots/`（`sg4-*`）。当前测试基线为 56 个测试文件、509 项测试（503 通过 + 6 跳过），`pnpm -r typecheck` 与 `pnpm -r run build` 通过；阶段 5 尚未开工。
 
 ## 一句话判断
 
