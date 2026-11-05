@@ -6,6 +6,7 @@
  */
 
 import type { KeyboardEvent, ReactElement } from 'react';
+import { operationConceptId } from '@pv-lens/core';
 import type { StructuredCryptoGroupFold } from './structured-layout';
 import { GROUP_CONFIDENCE_LABELS, GROUP_ORIGIN_LABELS } from './crypto-group-labels';
 
@@ -14,6 +15,7 @@ export interface CryptoOperationGroupSvgProps {
   sourceSelected?: boolean;
   onToggle: (groupId: string) => void;
   onSourceSelect?: () => void;
+  onShowConcept?: (conceptId: string) => void;
 }
 
 /** 折叠态组摘要：两行文字 + 构造/解构形状与来源标记。 */
@@ -22,6 +24,7 @@ export function CryptoOperationGroupSvg({
   sourceSelected = false,
   onToggle,
   onSourceSelect,
+  onShowConcept,
 }: CryptoOperationGroupSvgProps): ReactElement {
   const activate = (): void => {
     onToggle(fold.groupId);
@@ -38,7 +41,10 @@ export function CryptoOperationGroupSvg({
   ].join('；');
   const labelBudget = Math.max(4, Math.floor((fold.width - 61) / 8.8));
   const detailBudget = Math.max(4, Math.floor((fold.width - 25) / 6.2));
+  const conceptId = operationConceptId(fold.kind);
+  const concept = (): void => onShowConcept?.(conceptId);
   return (
+    <>
     <g
       className={[
         'structured-crypto-group',
@@ -73,6 +79,30 @@ export function CryptoOperationGroupSvg({
       <text className="structured-crypto-group-count" x={fold.x + fold.width / 2 - 7} y={fold.y - 3} textAnchor="end">隐藏 {fold.hiddenCount}</text>
       <text className="structured-crypto-group-detail" x={fold.x - fold.width / 2 + 18} y={fold.y + 8}>{truncate(fold.detail, detailBudget)}</text>
     </g>
+    {onShowConcept !== undefined && (
+      <g
+        className="structured-concept-badge"
+        data-concept-id={conceptId}
+        role="button"
+        tabIndex={0}
+        aria-label={`查看概念注解：${fold.label}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          concept();
+        }}
+        onKeyDown={(event: KeyboardEvent<SVGGElement>) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          concept();
+        }}
+      >
+        <title>{`概念注解：${fold.label}`}</title>
+        <circle cx={fold.x - fold.width / 2 + 9} cy={fold.y + 8} r="6" />
+        <text x={fold.x - fold.width / 2 + 9} y={fold.y + 11} textAnchor="middle">?</text>
+      </g>
+    )}
+    </>
   );
 }
 

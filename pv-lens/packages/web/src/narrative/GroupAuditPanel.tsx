@@ -7,6 +7,7 @@
 
 import type { ReactElement } from 'react';
 import type { CryptoOperationGroup, OperationKind } from '@pv-lens/core';
+import { operationConceptId, originConceptId } from '@pv-lens/core';
 import { GROUP_CONFIDENCE_LABELS, GROUP_ORIGIN_LABELS, OPERATION_KIND_LABELS } from './crypto-group-labels';
 
 export interface GroupAuditPanelProps {
@@ -20,6 +21,7 @@ export interface GroupAuditPanelProps {
   onCollapseAll: () => void;
   onExpandAll: () => void;
   onLocate: (groupId: string) => void;
+  onShowConcept?: (conceptId: string) => void;
 }
 
 const KIND_ORDER: readonly OperationKind[] = [
@@ -44,6 +46,7 @@ export function GroupAuditPanel({
   onCollapseAll,
   onExpandAll,
   onLocate,
+  onShowConcept,
 }: GroupAuditPanelProps): ReactElement | null {
   if (groups.length === 0) return null;
   const autoById = new Map(autoGroups.map((group) => [group.id, group]));
@@ -98,13 +101,16 @@ export function GroupAuditPanel({
                     ))}
                   </select>
                 </label>
-                <span
+                <button
+                  type="button"
                   className={`group-audit-origin group-audit-origin--${group.origin}`}
-                  title={`自动分类：${auto === undefined ? '—' : OPERATION_KIND_LABELS[auto.kind]}`}
+                  title={`自动分类：${auto === undefined ? '—' : OPERATION_KIND_LABELS[auto.kind]}；点击查看来源概念`}
+                  onClick={() => onShowConcept?.(originConceptId(group.origin))}
+                  disabled={onShowConcept === undefined}
                 >
                   {GROUP_ORIGIN_LABELS[group.origin]}
                   {group.origin === 'user' ? '' : ` · ${GROUP_CONFIDENCE_LABELS[group.confidence]}`}
-                </span>
+                </button>
                 <span className="group-audit-count" title="折叠时隐藏的成员总数（含嵌套组）">隐藏 {group.hiddenCount}</span>
               </div>
               <div className="group-audit-meta">
@@ -116,6 +122,14 @@ export function GroupAuditPanel({
                 )}
               </div>
               <div className="group-audit-actions">
+                {onShowConcept !== undefined && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => onShowConcept(operationConceptId(group.kind))}
+                    title="查看操作种类概念注解"
+                  >概念</button>
+                )}
                 <button type="button" className="btn" onClick={() => onToggle(group.id)} aria-expanded={!isCollapsed}>
                   {isCollapsed ? '展开' : '折叠'}
                 </button>

@@ -1573,3 +1573,243 @@
     grid-column: 1 / -1;
   }
 }
+
+/* 概念注解（阶段 4）：组摘要的 ? 徽标与抽屉。 */
+.structured-concept-badge {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.structured-concept-badge circle {
+  fill: #ffffff;
+  stroke: #6d28d9;
+  stroke-width: 1;
+}
+
+.structured-concept-badge text {
+  fill: #6d28d9;
+  font-size: 8px;
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.structured-concept-badge:focus-visible {
+  outline: none;
+}
+
+.structured-concept-badge:focus-visible circle {
+  stroke: #b45309;
+  stroke-width: 2;
+}
+
+.legend-item[role="button"] {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.legend-item[role="button"]:hover {
+  background: #f1f5f9;
+}
+
+.legend-item[role="button"]:focus-visible {
+  outline: 2px solid #b45309;
+  outline-offset: 2px;
+}
+
+.group-audit-origin {
+  font: inherit;
+  cursor: pointer;
+}
+
+.group-audit-origin:disabled {
+  cursor: default;
+}
+
+.concept-note {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  width: min(420px, calc(100vw - 2rem));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.22);
+  padding: 0.7rem 0.85rem;
+}
+
+.concept-note-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.concept-note-head h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.concept-note-body {
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  font-size: 0.76rem;
+}
+
+.concept-note-body > div {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.concept-note-body dt {
+  font-weight: 650;
+  color: #334155;
+}
+
+.concept-note-body dd {
+  margin: 0;
+  color: #475569;
+}
+
+.concept-note-anchors {
+  margin: 0.5rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+/* 查询三行、锚点与覆盖摘要（阶段 4）。 */
+.query-card-lines {
+  margin: 0.35rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.76rem;
+}
+
+.query-card-lines > div {
+  display: grid;
+  grid-template-columns: 6.2rem minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.query-card-lines dt {
+  font-weight: 650;
+  color: #334155;
+}
+
+.query-card-lines dd {
+  margin: 0;
+  color: #475569;
+}
+
+.query-card-anchors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.35rem 0;
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+.coverage-summary {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  margin: 0 0 0.65rem;
+  background: #f8fafc;
+}
+
+.coverage-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 0.8rem;
+  align-items: baseline;
+}
+
+.coverage-summary h5 {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.coverage-counts {
+  font-size: 0.72rem;
+  color: #334155;
+}
+
+.coverage-note {
+  margin: 0.3rem 0 0;
+  font-size: 0.74rem;
+  color: #475569;
+}
+
+/* 样例导读（阶段 4）：每步给出可定位目标。 */
+.sample-guide {
+  margin: 0.6rem 0;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 0.5rem 0.65rem;
+}
+
+.sample-guide > summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.84rem;
+  color: #1e3a8a;
+}
+
+.sample-guide-summary {
+  margin: 0.35rem 0;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.sample-guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.sample-guide-step {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: start;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.sample-guide-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font: 700 0.68rem var(--mono);
+}
+
+.sample-guide-copy strong {
+  font-size: 0.78rem;
+}
+
+.sample-guide-copy p {
+  margin: 0.15rem 0 0;
+  font-size: 0.73rem;
+  color: #475569;
+}

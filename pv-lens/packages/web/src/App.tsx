@@ -8,6 +8,7 @@ import { Home } from './Home';
 import { SourcePanel } from './SourcePanel';
 import type { SourceFocusRequest } from './SourcePanel';
 import { NarrativeView } from './narrative/NarrativeView';
+import { SampleGuidePanel } from './narrative/SampleGuidePanel';
 import type { EventCorrespondenceBinding, NarrativeViewHandle, SourceLinkBinding } from './narrative/NarrativeView';
 import { firstReferenceSpanOf } from './source-reference';
 import { reducePairingSelection } from './narrative/pairing-selection';
@@ -267,6 +268,21 @@ function LoadedView() {
     setFocusRequest({ span: selectedSpan, nonce: Date.now() });
     revealPanelBySelector('.source-column');
   };
+  /** 阶段 4：查询卡的源码锚点——复用源码联动选中并滚动画布。 */
+  const handleLocateQuerySpan = (span: SourceSpan): void => {
+    handleSelectLine(span);
+  };
+  /** 阶段 4：查询卡的事件锚点——选中旗标并联动对应性矩阵。 */
+  const handleSelectQueryEvent = (span: SourceSpan): void => {
+    const event = eventByOffset.get(span.start.offset);
+    if (event !== undefined) {
+      setSelectedEventId(event.id);
+      setSelectedQueryId(null);
+    }
+    narrativeRef.current?.scrollToEvent(span.start.offset);
+    revealPanelBySelector('section.narrative');
+    revealPanelBySelector('section.correspondence');
+  };
 
   const originText =
     current.origin.kind === 'builtin'
@@ -295,6 +311,15 @@ function LoadedView() {
         <span className="origin">{originText}</span>
       </div>
       <p className="hint">{current.description}</p>
+      {current.origin.kind === 'builtin' && (
+        <SampleGuidePanel
+          sampleId={current.origin.sampleId}
+          source={current.source}
+          parseResult={parseResult}
+          onLocateSpan={handleLocateQuerySpan}
+          onSelectEvent={handleSelectQueryEvent}
+        />
+      )}
       {degradedDiagnostics.length > 0 && (
         <p className="degraded-banner" role="status">
           {`解析降级 ${String(degradedDiagnostics.length)} 处：解析器不支持的语句在画布中按原文保留（虚线琥珀胶囊）。`}
@@ -405,7 +430,12 @@ function LoadedView() {
             selectedQueryId={selectedQueryId}
             onSelectQuery={handleSelectQuery}
           />
-          <VerifyPanel source={current.source} parseResult={parseResult} />
+          <VerifyPanel
+            source={current.source}
+            parseResult={parseResult}
+            onLocateSpan={handleLocateQuerySpan}
+            onSelectEvent={handleSelectQueryEvent}
+          />
         </div>
       </div>
     </div>

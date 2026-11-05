@@ -8,7 +8,7 @@
  * 记号一律用 code 元素，不在文案中写反引号。
  */
 
-import { NOTATION_LEGEND, narrativeRoleOrder } from '@pv-lens/core';
+import { NOTATION_LEGEND, narrativeRoleOrder, notationConceptId } from '@pv-lens/core';
 import type { Condition, ParseResult, PvTerm } from '@pv-lens/core';
 import type { StructuredNarrativeLayout, ValuePattern } from './structured-layout';
 
@@ -33,6 +33,29 @@ export type LegendKey =
   | 'density-fold'
   | 'exchange-segment'
   | 'diagnostics';
+
+/** 图例条目的固定全集；阶段 4 的概念覆盖测试按它逐项检查。 */
+export const LEGEND_KEYS: readonly LegendKey[] = [
+  'functor-fallback',
+  'tuple',
+  'equality',
+  'value-block',
+  'method-box',
+  'wire-chip',
+  'derived-chip',
+  'unpaired',
+  'message-pillar',
+  'direction',
+  'channel-order',
+  'scope-flags',
+  'event',
+  'branch-lane',
+  'local-ops',
+  'crypto-group',
+  'density-fold',
+  'exchange-segment',
+  'diagnostics',
+];
 
 /** 本图实际出现的消息序号 token（09：图例与画布共用消息柱的 M 序号与色）。 */
 export interface LegendMessageToken {
@@ -193,9 +216,31 @@ function LegendTokenList({
   );
 }
 
-export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; result: ParseResult }) {
+export function Legend({
+  layout,
+  result,
+  onShowConcept,
+}: {
+  layout: StructuredNarrativeLayout;
+  result: ParseResult;
+  onShowConcept?: (conceptId: string) => void;
+}) {
   const content = legendContentFor(layout, result);
   const present = new Set(content.keys);
+  const conceptProps = (key: string): Record<string, unknown> => {
+    if (onShowConcept === undefined) return {};
+    return {
+      role: 'button',
+      tabIndex: 0,
+      title: '查看概念注解',
+      onClick: () => onShowConcept(notationConceptId(key)),
+      onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onShowConcept(notationConceptId(key));
+      },
+    };
+  };
   return (
     <div className="narrative-legend" aria-label="图例">
       <h4>图例</h4>
@@ -204,7 +249,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
       ) : (
         <dl>
           {content.notation.map((entry) => (
-            <div className="legend-item" key={entry.notation}>
+            <div className="legend-item" key={entry.notation} {...conceptProps('crypto-notation')}>
               <dt>
                 <code>{entry.notation}</code>
               </dt>
@@ -212,7 +257,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           ))}
           {present.has('functor-fallback') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('functor-fallback')}>
               <dt>
                 <code>functor(a, b)</code>
               </dt>
@@ -220,7 +265,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('tuple') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('tuple')}>
               <dt>
                 <code>(a, b, c)</code>
               </dt>
@@ -228,7 +273,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('equality') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('equality')}>
               <dt>
                 <code>=M</code>
               </dt>
@@ -236,7 +281,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('value-block') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('value-block')}>
               <dt>
                 <span className="legend-value-block">值</span>
               </dt>
@@ -251,7 +296,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('method-box') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('method-box')}>
               <dt>
                 <span className="legend-method-box">方法</span>
               </dt>
@@ -259,7 +304,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('crypto-group') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('crypto-group')}>
               <dt>
                 <span className="legend-crypto-group">▸ 组</span>
               </dt>
@@ -269,7 +314,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('density-fold') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('density-fold')}>
               <dt>
                 <span className="legend-density-fold">▸ 算子簇</span>
               </dt>
@@ -279,7 +324,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('exchange-segment') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('exchange-segment')}>
               <dt>
                 <span className="legend-exchange-segment">▾ 交换段</span>
               </dt>
@@ -289,7 +334,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('wire-chip') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('wire-chip')}>
               <dt>
                 <span className="legend-wire-chip">线上词项</span>
               </dt>
@@ -297,7 +342,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('derived-chip') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('derived-chip')}>
               <dt>
                 <span className="legend-wire-chip">派生</span>
               </dt>
@@ -305,7 +350,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('unpaired') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('unpaired')}>
               <dt>
                 <span className="legend-unpaired-dot" aria-hidden="true" /> 未配对
               </dt>
@@ -317,7 +362,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('message-pillar') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('message-pillar')}>
               <dt>
                 <span className="legend-message-pillar">M1</span>
               </dt>
@@ -335,13 +380,13 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('direction') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('direction')}>
               <dt>箭头方向</dt>
               <dd>箭头指向抵达目标：发送段指向信道，接收段指向接收端；未配对端以空心圆点标记，表示路由未确定</dd>
             </div>
           )}
           {present.has('channel-order') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('channel-order')}>
               <dt>
                 <code>①</code> 信道序号
               </dt>
@@ -349,7 +394,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('scope-flags') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('scope-flags')}>
               <dt>
                 <span className="legend-chip">!</span> / <span className="legend-chip">|</span>
               </dt>
@@ -357,7 +402,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('event') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('event')}>
               <dt>
                 <code>event …</code>
               </dt>
@@ -365,7 +410,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('branch-lane') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('branch-lane')}>
               <dt>
                 <span className="legend-branch-tick">if …</span>
               </dt>
@@ -373,7 +418,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('local-ops') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('local-ops')}>
               <dt>
                 <code>let / get / insert</code>
               </dt>
@@ -381,7 +426,7 @@ export function Legend({ layout, result }: { layout: StructuredNarrativeLayout; 
             </div>
           )}
           {present.has('diagnostics') && (
-            <div className="legend-item">
+            <div className="legend-item" {...conceptProps('diagnostics')}>
               <dt>
                 <span className="legend-chip legend-chip--degraded">降级诊断</span>{' '}
                 <span className="legend-chip legend-chip--error">错误诊断</span>

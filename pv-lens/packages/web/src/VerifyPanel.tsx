@@ -10,12 +10,12 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import type { ParseResult } from '@pv-lens/core';
+import type { ParseResult, PvQuery, SourceSpan } from '@pv-lens/core';
 import { parseProverifLocations, sanitizeStdout } from '@pv-lens/core';
 import { describeVerifyFailureKind, requestVerification, verifyFailureGuidance } from './verify';
 import type { VerifyFailure, VerifyOutcome } from './verify';
-import { mapResultsToQueries, normalizeQueryForMatch, VERDICT_META } from './query-presentation';
-import type { QueryResultView } from './query-presentation';
+import { mapResultsToQueries, normalizeQueryForMatch, summarizeCoverage, VERDICT_META } from './query-presentation';
+import type { QueryResultView, VerificationCoverage } from './query-presentation';
 import { useVerifyServiceHealth, verifyServiceHealthText } from './use-service-health';
 
 /** 超时输入框的默认值（毫秒），与 server 适配器的默认值一致。 */
@@ -26,6 +26,10 @@ export interface VerifyPanelProps {
   source: string;
   /** 同一份 source 的解析产物（App 侧记忆化一次，叙事视图与验证面板共用）。 */
   parseResult: ParseResult;
+  /** 定位查询源码区间（App 负责高亮与滚动画布）。 */
+  onLocateSpan?: (span: SourceSpan) => void;
+  /** 定位查询涉及的事件（App 负责联动旗标与对应性矩阵）。 */
+  onSelectEvent?: (span: SourceSpan) => void;
 }
 
 /** 面板的最近一次运行状态：未跑 / 正在跑 / 跑完（成功或失败）。 */
@@ -34,7 +38,7 @@ type RunState =
   | { status: 'running' }
   | { status: 'done'; outcome: VerifyOutcome };
 
-export function VerifyPanel({ source, parseResult }: VerifyPanelProps) {
+export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent }: VerifyPanelProps) {
   const [timeoutText, setTimeoutText] = useState(String(DEFAULT_TIMEOUT_MS));
   const [state, setState] = useState<RunState>({ status: 'idle' });
   const [finishedAt, setFinishedAt] = useState<Date | null>(null);
@@ -49,7 +53,7 @@ export function VerifyPanel({ source, parseResult }: VerifyPanelProps) {
 
   const views = useMemo(() => {
     if (outcome === null || !outcome.ok) return [];
-    return mapResultsToQueries(outcome.results, parseResult.queries);
+    return mapResultsToQueries(outcome.results, parseResult.queries, parseResult);
   }, [outcome, parseResult.queries]);
 
   async function run(): Promise<void> {
@@ -136,7 +140,7 @@ export function VerifyPanel({ source, parseResult }: VerifyPanelProps) {
 
       {outcome !== null &&
         (outcome.ok ? (
-          <VerifyResults views={views} stdout={outcome.stdout} />
+          <VerifyResults views={views} stdout={outcome.stdout} queries={parseResult.queries} onLocateSpan={onLocateSpan} onSelectEvent={onSelectEvent} />
         ) : (
           <VerifyFailureNotice outcome={outcome} source={source} />
         ))}
@@ -259,12 +263,20 @@ function StdoutSections({ stdout }: { stdout: string }) {
 function VerifyResults({
   views,
   stdout,
+  queries,
+  onLocateSpan,
+  onSelectEvent,
 }: {
   views: readonly QueryResultView[];
   stdout: string;
+  queries: readonly PvQuery[];
+  onLocateSpan?: (span: SourceSpan) => void;
+  onSelectEvent?: (span: SourceSpan) => void;
 }) {
+  const coverage = summarizeCoverage(views, queries);
   return (
     <div className="verify-results">
+      <CoverageSummary coverage={coverage} />
       <h4 className="verify-subtitle">按查询的结论（共 {views.length} 条）</h4>
       {views.length === 0 ? (
         <p className="hint">
@@ -274,7 +286,13 @@ function VerifyResults({
       ) : (
         <ul className="query-result-list">
           {views.map((view, index) => (
-            <QueryResultCard key={view.cardId} index={index} view={view} />
+            <QueryResultCard
+              key={view.cardId}
+              index={index}
+              view={view}
+              onLocateSpan={onLocateSpan}
+              onSelectEvent={onSelectEvent}
+            />
           ))}
         </ul>
       )}
@@ -284,12 +302,38 @@ function VerifyResults({
   );
 }
 
+
+function CoverageSummary({ coverage }: { coverage: VerificationCoverage }) {
+  return (
+    <section className="coverage-summary" aria-label="验证覆盖摘要">
+      <div className="coverage-summary-head">
+        <h5>验证覆盖摘要</h5>
+        <span className="coverage-counts">
+          声明 {coverage.declaredQueries} · 已验证 {coverage.verifiedQueries} · 匹配 {coverage.matchedQueries}
+          {' · '}保密性 {coverage.byKind.secrecy} / 认证 {coverage.byKind.correspondence} / 可达性 {coverage.byKind.reachability}
+        </span>
+      </div>
+      <p className="coverage-note">{coverage.note}</p>
+    </section>
+  );
+}
+
 /**
  * 一条查询的结果卡片：用户查询原文（回到书写形式）+ 判定徽标 + 解释。
  * R14：归一化形态仅在与其书写形式不同（规范化比较）时另列；查询前缀声明与证明中的
  * 对应事实收进折叠的「证明细节」。被证伪时反例 trace 原文可展开（R12：可复制 / 下载）。
  */
-export function QueryResultCard({ index, view }: { index: number; view: QueryResultView }) {
+export function QueryResultCard({
+  index,
+  view,
+  onLocateSpan,
+  onSelectEvent,
+}: {
+  index: number;
+  view: QueryResultView;
+  onLocateSpan?: (span: SourceSpan) => void;
+  onSelectEvent?: (span: SourceSpan) => void;
+}) {
   const meta = VERDICT_META[view.verdict];
   // R14：与 query-presentation 的兜底匹配同口径——去 not / [] / 空白后比较。
   const normalizedSame = view.userText !== null
@@ -315,7 +359,29 @@ export function QueryResultCard({ index, view }: { index: number; view: QueryRes
           归一化形态：<code>{view.normalizedQuery}</code>（判定针对它给出）
         </p>
       )}
-      <p className="query-card-explanation">{view.propertyExplanation}</p>
+      <dl className="query-card-lines">
+        <div><dt>协议问题</dt><dd>{view.protocolQuestion}</dd></div>
+        <div><dt>ProVerif 读法</dt><dd>{view.proverifReading}</dd></div>
+        <div><dt>判定含义</dt><dd>{view.verdictMeaning}</dd></div>
+      </dl>
+      {(view.sourceSpan !== null || view.eventAnchors.length > 0) && (
+        <div className="query-card-anchors">
+          {view.sourceSpan !== null && (
+            onLocateSpan === undefined
+              ? <span>查询源码 L{view.sourceSpan.start.line}</span>
+              : <button type="button" className="btn btn--small" onClick={() => onLocateSpan(view.sourceSpan!)}>
+                  定位查询源码 L{view.sourceSpan.start.line}
+                </button>
+          )}
+          {view.eventAnchors.map((anchor) => (
+            onSelectEvent === undefined
+              ? <span key={anchor.id}>{anchor.name}（{anchor.roleName}）</span>
+              : <button type="button" key={anchor.id} className="btn btn--small" onClick={() => onSelectEvent(anchor.span)}>
+                  定位事件 {anchor.name}（{anchor.roleName}）
+                </button>
+          ))}
+        </div>
+      )}
       {(view.variables.length > 0 || (view.goalReachable !== null && view.verdict === 'true')) && (
         <details className="query-card-proof">
           <summary>证明细节</summary>

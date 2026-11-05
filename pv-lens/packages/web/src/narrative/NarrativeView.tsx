@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useToggleSet } from './toggle-set';
 import type { ExchangeSegment, MessagePairing, OperationKind, PairingDiagnostic, ParseResult, PvDiagnostic, SourceSpan } from '@pv-lens/core';
-import { buildExchangeDag, deriveCryptoGroups } from '@pv-lens/core';
+import { buildExchangeDag, conceptOf, deriveCryptoGroups } from '@pv-lens/core';
 import { buildNarrativeLayout, diagnosticSeverityLabel } from './layout';
 import {
   UNPAIRED_COLOR,
@@ -29,6 +29,7 @@ import { CryptoGroupToggle, CryptoOperationGroupSvg } from './CryptoOperationGro
 import { GroupAuditPanel } from './GroupAuditPanel';
 import { MessageList } from './MessageList';
 import { CrossSegmentEdgeSvg, ExchangeSegmentBandSvg, ExchangeSegmentFoldSvg } from './ExchangeSegmentBand';
+import { ConceptNote } from './ConceptNote';
 import './v2.css';
 
 /** 事件旗标与对应性矩阵的联动绑定（ticket 08）：形状按事件在查询中的角色区分。 */
@@ -155,6 +156,8 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   const exchangeDag = useMemo(() => buildExchangeDag(result, pairings), [result, pairings]);
   const [exchangeSegments, setExchangeSegments] = useState<readonly ExchangeSegment[]>(initialExchangeSegments);
   const [collapsedExchangeSegments, toggleExchangeSegment, setExchangeSegmentsCollapsed] = useToggleSet(initialCollapsedExchangeSegments);
+  const [activeConceptId, setActiveConceptId] = useState<string | null>(null);
+  const activeConcept = activeConceptId === null ? null : conceptOf(activeConceptId) ?? null;
   // 切换协议即清空会话内的折叠状态与用户覆盖（决策 01 第 5.3 条）。
   const lastGroupResultRef = useRef(result);
   useEffect(() => {
@@ -600,6 +603,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
               onToggleCluster={toggleOperatorCluster}
               onToggleCryptoGroup={toggleCryptoGroup}
               onToggleExchangeSegment={toggleExchangeSegment}
+              onShowConcept={setActiveConceptId}
               pendingOutId={pendingOutId}
               pairingMode={pairingMode}
               onEndpointSelect={onEndpointSelect}
@@ -669,10 +673,12 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             onCollapseAll={collapseAllCryptoGroups}
             onExpandAll={expandAllCryptoGroups}
             onLocate={locateCryptoGroup}
+            onShowConcept={setActiveConceptId}
           />
-          <Legend layout={structured} result={result} />
+          <Legend layout={structured} result={result} onShowConcept={setActiveConceptId} />
         </>
       )}
+      <ConceptNote concept={activeConcept} onClose={() => setActiveConceptId(null)} />
     </section>
   );
 });
@@ -693,6 +699,7 @@ function StructuredNarrativeCanvas({
   onToggleCluster,
   onToggleCryptoGroup,
   onToggleExchangeSegment,
+  onShowConcept,
   pendingOutId,
   pairingMode,
   onEndpointSelect,
@@ -706,6 +713,7 @@ function StructuredNarrativeCanvas({
   onToggleCluster: (clusterId: string) => void;
   onToggleCryptoGroup: (groupId: string) => void;
   onToggleExchangeSegment: (segmentId: string) => void;
+  onShowConcept: (conceptId: string) => void;
   pendingOutId: string | null;
   pairingMode: boolean;
   onEndpointSelect?: (endpoint: SelectableEndpoint) => void;
@@ -824,6 +832,7 @@ function StructuredNarrativeCanvas({
               key={fold.groupId}
               fold={fold}
               onToggle={onToggleCryptoGroup}
+              onShowConcept={onShowConcept}
               {...sourcePropsOf(fold.sourceSpan, fold.groupId)}
             />
           ))}

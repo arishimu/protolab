@@ -9,7 +9,8 @@
  * 纯函数、node 可测。
  */
 
-import type { PvQuery, Verdict, VerificationResult } from '@pv-lens/core';
+import { collectEventReferences, narrativeRoleOrder } from '@pv-lens/core';
+import type { ParseResult, PvQuery, SourceSpan, Verdict, VerificationResult } from '@pv-lens/core';
 
 /** 判定的展示语气：用于徽标配色（绿 / 红 / 中性），不参与文案。 */
 export type VerdictTone = 'positive' | 'negative' | 'unknown';
@@ -71,6 +72,21 @@ export interface QueryResultView {
   goalReachable: string | null;
   /** 是否映射到了某条用户查询（false ⇒ userText 为 null）。 */
   matched: boolean;
+  /** 查询在源码中的区间；未匹配到用户查询时为 null。 */
+  sourceSpan: SourceSpan | null;
+  /** 查询文本里出现的事件在画布上的锚点。 */
+  eventAnchors: readonly QueryEventAnchor[];
+  /** 三行解释：协议问题 / ProVerif 读法 / 判定含义。 */
+  protocolQuestion: string;
+  proverifReading: string;
+  verdictMeaning: string;
+}
+
+export interface QueryEventAnchor {
+  id: string;
+  name: string;
+  roleName: string;
+  span: SourceSpan;
 }
 
 export type QueryPropertyKind = 'secrecy' | 'correspondence' | 'reachability' | 'other';
@@ -153,6 +169,7 @@ function propertyExplanation(property: QueryProperty, verdict: Verdict): string 
 export function mapResultsToQueries(
   results: readonly VerificationResult[],
   queries: readonly PvQuery[],
+  parseResult?: ParseResult,
 ): QueryResultView[] {
   const positional = results.length === queries.length;
   const claimed = new Set<number>();
@@ -176,6 +193,7 @@ export function mapResultsToQueries(
 
     const meta = VERDICT_META[result.verdict];
     const property = propertyOf(query?.text ?? result.query);
+    const queryText = query?.text ?? result.query;
     return {
       cardId: `query-${String(index + 1)}`,
       normalizedQuery: result.query,
@@ -191,6 +209,11 @@ export function mapResultsToQueries(
       counterexampleTrace: result.counterexampleTrace,
       goalReachable: result.goalReachable,
       matched: query !== undefined,
+      sourceSpan: query?.span ?? null,
+      eventAnchors: eventAnchorsOf(queryText, parseResult),
+      protocolQuestion: protocolQuestionOf(property),
+      proverifReading: proverifReadingOf(property),
+      verdictMeaning: propertyExplanation(property, result.verdict),
     };
   });
 }
@@ -204,4 +227,95 @@ export function normalizeQueryForMatch(text: string): string {
     .replace(/\bnot\s+/g, '')
     .replace(/\[\]/g, '')
     .replace(/\s+/g, '');
+}
+
+function protocolQuestionOf(property: QueryProperty): string {
+  if (property.kind === 'secrecy') return `攻击者能否获得 ${property.subject}？`;
+  if (property.kind === 'correspondence') return `当 ${property.subject} 的结论事件发生时，前提事件是否一定已经发生？`;
+  if (property.kind === 'reachability') return `事件 ${property.subject} 是否可能发生？`;
+  return '这条查询在协议层面到底问了什么？';
+}
+
+function proverifReadingOf(property: QueryProperty): string {
+  if (property.kind === 'secrecy') {
+    return `attacker(${property.subject}) 在 ProVerif 输出中归一化为 not attacker(${property.subject}[])：is true 表示攻击者无法获得该值。`;
+  }
+  if (property.kind === 'correspondence') {
+    return '==> 是 ProVerif 的对应性断言；inj-event 还要求事件一一对应，普通 event 只要求存在对应。';
+  }
+  if (property.kind === 'reachability') {
+    return '单个 event(...) 在 ProVerif 中作为可达性目标：is true 表示该事件可达，is false 表示不可达。';
+  }
+  return '按 ProVerif 归一化输出 is true / is false / cannot be proved 解读，不强行套用固定性质。';
+}
+
+function eventAnchorsOf(text: string, parseResult: ParseResult | undefined): readonly QueryEventAnchor[] {
+  if (parseResult === undefined) return [];
+  const names = new Set<string>();
+  for (const match of text.matchAll(/(?:inj-)?event\s*\(\s*([A-Za-z_][A-Za-z0-9_']*)/gi)) {
+    if (match[1] !== undefined) names.add(match[1]);
+  }
+  if (names.size === 0) return [];
+  const roles = narrativeRoleOrder(parseResult);
+  const anchors: QueryEventAnchor[] = [];
+  const seen = new Set<string>();
+  for (const event of collectEventReferences(parseResult)) {
+    if (!names.has(event.name) || seen.has(event.id)) continue;
+    seen.add(event.id);
+    anchors.push({
+      id: event.id,
+      name: event.name,
+      roleName: roles[event.roleIndex]?.name ?? `角色 ${String(event.roleIndex)}`,
+      span: event.span,
+    });
+  }
+  return anchors;
+}
+
+/**
+ * 覆盖摘要：统计本次声明的查询性质与实际验证条数，并列出未覆盖维度。
+ * 措辞纪律：成立只说明这些查询成立，不推出协议整体安全。
+ */
+export interface VerificationCoverage {
+  declaredQueries: number;
+  verifiedQueries: number;
+  matchedQueries: number;
+  byKind: Readonly<Record<QueryPropertyKind, number>>;
+  declaredKinds: readonly QueryPropertyKind[];
+  uncovered: readonly { kind: QueryPropertyKind; label: string }[];
+  note: string;
+}
+
+export function summarizeCoverage(
+  views: readonly QueryResultView[],
+  queries: readonly PvQuery[],
+): VerificationCoverage {
+  const byKind: Record<QueryPropertyKind, number> = { secrecy: 0, correspondence: 0, reachability: 0, other: 0 };
+  views.forEach((view) => { byKind[view.propertyKind] += 1; });
+  const declaredKinds = [...new Set(queries.map((query) => propertyOf(query.text).kind))];
+  const required: readonly QueryPropertyKind[] = ['secrecy', 'correspondence', 'reachability'];
+  const uncovered = required
+    .filter((kind) => !declaredKinds.includes(kind))
+    .map((kind) => ({ kind, label: propertyLabelOf(kind) }));
+  const note = queries.length === 0
+    ? '当前 .pv 没有声明任何 query：本次运行不会给出安全性结论。'
+    : `本次声明 ${String(queries.length)} 条查询，已验证 ${String(views.length)} 条。`
+      + '查询全部成立只说明这些查询在 Dolev-Yao 模型下成立，不等于协议整体安全；'
+      + (uncovered.length === 0 ? '三类查询维度均已声明。' : `未覆盖维度：${uncovered.map((entry) => entry.label).join('、')}。`);
+  return {
+    declaredQueries: queries.length,
+    verifiedQueries: views.length,
+    matchedQueries: views.filter((view) => view.matched).length,
+    byKind,
+    declaredKinds,
+    uncovered,
+    note,
+  };
+}
+
+function propertyLabelOf(kind: QueryPropertyKind): string {
+  if (kind === 'secrecy') return '保密性';
+  if (kind === 'correspondence') return '认证 / 对应性';
+  if (kind === 'reachability') return '可达性';
+  return '其它';
 }
