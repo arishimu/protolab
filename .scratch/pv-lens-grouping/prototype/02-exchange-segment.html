@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>交换段 · 语义分组原型（阶段 0）</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #fff;
+    --border: #d7d9df;
+    --text: #1f2329;
+    --muted: #667085;
+    --accent: #2563eb;
+    --seg: #1d4ed8;
+    --seg-bg: rgba(37,99,235,0.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+    --c1: #2563eb;
+    --c2: #7c3aed;
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.55; padding-bottom: 2rem;
+  }
+  body.grayscale { filter: grayscale(1); }
+  .wrap { width: min(1480px, 100%); margin: 0 auto; padding: 1rem; }
+  h1 { font-size: 1.15rem; margin: 0 0 0.2rem; }
+  h2 { font-size: 0.98rem; margin: 0 0 0.35rem; }
+  .tag { display: inline-block; font-size: 0.72rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.04rem 0.5rem; }
+  .question, .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+  .question { padding: 0.75rem 0.9rem; margin: 0.75rem 0; font-size: 0.88rem; }
+  .question p { margin: 0 0 0.35rem; }
+  .question p:last-child { margin-bottom: 0; }
+  .question .criteria { color: var(--muted); font-size: 0.84rem; }
+  .semantics {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.55rem 0.75rem; margin: 0 0 0.75rem; font-size: 0.8rem;
+  }
+  .semantics summary { cursor: pointer; font-weight: 600; font-size: 0.86rem; }
+  .semantics dl {
+    margin: 0.45rem 0 0; display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 0.3rem 1rem;
+  }
+  .semantics .row { display: flex; gap: 0.4rem; align-items: baseline; }
+  .semantics dt { font-weight: 600; color: #1e2a44; white-space: nowrap; }
+  .semantics dd { margin: 0; color: var(--muted); }
+  .controls {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(246,247,249,0.96); backdrop-filter: blur(4px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0.25rem; margin: 0 0 0.75rem;
+    display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+  }
+  .controls .group { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+  .controls .group-label { font-size: 0.76rem; color: var(--muted); }
+  button, input[type="text"] {
+    font: inherit; font-size: 0.8rem; color: var(--text);
+    background: #fff; border: 1px solid var(--border); border-radius: 7px;
+    padding: 0.26rem 0.6rem; cursor: pointer;
+  }
+  button:hover { border-color: #9aa3b2; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: #b42318; border-color: #fda29b; }
+  button:focus-visible, select:focus-visible, input:focus-visible, .segment-head:focus-visible {
+    outline: 3px solid #f59e0b; outline-offset: 2px;
+  }
+  .status { min-height: 1.4em; font-size: 0.82rem; color: var(--muted); margin: 0 0 0.5rem; }
+  .layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 0.9rem; align-items: start; }
+  @media (max-width: 1120px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { padding: 0.75rem; min-width: 0; }
+  .caption { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.55rem; }
+  .left-col { display: flex; flex-direction: column; gap: 0.9rem; }
+  .validation-panel { margin: 0 0 0.75rem; padding: 0.5rem 0.75rem; }
+  .validation-panel h2 { margin-bottom: 0.1rem; }
+  .validation-panel .caption { margin-bottom: 0.2rem; }
+  .validation-panel .checks { display: flex; flex-wrap: wrap; gap: 0.15rem 0.9rem; }
+  .sticky-left { position: sticky; top: 3.2rem; display: flex; flex-direction: column; gap: 0.9rem; }
+  @media (max-width: 1120px) { .sticky-left { position: static; } }
+
+  .msg-table { border-collapse: collapse; width: 100%; font-size: 0.74rem; }
+  .msg-table th, .msg-table td { border-bottom: 1px solid var(--border); padding: 0.3rem 0.2rem; text-align: left; vertical-align: top; }
+  .msg-table th { font-size: 0.66rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .msg-table code { font: 0.68rem var(--mono); }
+  .msg-table tr.selected { background: #eef3ff; }
+  .msg-table tr.half { background: #fff7ed; }
+  .badge { display: inline-block; font-size: 0.6rem; border-radius: 999px; padding: 0.02rem 0.32rem; background: #eef0f4; color: #344054; white-space: nowrap; }
+  .badge.unpaired { background: #ffedd5; color: #9a3412; }
+  .badge.c1 { background: #dbeafe; color: #1e40af; }
+  .badge.c2 { background: #ede9fe; color: #5b21b6; }
+  .badge.paired { background: #dcfce7; color: #166534; }
+  .selection-tools { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
+  .selection-tools button { font-size: 0.68rem; padding: 0.16rem 0.4rem; }
+  .checkline { display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; color: var(--muted); margin: 0.35rem 0; }
+  .validation { border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.78rem; margin-top: 0.5rem; }
+  .validation.ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+  .validation.bad { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+  .validation.idle { background: #f8fafc; border: 1px solid var(--border); color: var(--muted); }
+  .validation ul { margin: 0.2rem 0 0; padding-left: 1.1rem; }
+  .checks { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.15rem; }
+  .checks li { display: flex; gap: 0.35rem; align-items: baseline; }
+  .checks .mark { font-weight: 700; width: 1em; }
+  .checks li.ok .mark { color: #047857; }
+  .checks li.bad .mark { color: #b42318; }
+  .checks .why { opacity: 0.9; }
+
+  .segment-card { border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem; font-size: 0.8rem; }
+  .segment-card .row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.35rem; }
+  .segment-card input[type="text"] { flex: 1 1 8rem; min-width: 0; }
+
+  .narrative { min-width: 0; overflow-x: auto; }
+  .narrative-inner { min-width: 640px; position: relative; }
+  .role-heads { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; font: 600 0.8rem var(--mono); padding-bottom: 0.35rem; }
+  .role-heads span { position: relative; z-index: 2; }
+  .role-heads span::after { content: ''; display: block; width: 1px; height: 0.35rem; background: #cfd3da; margin: 0.15rem auto 0; }
+  .list { position: relative; }
+  .rails { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .rail { position: absolute; top: 0; bottom: 0; width: 1px; background: #cfd3da; }
+  .rail.r1 { left: 16.666%; }
+  .rail.r2 { left: 50%; }
+  .rail.r3 { left: 83.333%; }
+
+  .msg-row { position: relative; height: 62px; z-index: 1; }
+  .msg-row .line {
+    position: absolute; top: 33px; height: 2px; z-index: 1;
+  }
+  .msg-row .line.c1 { background: var(--c1); }
+  .msg-row .line.c2 { background: var(--c2); border-top: 2px dashed var(--c2); height: 0; }
+  .msg-row .line.unpaired { height: 0; border-top: 2px dashed #ea580c; }
+  .msg-row .arrow { position: absolute; top: 28px; width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; z-index: 2; }
+  .msg-row .arrow.right { border-left: 8px solid var(--c1); }
+  .msg-row .arrow.left { border-right: 8px solid var(--c1); }
+  .msg-row .arrow.c2.right { border-left-color: var(--c2); }
+  .msg-row .arrow.c2.left { border-right-color: var(--c2); }
+  .msg-row .dot { position: absolute; top: 27px; width: 12px; height: 12px; border-radius: 50%; transform: translateX(-50%); z-index: 2; background: #fff; border: 3px solid var(--c1); }
+  .msg-row .dot.c2 { border-color: var(--c2); }
+  .msg-row .dot.unpaired { border-style: dashed; border-color: #ea580c; background: #fff7ed; }
+  .msg-row .mlabel { position: absolute; top: 3px; font: 0.68rem var(--mono); color: #344054; white-space: nowrap; }
+  .msg-row .mterm { color: var(--muted); }
+  .msg-row .ch { position: absolute; top: 42px; font: 0.64rem var(--mono); padding: 0.02rem 0.3rem; border-radius: 4px; background: #fff; border: 1px solid var(--border); }
+  .msg-row .ch.c2 { border-style: dashed; border-color: var(--c2); color: #5b21b6; }
+  .msg-row .unpaired-note { position: absolute; top: 42px; left: calc(33.333% + 0.35rem); font: 0.64rem var(--mono); color: #9a3412; background: #fff7ed; border: 1px solid #fdba74; border-radius: 4px; padding: 0.02rem 0.3rem; }
+
+  .segment { position: relative; z-index: 1; margin: 0.1rem 0; }
+  .segment-head {
+    width: 100%; border: 3px double var(--seg); border-bottom-width: 2px;
+    background: #eef3ff; border-radius: 7px 7px 0 0;
+    padding: 0.35rem 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem;
+    align-items: baseline; text-align: left; cursor: pointer; color: #1e2a44;
+  }
+  .segment-head:hover { background: #e3ebff; }
+  .segment-head .stitle { font-weight: 700; font-size: 0.8rem; }
+  .segment-head .smeta { font: 0.68rem var(--mono); color: #344054; }
+  .segment-head .scount { font: 600 0.64rem var(--mono); background: #dbe7ff; color: #1e3a8a; border-radius: 999px; padding: 0.02rem 0.34rem; }
+  .segment-head .sevent { font: 0.64rem var(--mono); background: #ecfdf5; color: #0f766e; border: 1px solid #5eead4; border-radius: 999px; padding: 0.02rem 0.34rem; }
+  .segment-body { position: relative; width: 100%; padding-bottom: 0.25rem; }
+  .segment-body[hidden] { display: none; }
+  .segment-band {
+    position: absolute; top: 0; bottom: 0; left: 0; right: 33.334%;
+    background: var(--seg-bg);
+    border-left: 3px double var(--seg); border-right: 3px double var(--seg);
+    border-bottom: 2px solid var(--seg); border-radius: 0 0 6px 6px;
+    pointer-events: none; z-index: 0;
+  }
+  .inner-note {
+    position: relative; z-index: 2; font: 0.64rem var(--mono); color: #475467;
+    margin: 0 0.5rem; padding: 0.05rem 0.35rem; background: #fff; border: 1px dashed #98a2b3; border-radius: 4px;
+    display: inline-block;
+  }
+  .note-wrap { height: 22px; display: flex; align-items: center; padding-left: 18%; }
+  .conflict-note { color: #b42318; border-color: #fda29b; background: #fef2f2; }
+  .segment-collapsed .segment-body { display: none; }
+
+  .cross-edge { position: relative; z-index: 2; height: 48px; }
+  .cross-edge .dash { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #b45309; }
+  .cross-edge .clabel {
+    position: absolute; top: 13px; font: 0.64rem var(--mono); color: #92400e;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; padding: 0.02rem 0.34rem;
+    white-space: nowrap;
+  }
+  .boundary { position: absolute; left: 0; right: 33.334%; height: 0; border-top: 2px dashed var(--seg); z-index: 3; }
+  .boundary.top { top: -1px; }
+  .boundary.bottom { bottom: -1px; }
+
+  .legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.35rem 1rem; }
+  .legend .item { display: flex; gap: 0.45rem; align-items: flex-start; font-size: 0.78rem; }
+  .legend .swatch { flex: 0 0 auto; margin-top: 0.1rem; }
+  .legend dt { margin: 0; font-weight: 600; }
+  .legend dd { margin: 0; color: var(--muted); }
+  .sw-seg { width: 26px; height: 18px; border: 3px double var(--seg); border-radius: 4px; background: var(--seg-bg); }
+  .sw-active { width: 26px; height: 18px; border: 1px solid var(--c1); border-radius: 4px; background: #fff; }
+  .sw-unpaired { width: 26px; height: 18px; border: 2px dashed #ea580c; border-radius: 4px; background: #fff7ed; }
+  .sw-cross { width: 26px; height: 18px; border-left: 2px dashed #b45309; margin-left: 12px; }
+
+  @media (max-width: 1024px) {
+    .wrap { padding: 0.75rem; }
+    .segment-head { font-size: 0.74rem; }
+    .msg-row .mlabel { font-size: 0.64rem; }
+  }
+  @media print {
+    body { background: #fff; }
+    .controls, .status, .question, .left-col, .validation-panel { display: none; }
+    .layout { display: block; }
+    .panel, .segment { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>交换段 · 语义分组原型</h1>
+    <span class="tag">阶段 0 · prototype 02 · 决策票 02</span>
+  </header>
+
+  <section class="question">
+    <p><strong>要回答：</strong>消息层能否按因果凸的消息集合折叠/展开？段框是否只覆盖参与角色、跨段边是否始终可见？非法范围是否被拒绝并给出可读原因？</p>
+    <p class="criteria">合成样本 <code>exchange-edge-cases.pv</code>：三方 A / B / S、双信道 c1 / c2、含未配对步骤、分支与事件。V1 仅允许两方、单层、单信道段。</p>
+  </section>
+
+  <details class="semantics" open>
+    <summary>操作语义：每个控件做什么、不做什么</summary>
+    <dl>
+      <div class="row"><dt>勾选消息</dt><dd>选择整条消息，不能只选某一端点；选择是临时状态，不写入 <code>.pv</code>。</dd></div>
+      <div class="row"><dt>快捷选择</dt><dd>只预设勾选，不自动创建段；下方校验随选择即时更新。</dd></div>
+      <div class="row"><dt>切半条消息</dt><dd>模拟只选发送端：M2 标记为「仅发送端」并按非法处理；不改变消息本身与源码。</dd></div>
+      <div class="row"><dt>封装为交换段</dt><dd>先校验；通过后按所选区间创建并展开，随后清空选择，避免把旧选择误判为下一次创建。</dd></div>
+      <div class="row"><dt>单段限制</dt><dd>本原型同一时间只保留一个段；已有段时再次创建会被拒绝，需先移除。正式 V1 允许多个互不重叠段。</dd></div>
+      <div class="row"><dt>折叠 / 展开</dt><dd>工具栏按钮、段头单击、段卡片按钮三处同步；折叠只隐藏段体，段头计数与跨段边保留。</dd></div>
+      <div class="row"><dt>模拟顺序冲突</dt><dd>仅把段内冲突计数设为 1 并显示冲突注记；不改变消息、因果序或校验结论，切换协议后清除。</dd></div>
+      <div class="row"><dt>模拟切换协议</dt><dd>清空段、选择、冲突与切半状态；演示会话内存边界，不切换真实文件。</dd></div>
+      <div class="row"><dt>段名</dt><dd>仅本会话标签；编辑即时更新段头，留空显示「未命名段」；名称不是安全结论。</dd></div>
+      <div class="row"><dt>灰度 / 打印</dt><dd>仅改变渲染预览，不改变分组、选择或段状态。</dd></div>
+    </dl>
+  </details>
+
+  <div class="controls">
+    <div class="group">
+      <button data-action="collapse-seg" title="与段头单击、段卡片按钮同步；只隐藏段体，保留段头计数与跨段边">折叠段框</button>
+      <button data-action="expand-seg" title="与段头单击、段卡片按钮同步；展开后显示段内消息与注记">展开段框</button>
+      <button data-action="toggle-conflict" aria-pressed="false" title="仅演示段内冲突计数与注记；不改变消息、因果序或校验结论">模拟顺序冲突</button>
+    </div>
+    <div class="group">
+      <button data-action="grayscale" aria-pressed="false" title="仅切换灰度渲染预览">灰度预览</button>
+      <button data-action="print" title="打开打印预览；控件与侧栏不进入打印">打印预览</button>
+      <button data-action="switch-protocol" title="模拟切换协议：清空段、选择、冲突与切半状态；不切换真实文件">模拟切换协议</button>
+    </div>
+  </div>
+
+  <div class="status" role="status" aria-live="polite" id="status">默认段 M1–M3 已创建（折叠态）。</div>
+
+  <section class="panel validation-panel" aria-labelledby="validation-title">
+    <h2 id="validation-title">分段校验</h2>
+    <p class="caption">逐项检查当前选择；全部通过后才允许封装为交换段。</p>
+    <div class="validation idle" id="validation" aria-live="polite">未选择消息；先勾选一段连续消息，或使用上方快捷选择。</div>
+  </section>
+
+  <div class="layout">
+    <div class="left-col">
+      <section class="panel" aria-labelledby="list-title">
+        <h2 id="list-title">消息列表 · 确定性拓扑序</h2>
+        <p class="caption">勾选整条消息；顺序按因果 DAG 拓扑序，tie-break 为消息编号与源码偏移。选择只在本页内存。</p>
+        <div style="overflow-x:auto">
+          <table class="msg-table">
+            <thead><tr><th>选</th><th>消息</th><th>路由</th><th>信道</th><th>状态</th><th>词项</th></tr></thead>
+            <tbody id="msg-body"></tbody>
+          </table>
+        </div>
+        <div class="selection-tools">
+          <button data-select="valid" title="仅预设勾选 M1–M3；不创建段">选择 M1–M3（合法）</button>
+          <button data-select="cross" title="仅预设勾选 M1–M4；该区间同时触发跨信道与第三方两条拒绝">选择 M1–M4（跨信道 + 第三方）</button>
+          <button data-select="multi" title="仅预设勾选 M1–M5；该区间同时触发含第三方与跨信道两条拒绝">选择 M1–M5（含第三方 + 跨信道）</button>
+          <button data-select="gap" title="仅预设勾选 M1、M6；用于查看非连续拒绝原因">选择 M1、M6（非连续）</button>
+          <button data-select="clear" title="清空勾选；不改变已创建的段">清空</button>
+        </div>
+        <label class="checkline"><input type="checkbox" id="cut-half" /> 模拟只选发送端（M2 切半，按非法处理）</label>
+        <div class="selection-tools">
+          <button class="primary" data-action="create" title="校验通过后创建并展开，同时清空选择；已有段时需先移除">封装为交换段</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="seg-list-title">
+        <h2 id="seg-list-title">段列表</h2>
+        <p class="caption">段状态仅存会话内存；切换协议或刷新即清除。本原型一次只保留一个段，V1 正式实现允许多个互不重叠段。</p>
+        <div id="segment-list"></div>
+        <p class="caption" style="margin-top:0.5rem">多方入口：<strong>禁用</strong>（V1 仅两方协议；三方及以上无法静态确定路由）。</p>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="canvas-title">
+      <h2 id="canvas-title">规范叙事视图 · 消息层</h2>
+      <p class="caption">段框只覆盖参与角色（A、B）；跨段边沿段框外侧保留；段外消息保持因果位置。</p>
+      <div class="narrative">
+        <div class="narrative-inner">
+          <div class="role-heads"><span>A</span><span>B</span><span>S</span></div>
+          <div class="list" id="narrative-list">
+            <div class="rails"><div class="rail r1"></div><div class="rail r2"></div><div class="rail r3"></div></div>
+            <div id="narrative-body"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel legend" style="margin-top:0.9rem">
+    <h2>图例</h2>
+    <dl>
+      <div class="item"><span class="swatch sw-seg"></span><div><dt>交换段（语义折叠）</dt><dd>双线边框 + 段头 + 边界标记；折叠态显示角色、消息区间、条数与隐藏计数。</dd></div></div>
+      <div class="item"><span class="swatch sw-active"></span><div><dt>完整消息</dt><dd>消息柱连接全部端点；c1 实线、c2 虚线，不依赖颜色。</dd></div></div>
+      <div class="item"><span class="swatch sw-unpaired"></span><div><dt>未配对步骤</dt><dd>端点落在信道轨，橙色虚线；段内计入「未配对」。</dd></div></div>
+      <div class="item"><span class="swatch sw-cross"></span><div><dt>跨段边</dt><dd>一端在段内、另一端在段外的本地序边；沿段框外侧绕行，不穿过段头。</dd></div></div>
+    </dl>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const POS = { A: 16.666, B: 50, S: 83.333 };
+  const CHANNEL_COLOR = { c1: 'c1', c2: 'c2' };
+
+  // 合成样本：A/B/S、双信道、含未配对步骤。
+  const messages = [
+    { id: 'M1', from: 'A', to: 'B', channel: 'c1', term: 'senc(nA, kB)', paired: true, line: 12 },
+    { id: 'M2', from: 'B', to: 'A', channel: 'c1', term: 'senc(ack, kA)', paired: true, line: 18 },
+    { id: 'M3', from: 'A', to: null, channel: 'c1', term: 'senc(s, kA)', paired: false, line: 22 },
+    { id: 'M4', from: 'B', to: 'S', channel: 'c2', term: 'senc(nB, kS)', paired: true, line: 28 },
+    { id: 'M5', from: 'S', to: 'B', channel: 'c2', term: 'senc(v, kS)', paired: true, line: 33 },
+    { id: 'M6', from: 'B', to: 'A', channel: 'c1', term: 'senc(t, kA)', paired: true, line: 38 }
+  ];
+  const LOCAL_ORDER = {
+    A: [0, 1, 2],
+    B: [0, 1, 3, 4, 5],
+    S: [3, 4]
+  };
+  const BRANCHES = [{ role: 'A', afterIndex: 1, label: 'if ok = true then' }]; // M2 与 M3 之间
+  const EVENTS = [{ role: 'B', afterIndex: 0, label: 'event acceptedB' }];     // M1 与 M2 之间
+
+  const state = {
+    selection: new Set(),
+    segment: { start: 0, end: 2, label: '握手往返', collapsed: true },
+    conflict: false,
+    cutHalf: false,
+    messageSeq: 0
+  };
+
+  const kinds = {
+    message: (m) => '<span class="badge ' + m.channel + '">' + m.channel + '</span>',
+    paired: (m) => m.paired ? '<span class="badge paired">已配对</span>' : '<span class="badge unpaired">未配对</span>'
+  };
+
+  function esc(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  function segmentIndices() {
+    if (!state.segment) return new Set();
+    const set = new Set();
+    for (let i = state.segment.start; i <= state.segment.end; i++) set.add(i);
+    return set;
+  }
+
+  function selectedMessages() {
+    return [...state.selection].sort((a, b) => a - b).map((index) => messages[index]);
+  }
+
+  function inSegment(index) { return segmentIndices().has(index); }
+
+  function validate() {
+    const indices = [...state.selection].sort((a, b) => a - b);
+    if (indices.length === 0) {
+      return { ok: false, idle: true, checks: [] };
+    }
+    const contiguous = indices.every((value, index) => index === 0 || value === indices[index - 1] + 1);
+
+    const chosen = indices.map((index) => messages[index]);
+    const roles = new Set();
+    chosen.forEach((m) => { roles.add(m.from); if (m.to) roles.add(m.to); });
+    const channels = new Set(chosen.map((m) => m.channel));
+    const existing = state.segment;
+    const overlap = !!existing && indices.some((index) => index >= existing.start && index <= existing.end);
+    const halfApplies = state.cutHalf && indices.includes(1);
+
+    let closure = new Set(indices);
+    if (contiguous) closure = convexClosure(new Set(indices));
+    const missing = [...closure].filter((index) => !state.selection.has(index));
+
+    const checks = [
+      {
+        id: 'contiguous', label: '连续区间', ok: contiguous,
+        reason: '选择在拓扑序上不连续；交换段必须是一段连续消息集合。'
+      },
+      {
+        id: 'whole', label: '整条消息', ok: !halfApplies,
+        reason: '切断消息：M2 只有发送端在段内；一条消息的全部端点必须同属一段。'
+      },
+      {
+        id: 'convex', label: '因果凸', ok: contiguous && missing.length === 0,
+        reason: !contiguous ? '选择不连续，无法形成单一因果凸区间。' : '因果凸闭包需要加入 ' + missing.map((i) => messages[i].id).join('、') + '。'
+      },
+      {
+        id: 'parties', label: '两方以内', ok: roles.size <= 2,
+        reason: '多方协议：V1 仅允许两方交换段，含第三方角色的范围非法。'
+      },
+      {
+        id: 'channel', label: '单信道', ok: channels.size <= 1,
+        reason: '跨信道：段内消息涉及 ' + [...channels].join(' 与 ') + '；V1 仅允许单信道段。'
+      },
+      {
+        id: 'overlap', label: '不与已有段重叠', ok: !overlap,
+        reason: '本原型一次只保留一个段；先移除已有段「' + (existing ? existing.label : '') + '」再创建。'
+      }
+    ];
+    const failed = checks.filter((check) => !check.ok);
+    return { ok: failed.length === 0, checks, failed };
+  }
+
+  // 因果 DAG：配对边 + 本地序边；返回包含候选集合的最小凸闭包。
+  function convexClosure(candidate) {
+    const closure = new Set(candidate);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const role of Object.keys(LOCAL_ORDER)) {
+        const order = LOCAL_ORDER[role];
+        for (let i = 0; i < order.length - 1; i++) {
+          const a = order[i];
+          const b = order[i + 1];
+          if (closure.has(a) && candidate.has(b) && !closure.has(b)) { closure.add(b); changed = true; }
+          if (closure.has(b) && candidate.has(a) && !closure.has(a)) { closure.add(a); changed = true; }
+        }
+      }
+      for (const m of messages) {
+        const index = messages.indexOf(m);
+        if (!m.paired || m.to === null) continue;
+        const target = messages.findIndex((other) => other.from === m.to && other.to === m.from && other.channel === m.channel && other.paired);
+        if (target >= 0) {
+          if (closure.has(index) && candidate.has(target) && !closure.has(target)) { closure.add(target); changed = true; }
+        }
+      }
+    }
+    return closure;
+  }
+
+  function countIndices(indices) {
+    const messagesIn = indices.length;
+    const unpaired = indices.filter((index) => !messages[index].paired).length;
+    const branches = BRANCHES.filter((branch) => indices.includes(branch.afterIndex)).length;
+    const conflicts = state.conflict ? 1 : 0;
+    const events = EVENTS.filter((event) => indices.includes(event.afterIndex)).length;
+    return { messages: messagesIn, unpaired, branches, conflicts, events };
+  }
+
+  function countHidden() {
+    return countIndices([...segmentIndices()]);
+  }
+
+  function renderMessageList() {
+    document.getElementById('msg-body').innerHTML = messages.map((m, index) => {
+      const selected = state.selection.has(index);
+      const half = state.cutHalf && m.id === 'M2';
+      const route = half ? m.from + ' → 信道轨（切半）' : (m.to ? m.from + ' → ' + m.to : m.from + ' → 信道轨');
+      return '<tr class="' + (selected ? 'selected ' : '') + (half ? 'half' : '') + '">' +
+        '<td><input type="checkbox" data-pick="' + index + '"' + (selected ? ' checked' : '') + ' aria-label="选择 ' + m.id + (half ? '（当前仅发送端）' : '') + '"></td>' +
+        '<td><code>' + m.id + '</code></td>' +
+        '<td>' + route + '</td>' +
+        '<td>' + kinds.message(m) + '</td>' +
+        '<td>' + (half ? '<span class="badge unpaired">仅发送端</span>' : kinds.paired(m)) + '</td>' +
+        '<td><code>' + esc(m.term) + '</code></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function messageRow(index) {
+    const m = messages[index];
+    const half = state.cutHalf && m.id === 'M2';
+    const from = POS[m.from];
+    const to = half ? 33.333 : (m.to ? POS[m.to] : 33.333);
+    const left = Math.min(from, to);
+    const width = Math.abs(to - from);
+    const arrowLeft = to > from;
+    const chClass = half ? 'unpaired' : CHANNEL_COLOR[m.channel];
+    const arrowClass = m.to && !half ? (CHANNEL_COLOR[m.channel] + (arrowLeft ? ' right' : ' left')) : '';
+    const dotEnd = m.to && !half
+      ? '<span class="dot ' + chClass + '" style="left:' + to + '%"></span>'
+      : '<span class="dot unpaired" style="left:' + to + '%"></span>';
+    const chLeft = (from + to) / 2;
+    const labelLeft = Math.min(from, to) + 1;
+    return '<div class="msg-row" data-message="' + m.id + '"' + (half ? ' data-half="true"' : '') + '>' +
+      '<span class="dot ' + (m.paired && !half ? chClass : 'unpaired') + '" style="left:' + from + '%"></span>' +
+      '<span class="line ' + (m.paired && !half ? chClass : 'unpaired') + '" style="left:' + left + '%;width:' + width + '%"></span>' +
+      (m.to && !half ? '<span class="arrow ' + arrowClass + '" style="left:' + (to - (arrowLeft ? 1.4 : -0.6)) + '%"></span>' : '') +
+      dotEnd +
+      '<span class="mlabel" style="left:' + labelLeft + '%">' + m.id + ' · ' + esc(m.term) + '</span>' +
+      '<span class="ch ' + CHANNEL_COLOR[m.channel] + '" style="left:calc(' + chLeft + '% - 1rem)">' + m.channel + '</span>' +
+      (half ? '<span class="unpaired-note">切半 · 仅发送端</span>' : (m.paired ? '' : '<span class="unpaired-note">未配对 · 信道轨</span>')) +
+      '</div>';
+  }
+
+  function eventNote(text) {
+    return '<div class="note-wrap"><span class="inner-note">' + esc(text) + '</span></div>';
+  }
+  function conflictNote() {
+    return '<div class="note-wrap"><span class="inner-note conflict-note">布局冲突：因果环，段内整体保留</span></div>';
+  }
+
+  function crossEdges() {
+    if (!state.segment) return [];
+    const inside = segmentIndices();
+    const edges = [];
+    for (const role of Object.keys(LOCAL_ORDER)) {
+      const order = LOCAL_ORDER[role];
+      for (let i = 0; i < order.length - 1; i++) {
+        const a = order[i];
+        const b = order[i + 1];
+        if (inside.has(a) !== inside.has(b)) {
+          edges.push({ role, from: messages[a].id, to: messages[b].id });
+        }
+      }
+    }
+    return edges;
+  }
+
+  function segmentHtml() {
+    const seg = state.segment;
+    if (!seg) return '';
+    const counts = countHidden();
+    const first = messages[seg.start].id;
+    const last = messages[seg.end].id;
+    const roles = new Set();
+    for (let i = seg.start; i <= seg.end; i++) { roles.add(messages[i].from); if (messages[i].to) roles.add(messages[i].to); }
+    const expanded = !seg.collapsed;
+    const head = '<button class="segment-head" data-toggle-segment aria-expanded="' + String(expanded) + '" title="单击折叠/展开；折叠只隐藏段体，段头计数与跨段边保留">' +
+      '<span class="stitle">交换段 · ' + esc(seg.label) + '</span>' +
+      '<span class="smeta">' + [...roles].join(' ↔ ') + ' · ' + first + '–' + last + ' · ' + counts.messages + ' 条</span>' +
+      '<span class="scount">未配对 ' + counts.unpaired + '</span>' +
+      '<span class="scount">分支 ' + counts.branches + '</span>' +
+      '<span class="scount">冲突 ' + counts.conflicts + '</span>' +
+      (counts.events ? '<span class="sevent">事件 ' + counts.events + '（不隐藏）</span>' : '') +
+      '<span class="scount">' + (expanded ? '▾ 展开态' : '▸ 折叠态') + '</span>' +
+      '</button>';
+    let body = '';
+    if (expanded) {
+      for (let i = seg.start; i <= seg.end; i++) {
+        body += messageRow(i);
+        for (const event of EVENTS) if (event.afterIndex === i) body += eventNote('事件芯片 · ' + event.label);
+        for (const branch of BRANCHES) if (branch.afterIndex === i) body += eventNote('分支 · ' + branch.label + '（隐藏计数 1）');
+      }
+      if (state.conflict) body += conflictNote();
+    }
+    const edges = crossEdges().map((edge) =>
+      '<div class="cross-edge" data-cross="' + edge.role + '-' + edge.from + '-' + edge.to + '">' +
+        '<span class="dash" style="left:' + (POS[edge.role] + 1.4) + '%"></span>' +
+        '<span class="clabel" style="left:calc(' + (POS[edge.role] + 1.4) + '% + 0.25rem)">跨段边 · ' + edge.role + ' 本地序 ' + edge.from + ' → ' + edge.to + '（保持可见）</span>' +
+      '</div>'
+    ).join('');
+    return '<div class="segment' + (seg.collapsed ? ' segment-collapsed' : '') + '" data-segment>' +
+      head +
+      '<div class="segment-body"' + (expanded ? '' : ' hidden') + '>' +
+        '<span class="segment-band"></span>' +
+        '<span class="boundary top"></span>' +
+        body +
+        '<span class="boundary bottom"></span>' +
+      '</div>' +
+      '</div>' + edges;
+  }
+
+  function renderNarrative() {
+    let html = '';
+    const seg = state.segment;
+    for (let i = 0; i < messages.length; i++) {
+      if (seg && i === seg.start) {
+        html += segmentHtml();
+      }
+      if (seg && i >= seg.start && i <= seg.end) continue;
+      html += messageRow(i);
+      for (const event of EVENTS) if (event.afterIndex === i) html += eventNote('事件 · ' + event.label);
+    }
+    if (seg && seg.end === messages.length - 1) html += segmentHtml();
+    document.getElementById('narrative-body').innerHTML = html;
+  }
+
+  function renderSegmentList() {
+    const host = document.getElementById('segment-list');
+    if (!state.segment) {
+      host.innerHTML = '<p class="caption" style="margin:0">当前没有交换段。选择 M1–M3 后点击「封装为交换段」。</p>';
+      return;
+    }
+    const seg = state.segment;
+    host.innerHTML = '<div class="segment-card">' +
+      '<div><strong>交换段</strong> · ' + messages[seg.start].id + '–' + messages[seg.end].id + '</div>' +
+      '<div class="row"><label for="seg-name">名称</label><input id="seg-name" type="text" value="' + esc(seg.label) + '" data-seg-name title="仅本会话标签；留空显示「未命名段」；不是安全结论" /></div>' +
+      '<div class="row"><button data-action="toggle-seg" title="与段头单击、工具栏按钮同步">' + (seg.collapsed ? '展开' : '折叠') + '</button><button class="danger" data-action="remove-seg" title="移除段带与计数；不改 .pv 与消息">移除段</button></div>' +
+      '</div>';
+  }
+
+  function checksHtml(checks) {
+    return '<ul class="checks">' + checks.map((check) =>
+      '<li class="' + (check.ok ? 'ok' : 'bad') + '"><span class="mark">' + (check.ok ? '✓' : '✕') + '</span><span>' +
+        esc(check.label) + (check.ok ? '' : '<span class="why"> — ' + esc(check.reason) + '</span>') +
+      '</span></li>'
+    ).join('') + '</ul>';
+  }
+
+  function renderValidation() {
+    const result = validate();
+    const host = document.getElementById('validation');
+    if (result.idle) {
+      host.className = 'validation idle';
+      host.textContent = '未选择消息；先勾选一段连续消息，或使用上方快捷选择。';
+    } else if (result.ok) {
+      const counts = countIndices([...state.selection].sort((a, b) => a - b));
+      host.className = 'validation ok';
+      host.innerHTML = '<strong>可创建</strong>：消息 ' + counts.messages + ' 条、未配对 ' + counts.unpaired +
+        '、分支 ' + counts.branches + '、冲突 ' + counts.conflicts + '。' + checksHtml(result.checks);
+    } else {
+      host.className = 'validation bad';
+      host.innerHTML = '<strong>拒绝创建</strong>：' + result.failed.length + ' 项未通过。' + checksHtml(result.checks);
+    }
+    return result;
+  }
+
+  function render() {
+    renderMessageList();
+    renderNarrative();
+    renderSegmentList();
+    renderValidation();
+    document.querySelector('[data-action="toggle-conflict"]').setAttribute('aria-pressed', String(state.conflict));
+  }
+
+  function setStatus(text) { document.getElementById('status').textContent = text; }
+
+  function setSelection(indices) {
+    state.selection = new Set(indices);
+    render();
+  }
+
+  document.addEventListener('click', (event) => {
+    const pick = event.target.closest('[data-pick]');
+    if (pick) {
+      const index = Number(pick.dataset.pick);
+      if (pick.checked) state.selection.add(index); else state.selection.delete(index);
+      render();
+      return;
+    }
+
+    const select = event.target.closest('[data-select]');
+    if (select) {
+      const kind = select.dataset.select;
+      if (kind === 'valid') setSelection([0, 1, 2]);
+      if (kind === 'cross') setSelection([0, 1, 2, 3]);
+      if (kind === 'multi') setSelection([0, 1, 2, 3, 4]);
+      if (kind === 'gap') setSelection([0, 5]);
+      if (kind === 'clear') setSelection([]);
+      setStatus('已更新选择；下方显示校验结果。');
+      return;
+    }
+
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'create') {
+      const result = validate();
+      if (!result.ok) {
+        setStatus('创建被拒绝：见左侧原因。');
+        renderValidation();
+        return;
+      }
+      const indices = [...state.selection].sort((a, b) => a - b);
+      state.segment = { start: indices[0], end: indices[indices.length - 1], label: '握手往返', collapsed: false };
+      state.selection = new Set();
+      setStatus('已创建交换段 ' + messages[state.segment.start].id + '–' + messages[state.segment.end].id + '（展开）；选择已清空，如需新建请先移除现有段。');
+      render();
+      return;
+    }
+    if (action === 'collapse-seg') { if (state.segment) state.segment.collapsed = true; setStatus('段框已折叠。'); render(); return; }
+    if (action === 'expand-seg') { if (state.segment) state.segment.collapsed = false; setStatus('段框已展开。'); render(); return; }
+    if (action === 'toggle-seg') { if (state.segment) state.segment.collapsed = !state.segment.collapsed; render(); return; }
+    if (action === 'remove-seg') { state.segment = null; setStatus('交换段已移除；无残留段带。'); render(); return; }
+    if (action === 'toggle-conflict') {
+      state.conflict = !state.conflict;
+      setStatus(state.conflict ? '已模拟顺序冲突：冲突计数为 1。' : '顺序冲突已清除。');
+      render();
+      return;
+    }
+    if (action === 'switch-protocol') {
+      state.segment = null; state.selection = new Set(); state.conflict = false; state.cutHalf = false;
+      document.getElementById('cut-half').checked = false;
+      setStatus('已模拟切换协议：段、选择、冲突与切半状态均已清空（不切换真实文件）。');
+      render();
+      return;
+    }
+    if (action === 'grayscale') {
+      const pressed = document.body.classList.toggle('grayscale');
+      event.target.closest('button').setAttribute('aria-pressed', String(pressed));
+      return;
+    }
+    if (action === 'print') { window.print(); return; }
+
+    const toggle = event.target.closest('[data-toggle-segment]');
+    if (toggle && state.segment) {
+      state.segment.collapsed = !state.segment.collapsed;
+      setStatus(state.segment.collapsed ? '段框已折叠。' : '段框已展开。');
+      render();
+      return;
+    }
+  });
+
+  document.addEventListener('change', (event) => {
+    if (event.target.id === 'cut-half') {
+      state.cutHalf = event.target.checked;
+      setStatus(state.cutHalf ? '切半模拟开启：M2 标为「仅发送端」，校验将拒绝。' : '切半模拟关闭：M2 恢复完整消息。');
+      render();
+      return;
+    }
+    if (event.target.matches('[data-seg-name]') && state.segment) {
+      state.segment.label = event.target.value || '未命名段';
+      render();
+    }
+  });
+
+  document.addEventListener('input', (event) => {
+    if (event.target.matches('[data-seg-name]') && state.segment) {
+      state.segment.label = event.target.value || '未命名段';
+      renderNarrative();
+    }
+  });
+
+  const params = new URLSearchParams(location.search);
+  const requestedSegment = params.get('segment');
+  if (requestedSegment === 'expanded' && state.segment) state.segment.collapsed = false;
+  if (requestedSegment === 'none') state.segment = null;
+  if (params.get('conflict') === '1') state.conflict = true;
+  if (params.get('cut') === '1') {
+    state.cutHalf = true;
+    document.getElementById('cut-half').checked = true;
+  }
+  const preselect = { valid: [0, 1, 2], cross: [0, 1, 2, 3], multi: [0, 1, 2, 3, 4], gap: [0, 5] }[params.get('select')];
+  if (preselect) state.selection = new Set(preselect);
+  if (params.get('gray') === '1') document.body.classList.add('grayscale');
+  if (params.get('scroll') === 'canvas') {
+    setTimeout(() => document.getElementById('canvas-title').scrollIntoView({ block: 'start' }), 0);
+  }
+
+  render();
+  if (!state.segment) setStatus('当前无交换段；选择消息后创建交换段。');
+})();
+</script>
+</body>
+</html>
