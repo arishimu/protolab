@@ -103,7 +103,7 @@ describe('ticket #23：R07 图例膨胀与列布局', () => {
     expect(values.length).toBeGreaterThan(LEGEND_VALUE_FOLD_THRESHOLD);
     const html = renderToString(createElement(Legend, { layout, result }));
     expect(html).toContain('<details class="legend-value-fold">');
-    expect(html).toMatch(new RegExp(`本图值序号（<!-- -->${String(values.length)}<!-- -->）`));
+    expect(html).toMatch(new RegExp(`本图值序号 · <!-- -->${String(values.length)}`));
   });
 
   it('值身份不超过阈值时默认展开，清单条目仍渲染', () => {

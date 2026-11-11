@@ -28,20 +28,20 @@ export const VERDICT_META: Record<Verdict, VerdictMeta> = {
     label: '成立',
     tone: 'positive',
     explanation:
-      'ProVerif 证明该查询成立（归一化输出里的 is true）：在 Dolev-Yao 攻击者模型下没有找到反例。',
+      'ProVerif 证明该查询成立，归一化输出为 is true；在 Dolev-Yao 攻击者模型下没有找到反例。',
   },
   false: {
     label: '被证伪',
     tone: 'negative',
     explanation:
-      'ProVerif 找到反例（归一化输出里的 is false）：该查询不成立，攻击路径见下方的反例 trace。',
+      'ProVerif 找到反例，归一化输出为 is false；该查询不成立，攻击路径见下方反例 trace。',
   },
   'cannot-be-proved': {
     label: '未证出',
     tone: 'unknown',
     explanation:
-      'ProVerif 未能证明该查询，也未能证伪它（归一化输出里的 cannot be proved）——'
-      + '「未证出」不等于「不成立」：可能是模型太复杂、缺少必要假设，或该性质确实需要人工判断。',
+      'ProVerif 未能证明该查询，也未能证伪，归一化输出为 cannot be proved。'
+      + '未证出不等于不成立：可能是模型过复杂、缺少必要假设，或该性质需要人工判断。',
   },
 };
 
@@ -148,14 +148,14 @@ function propertyExplanation(property: QueryProperty, verdict: Verdict): string 
       return `ProVerif 证明攻击者无法获得 ${property.subject}；归一化输出为 is true，在 Dolev-Yao 模型下没有找到反例。`;
     }
     if (verdict === 'false') {
-      return `ProVerif 找到反例：攻击者可以获得 ${property.subject}；该保密性查询不成立，攻击路径见下方的反例 trace。`;
+      return `ProVerif 找到反例：攻击者可以获得 ${property.subject}；该保密性查询不成立，攻击路径见下方反例 trace。`;
     }
     return `ProVerif 未能证明攻击者无法获得 ${property.subject}，也未能证伪；未证出不等于该秘密已泄露。`;
   }
   if (property.kind === 'correspondence') {
     if (verdict === 'true') return `ProVerif 证明该${property.label}目标成立；归一化输出为 is true，在 Dolev-Yao 模型下没有找到反例。`;
     if (verdict === 'false') {
-      return `ProVerif 找到反例：该${property.label}目标不成立，已被证伪；攻击路径见下方的反例 trace。`;
+      return `ProVerif 找到反例：该${property.label}目标不成立，已被证伪；攻击路径见下方反例 trace。`;
     }
     return `ProVerif 未能证明该${property.label}目标，也未能证伪；未证出不等于性质为假。`;
   }
@@ -249,7 +249,7 @@ function protocolQuestionOf(property: QueryProperty): string {
   if (property.kind === 'secrecy') return `攻击者能否获得 ${property.subject}？`;
   if (property.kind === 'correspondence') return `当 ${property.subject} 的结论事件发生时，前提事件是否一定已经发生？`;
   if (property.kind === 'reachability') return `事件 ${property.subject} 是否可能发生？`;
-  return '这条查询在协议层面到底问了什么？';
+  return '这条查询在协议层面询问什么？';
 }
 
 function proverifReadingOf(property: QueryProperty): string {
@@ -262,7 +262,7 @@ function proverifReadingOf(property: QueryProperty): string {
   if (property.kind === 'reachability') {
     return '单个 event(...) 在 ProVerif 中作为可达性目标：is true 表示该事件可达，is false 表示不可达。';
   }
-  return '按 ProVerif 归一化输出 is true / is false / cannot be proved 解读，不强行套用固定性质。';
+  return '按 ProVerif 归一化输出 is true、is false、cannot be proved 解读，不套用固定性质。';
 }
 
 function eventAnchorsOf(text: string, parseResult: ParseResult | undefined): readonly QueryEventAnchor[] {
@@ -316,9 +316,9 @@ export function summarizeCoverage(
     .filter((kind) => !declaredKinds.includes(kind))
     .map((kind) => ({ kind, label: propertyLabelOf(kind) }));
   const note = queries.length === 0
-    ? '当前 .pv 没有声明任何 query：本次运行不会给出安全性结论。'
-    : `本次查询 ${String(queries.length)} 条（声明目标 ${String(byOrigin.declared)} / 会话目标 ${String(byOrigin.session)}），已验证 ${String(views.length)} 条。`
-      + '查询全部成立只说明这些查询在 Dolev-Yao 模型下成立，不等于协议整体安全；'
+    ? '当前 .pv 没有声明任何 query，本次运行不会给出安全性结论。'
+    : `本次查询 ${String(queries.length)} 条，其中声明目标 ${String(byOrigin.declared)} 条、会话目标 ${String(byOrigin.session)} 条；已验证 ${String(views.length)} 条。`
+      + '查询全部成立只说明这些查询在 Dolev-Yao 模型下成立，不等于协议整体安全。'
       + (uncovered.length === 0 ? '三类查询维度均已声明。' : `未覆盖维度：${uncovered.map((entry) => entry.label).join('、')}。`);
   return {
     declaredQueries: queries.length,

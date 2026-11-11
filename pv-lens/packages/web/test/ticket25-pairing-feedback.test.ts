@@ -36,10 +36,11 @@ describe('ticket #25：人工配对反馈', () => {
     const html = renderToString(createElement(NarrativeView, {
       result: fixtureParse('multi-channel'),
       onEndpointSelect: () => {},
+      initialCollapsedCryptoGroups: [],
     })).replace(/<!-- -->/g, '');
     expect(html).toContain('structured-chip--selectable');
     expect(html).toContain('structured-chip-hit');
-    expect(html).toContain('可选为人工配对端（Enter 选择）');
+    expect(html).toContain('可选为人工配对端，按 Enter 选择');
     expect(html).toContain('structured-endpoint-hit');
   });
 

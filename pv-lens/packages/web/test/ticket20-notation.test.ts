@@ -296,7 +296,7 @@ describe('ticket #20：R11 降级语句的独立视觉类别', () => {
     const { pairings } = composeMessagePairings(result);
     const layout = buildStructuredNarrativeLayout(result, { pairings });
     const html = renderToString(createElement(Legend, { layout, result }));
-    expect(html).toContain('虚线琥珀边框');
+    expect(html).toContain('虚线琥珀色标签');
     expect(html).toContain('insert');
   });
 
@@ -307,7 +307,7 @@ describe('ticket #20：R11 降级语句的独立视觉类别', () => {
     expect(app).toContain('定位首个降级节点');
     // ParseNotices 的降级提示补数量。
     const verify = readFileSync(join(packagesDir, 'web', 'src', 'VerifyPanel.tsx'), 'utf8');
-    expect(verify).toMatch(/已降级显示（\$\{String\(parseResult\.diagnostics/);
+    expect(verify).toMatch(/已降级显示 \$\{String\(parseResult\.diagnostics/);
     // 数量一致性：诊断数 == 画布降级节点数 + 角色诊断条降级项（归属只算一次，C14 口径）。
     const result = parsePv(MIXED_SOURCE);
     const { pairings } = composeMessagePairings(result);

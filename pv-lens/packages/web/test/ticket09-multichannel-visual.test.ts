@@ -34,6 +34,7 @@ describe('ticket #09：多信道视觉语法（multi-channel 三信道样例）'
   const rendered = renderToString(createElement(NarrativeView, {
     result,
     pairings: composeMessagePairings(result).pairings,
+    initialCollapsedCryptoGroups: [],
   }));
 
   it('各信道以并列中性总线呈现：序号字形唯一、边框线型轮转、无身份色内联样式', () => {
@@ -60,8 +61,8 @@ describe('ticket #09：多信道视觉语法（multi-channel 三信道样例）'
       expect(rendered).toContain(name);
     });
     // 值与事件的可访问名称带身份序号 / 事件原文（票面第 6 条：值/事件也在断言之列）。
-    expect(rendered).toContain('aria-label="绑定 kA（值 1）"');
-    expect(rendered).toContain('aria-label="引用 kA（值 1）"');
+    expect(rendered).toContain('aria-label="绑定 kA，值 1"');
+    expect(rendered).toContain('aria-label="引用 kA，值 1"');
     expect(rendered).toContain('aria-label="event beginA(nA)"');
     expect(rendered).toContain('aria-label="event endB(nB)"');
     expect(rendered).toContain('aria-label="图例"');
@@ -110,6 +111,7 @@ describe('ticket #09：图例显示实际使用的消息/值序号（实化对�
     const rendered = renderToString(createElement(NarrativeView, {
       result,
       pairings: composeMessagePairings(result).pairings,
+      initialCollapsedCryptoGroups: [],
     }));
     expect(rendered).toContain('本图消息序号');
     expect(rendered).toContain('本图值序号');
@@ -195,7 +197,7 @@ describe('ticket #09：R09 信道序号与水平位置一致', () => {
     const rendered = renderToString(createElement(NarrativeView, { result, pairings: [] }));
     const plain = rendered.replace(/<!-- -->/g, '');
     expect(plain).toContain('超过五个信道时以 (n) 形式显示');
-    expect(plain).toContain('灰度下可按线型区分');
+    expect(plain).toContain('灰度下仍可区分');
   });
 
   it('六信道合成模型：第六条信道以 (6) 形式显示且不与 ①–⑤ 冲突', () => {

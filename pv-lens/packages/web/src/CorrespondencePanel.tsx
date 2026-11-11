@@ -104,21 +104,20 @@ export function CorrespondencePanel({
     <section className="correspondence" aria-label="事件对应性矩阵">
       <details open>
         <summary className="correspondence-summary">
-          事件对应性矩阵（{plan.events.length} 个事件，生成 {plan.queries.length} 条有序对；其中 {declaredQueries.length} 条为源码声明的安全目标）
+          事件对应性矩阵 · {plan.events.length} 个事件 · {plan.queries.length} 条有序对 · {declaredQueries.length} 条源码声明的安全目标
         </summary>
         {plan.events.length === 0 ? (
           <p className="hint">当前模型没有 event 标记，无法生成对应性查询。</p>
         ) : (
           <>
             <p className="hint">
-              为探索性有序对预生成 <code>inj-event</code> 探针；源码声明的目标按原查询语义运行
-              （非单射 <code>event</code> 声明仍按 <code>event</code> 判定）。
-              查询插入验证文本的 <code>process</code> 之前，原始 <code>.pv</code> 不变。
-              声明目标来自源码中的 query 语句；其余为工具生成的探索性有序对，其 ✗ 不构成协议攻击。
-              点击矩阵单元或生命线上的事件旗标互相定位。
+              工具为探索性有序对预生成 <code>inj-event</code> 探针；源码声明的目标按原查询语义运行，
+              非单射 <code>event</code> 声明仍按 <code>event</code> 判定。查询插入验证文本的
+              <code>process</code> 之前，原始 <code>.pv</code> 不变。声明目标来自源码 query 语句；
+              其余为工具生成的探索性有序对，其 ✗ 不构成协议攻击。点击矩阵单元或生命线上的事件旗标可互相定位。
             </p>
             <p className="hint correspondence-legend">
-              · 未运行；↺ 自反对；✓ 成立；✗ 被证伪；? 未证出；蓝框 = 源码声明目标。自反对即 <code>inj-event(A) ==&gt; inj-event(A)</code>。
+              · 未运行　↺ 自反对　✓ 成立　✗ 被证伪　? 未证出　蓝框表示源码声明目标。自反对即 <code>inj-event(A) ==&gt; inj-event(A)</code>。
             </p>
             <div className="correspondence-controls">
               <button type="button" className="btn btn--primary" onClick={() => void run()} disabled={running}>
@@ -143,14 +142,14 @@ export function CorrespondencePanel({
                     type="button"
                     className="btn correspondence-reflexive-btn"
                     onClick={() => onSelectQuery(`${event.id}=>${event.id}`)}
-                    title="查询 inj-event(A) ==> inj-event(A)（与双击事件旗标同效）"
+                    title="查询 inj-event(A) ==> inj-event(A)，与双击事件旗标效果相同"
                   >
                     查询 {event.name} 的自反对应性
                   </button>
                 );
               })()}
             </div>
-            {running && <p className="verify-progress" role="status">正在运行 ProVerif（n² 条查询一次跑）…</p>}
+            {running && <p className="verify-progress" role="status">正在运行 ProVerif，一次性执行 n² 条查询…</p>}
             {state.status === 'done' && !state.ok && (
               <p className="verify-error" role="alert">
                 验证未能完成：{describeVerifyFailureKind(state.outcome.kind)}；对应性矩阵保持未验证状态，详情见验证结果面板。
@@ -176,7 +175,7 @@ export function CorrespondencePanel({
             {selectedCell !== null && <CorrespondenceCellDetail cell={selectedCell} />}
             {state.status === 'done' && state.ok && (
               <details className="raw-output">
-                <summary>ProVerif 完整原始输出（stdout）</summary>
+                <summary>ProVerif 完整原始输出 · stdout</summary>
                 <pre className="raw-output-body"><code>{state.stdout}</code></pre>
               </details>
             )}
@@ -200,7 +199,7 @@ function DeclaredQueryList({
   onSelectQuery: (queryId: string | null) => void;
 }) {
   if (declaredQueries.length === 0) {
-    return <p className="hint">当前模型没有源码声明的安全目标（query 语句）。</p>;
+    return <p className="hint">当前模型没有 query 语句声明的安全目标。</p>;
   }
   return (
     <ol className="declared-query-list" aria-label="源码声明的安全目标">
@@ -310,7 +309,7 @@ function CorrespondenceMatrixTable({
                       type="button"
                       className={`correspondence-cell correspondence-cell--${cell.verdict}${declared ? ' correspondence-cell--declared' : ' correspondence-cell--exploratory'}${cell.query.id === selectedQueryId ? ' correspondence-cell--selected' : ''}`}
                       data-declared={declared ? 'true' : 'false'}
-                      aria-label={`${from.text} ==> ${to.text}${reflexive ? '（自反）' : ''}：${meta === null ? '未验证' : meta.label}；${declared ? '源码声明的安全目标' : '探索性有序对'}`}
+                      aria-label={`${from.text} ==> ${to.text}${reflexive ? '，自反' : ''}：${meta === null ? '未验证' : meta.label}；${declared ? '源码声明的安全目标' : '探索性有序对'}`}
                       onClick={() => {
                         // D5：单元点击只设置选中查询，不再设置事件——避免 4 个表头同强高亮。
                         onSelectQuery(cell.query.id);
@@ -365,7 +364,7 @@ export function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell })
       </p>
       {cell.result?.counterexampleTrace != null && (
         <details className="counterexample">
-          <summary>展开反例 / 攻击 trace 原文</summary>
+          <summary>展开反例 trace 原文</summary>
           <pre className="counterexample-body"><code>{cell.result.counterexampleTrace}</code></pre>
         </details>
       )}
@@ -375,12 +374,12 @@ export function CorrespondenceCellDetail({ cell }: { cell: CorrespondenceCell })
 
 function declaredExplanation(cell: CorrespondenceCell): string {
   if (cell.verdict === 'true') return '源码声明的安全目标成立：ProVerif 未找到反例。';
-  if (cell.verdict === 'false') return '源码声明的安全目标不成立，已被证伪；攻击路径见下方的反例 trace。';
-  return '源码声明的安全目标未被证明，也未被证伪；未证出不等于性质为假。';
+  if (cell.verdict === 'false') return '源码声明的安全目标不成立，已被证伪；攻击路径见下方反例 trace。';
+  return '源码声明的安全目标未被证明，也未被证伪。未证出不等于性质为假。';
 }
 
 function exploratoryExplanation(cell: CorrespondenceCell): string {
-  if (cell.verdict === 'true') return '该有序对成立。它是工具生成的探索性结果，不是源码声明的安全目标。';
+  if (cell.verdict === 'true') return '该有序对成立。这是工具生成的探索性结果，不是源码声明的安全目标。';
   if (cell.verdict === 'false') {
     return '该有序对不成立。它由工具枚举，不是源码声明的安全目标；✗ 不构成协议攻击。';
   }

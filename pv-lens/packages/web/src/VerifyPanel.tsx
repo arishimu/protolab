@@ -87,16 +87,16 @@ export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent, 
   return (
     <section className="verify" aria-label="验证结果">
       <h3 className="verify-title">
-        验证结果（ProVerif）
+        验证结果 · ProVerif
         <span className={`verify-health verify-health--${health}`} role="status" title={verifyServiceHealthText(health)}>
           <span className="verify-health-dot" aria-hidden="true" />
           {verifyServiceHealthText(health)}
         </span>
       </h3>
       <p className="hint">
-        把当前 <code>.pv</code> 原文交给本机验证服务运行一次。结果按查询逐条列出：
-        查询原文 + 判定 + 解释；被证伪时可展开反例 trace 原文。判定措辞对照归一化语义
-        （<code>is true</code> → 成立 / <code>is false</code> → 被证伪 / <code>cannot be proved</code> → 未证出）。
+        将当前 <code>.pv</code> 原文提交给本机验证服务运行。结果按查询列出原文、判定和解释；
+        被证伪时可展开反例 trace。判定对应关系：<code>is true</code> 为成立，
+        <code>is false</code> 为被证伪，<code>cannot be proved</code> 为未证出。
       </p>
 
       <ParseNotices parseResult={parseResult} />
@@ -118,7 +118,7 @@ export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent, 
           </button>
         )}
         <label className="verify-timeout">
-          超时（毫秒）
+          超时毫秒
           <input
             type="number"
             min={1}
@@ -128,12 +128,12 @@ export function VerifyPanel({ source, parseResult, onLocateSpan, onSelectEvent, 
             onChange={(event) => setTimeoutText(event.target.value)}
           />
         </label>
-        {!timeoutValid && <span className="verify-error">超时必须是正数（毫秒）。</span>}
+        {!timeoutValid && <span className="verify-error">超时必须是正数，单位为毫秒。</span>}
       </div>
 
       {running && (
         <p className="verify-progress" role="status">
-          正在运行 ProVerif…（可随时点「取消」中断）
+          正在运行 ProVerif，可随时取消。
         </p>
       )}
       {outcome !== null && (
@@ -158,14 +158,14 @@ function ParseNotices({ parseResult }: { parseResult: ParseResult }) {
     <div className="parse-notices">
       {parseResult.hasDegraded && (
         <p className="verify-notice verify-notice--info" role="status">
-          {`模型含解析器不支持的语法，已降级显示（${String(parseResult.diagnostics.filter((diagnostic) => diagnostic.severity === 'degraded').length)} 处；叙事视图里作为原文标注段保留）；验证仍按原始 .pv 文本运行。`}
+          {`模型含解析器不支持的语法，已降级显示 ${String(parseResult.diagnostics.filter((diagnostic) => diagnostic.severity === 'degraded').length)} 处，叙事视图按原文标注保留；验证仍按原始 .pv 文本运行。`}
         </p>
       )}
       {parseResult.hasErrors && (
         <div className="verify-notice verify-notice--error" role="alert">
           <p>
-            模型有语法错误：叙事视图只呈现能解析的部分。验证仍按原始 <code>.pv</code> 文本运行，
-            以 ProVerif 自己的报错为准。
+            模型有语法错误：叙事视图只呈现可解析部分；验证仍使用原始 <code>.pv</code> 文本，
+            以 ProVerif 的报错为准。
           </p>
           <ul className="diagnostic-list">
             {parseResult.diagnostics
@@ -232,7 +232,7 @@ function StdoutSections({ stdout }: { stdout: string }) {
   };
   return (
     <details className="raw-output">
-      <summary>ProVerif 完整原始输出（临时路径已省略，按查询分节）</summary>
+      <summary>ProVerif 完整原始输出 · 临时路径已省略 · 按查询分节</summary>
       <OutputActions
         text={sanitized}
         fileName="proverif-stdout.txt"
@@ -281,7 +281,7 @@ function VerifyResults({
   return (
     <div className="verify-results">
       <CoverageSummary coverage={coverage} />
-      <h4 className="verify-subtitle">按查询的结论（共 {views.length} 条）</h4>
+      <h4 className="verify-subtitle">按查询的结论 · 共 {views.length} 条</h4>
       {views.length === 0 ? (
         <p className="hint">
           ProVerif 没有输出任何 RESULT 行：可能是模型里没有 <code>query</code> 语句，或运行在中途结束。
@@ -313,7 +313,7 @@ function CoverageSummary({ coverage }: { coverage: VerificationCoverage }) {
       <div className="coverage-summary-head">
         <h5>验证覆盖摘要</h5>
         <span className="coverage-counts">
-          查询 {coverage.declaredQueries} · 已验证 {coverage.verifiedQueries} · 匹配 {coverage.matchedQueries}
+          查询 {coverage.declaredQueries} · 已验证 {coverage.verifiedQueries} · 已匹配 {coverage.matchedQueries}
           {' · '}声明目标 {coverage.byOrigin.declared} / 会话目标 {coverage.byOrigin.session}
           {' · '}保密性 {coverage.byKind.secrecy} / 认证 {coverage.byKind.correspondence} / 可达性 {coverage.byKind.reachability}
         </span>
@@ -357,18 +357,18 @@ export function QueryResultCard({
         <span className={`query-origin-badge query-origin-badge--${view.origin}`}>{view.originLabel}</span>
         <span className={`verdict-badge verdict-badge--${meta.tone}`}>{view.propertyVerdictLabel}</span>
       </div>
-      <p className="query-card-label">用户书写的查询</p>
+      <p className="query-card-label">源码中的查询</p>
       {view.userText !== null ? (
         <code className="query-card-user">{view.userText}</code>
       ) : (
         <>
           <code className="query-card-user">{view.normalizedQuery}</code>
-          <p className="hint">未匹配到用户查询原文，上面显示的是 ProVerif 的归一化形态。</p>
+          <p className="hint">未匹配到源码查询原文，上面显示的是 ProVerif 的归一化形态。</p>
         </>
       )}
       {!normalizedSame && (
         <p className="query-card-normalized">
-          归一化形态：<code>{view.normalizedQuery}</code>（判定针对它给出）
+          归一化形态：<code>{view.normalizedQuery}</code>。判定针对归一化查询。
         </p>
       )}
       <dl className="query-card-lines">
@@ -387,9 +387,9 @@ export function QueryResultCard({
           )}
           {view.eventAnchors.map((anchor) => (
             onSelectEvent === undefined
-              ? <span key={anchor.id}>{anchor.name}（{anchor.roleName}）</span>
+              ? <span key={anchor.id}>{anchor.name} · {anchor.roleName}</span>
               : <button type="button" key={anchor.id} className="btn btn--small" onClick={() => onSelectEvent(anchor.span)}>
-                  定位事件 {anchor.name}（{anchor.roleName}）
+                  定位事件 {anchor.name} · {anchor.roleName}
                 </button>
           ))}
         </div>
@@ -409,7 +409,7 @@ export function QueryResultCard({
       )}
       {attribution !== null && (
         <section className="trace-attribution" aria-label="反例归因">
-          <h5>攻击者从哪条消息获得什么</h5>
+          <h5>攻击者获得的信息</h5>
           <p className="trace-attribution-summary">{attribution.summary}</p>
           <ul className="trace-attribution-list">
             {attribution.entries.map((entry) => (
@@ -425,7 +425,7 @@ export function QueryResultCard({
           </ul>
           {attribution.unattributed.length > 0 && (
             <details className="trace-attribution-raw">
-              <summary>未归因原文（{attribution.unattributed.length} 行）</summary>
+              <summary>未归因原文 · {attribution.unattributed.length} 行</summary>
               <pre>{attribution.unattributed.join('\n')}</pre>
             </details>
           )}
@@ -436,7 +436,7 @@ export function QueryResultCard({
           <summary>
             {view.goalReachable !== null && view.verdict === 'false'
               ? '攻击路径摘要与反例 trace'
-              : '展开反例 / 攻击 trace 原文'}
+              : '展开反例 trace 原文'}
           </summary>
           {view.goalReachable !== null && view.verdict === 'false' && (
             <p className="query-card-goal">
@@ -480,7 +480,7 @@ export function VerifyFailureNotice({ outcome, source }: { outcome: VerifyFailur
         <p className="verify-failure-tech-message">{outcome.message}</p>
         {outcome.exitCode !== undefined && (
           <p>
-            退出码：<code>{outcome.exitCode === null ? '（无）' : String(outcome.exitCode)}</code>
+            退出码：<code>{outcome.exitCode === null ? '无' : String(outcome.exitCode)}</code>
           </p>
         )}
       </details>
@@ -491,7 +491,7 @@ export function VerifyFailureNotice({ outcome, source }: { outcome: VerifyFailur
               <span className="diagnostic-severity">ProVerif 定位</span>
               <span className="diagnostic-line">{`L${String(location.line)}:${String(location.column)}`}</span>
               <span className="diagnostic-message">
-                指向 ProVerif 报告的语法失败处；工具定位指向缺失 token 所在的左括号，两者可能不同
+                该位置是 ProVerif 报告的语法失败处；工具诊断指向缺失 token 所在的左括号，两者可能不同
                 {sourceLines[location.line - 1] !== undefined && (
                   <>
                     ；该行为 <code className="diagnostic-source">{sourceLines[location.line - 1]}</code>
@@ -503,10 +503,10 @@ export function VerifyFailureNotice({ outcome, source }: { outcome: VerifyFailur
         </ul>
       )}
       {outcome.stderr !== undefined && outcome.stderr.length > 0 && (
-        <OutputBlock summary="stderr（ProVerif 的错误信息）" text={outcome.stderr} fileName="proverif-stderr.txt" />
+        <OutputBlock summary="stderr · ProVerif 错误信息" text={outcome.stderr} fileName="proverif-stderr.txt" />
       )}
       {outcome.stdout !== undefined && outcome.stdout.length > 0 && (
-        <OutputBlock summary="stdout（ProVerif 的原始输出，临时路径已省略）" text={sanitizeStdout(outcome.stdout)} fileName="proverif-stdout.txt" />
+        <OutputBlock summary="stdout · ProVerif 原始输出，临时路径已省略" text={sanitizeStdout(outcome.stdout)} fileName="proverif-stdout.txt" />
       )}
     </div>
   );
@@ -572,7 +572,7 @@ export function OutputActions({
         className="btn btn--small"
         aria-pressed={wrap}
         onClick={onToggleWrap}
-        title={wrap ? '当前自动换行；点击改为不换行（横向滚动）' : '当前不换行；点击改为适合宽度（自动换行）'}
+        title={wrap ? '当前自动换行，点击改为不换行并横向滚动' : '当前不换行，点击改为自动换行'}
       >
         {wrap ? '不换行' : '适合宽度'}
       </button>
@@ -584,7 +584,7 @@ export function OutputActions({
       )}
       {copyState !== 'idle' && (
         <span className={`raw-output-copy-state${copyState === 'ok' ? ' raw-output-copy-state--ok' : ''}`} role="status">
-          {copyState === 'ok' ? '已复制' : '复制未成功（浏览器未授权剪贴板）'}
+          {copyState === 'ok' ? '已复制' : '复制失败：浏览器未授权访问剪贴板'}
         </span>
       )}
     </div>

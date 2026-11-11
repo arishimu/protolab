@@ -36,7 +36,7 @@ export function ExchangeSegmentBandSvg({
     `未配对 ${String(band.counts.unpaired)}`,
     `分支 ${String(band.counts.branches)}`,
     `冲突 ${String(band.counts.conflicts)}`,
-    band.events.length > 0 ? `事件 ${band.events.map((event) => event.name).join('、')}（不隐藏）` : '',
+    band.events.length > 0 ? `事件 ${band.events.map((event) => event.name).join('、')}，不隐藏` : '',
     band.collapsed ? '折叠态' : '展开态',
   ].filter(Boolean).join('；');
   const headerWidth = Math.max(160, band.width);
@@ -113,7 +113,7 @@ export function ExchangeSegmentFoldSvg({ fold, onToggle }: ExchangeSegmentFoldSv
       role="button"
       tabIndex={0}
       aria-expanded={false}
-      aria-label={`${fold.label}；回车展开`}
+      aria-label={`${fold.label}，按 Enter 展开`}
       onClick={(event) => {
         event.stopPropagation();
         onToggle(fold.segmentId);

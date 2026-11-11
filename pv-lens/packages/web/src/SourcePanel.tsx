@@ -125,10 +125,10 @@ export function SourcePanel({
   };
 
   return (
-    <details className="source-panel" open aria-label="协议源码（只读）" ref={panelRef}>
+    <details className="source-panel" open aria-label="协议源码，只读" ref={panelRef}>
       <summary>
         <span className="chevron">▸</span>
-        <span>协议源码（只读）</span>
+        <span>协议源码 · 只读</span>
         <span className="meta">
           {originLabel} · {lineCount} 行
         </span>
@@ -139,7 +139,7 @@ export function SourcePanel({
           className="btn btn--small"
           aria-pressed={wrap}
           onClick={toggleWrap}
-          title={wrap ? '当前自动换行；点击改为不换行（横向滚动）' : '当前不换行，长行可横向滚动；点击改为自动换行'}
+          title={wrap ? '当前自动换行，点击改为不换行并横向滚动' : '当前不换行，长行可横向滚动；点击改为自动换行'}
         >
           {wrap ? '不换行' : '自动换行'}
         </button>

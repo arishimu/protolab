@@ -62,7 +62,7 @@ export function CryptoOperationGroupSvg({
       role="button"
       tabIndex={0}
       aria-expanded={false}
-      aria-label={`${fold.label}，${fold.detail}，隐藏 ${String(fold.hiddenCount)} 项；回车展开`}
+      aria-label={`${fold.label}，${fold.detail}，隐藏 ${String(fold.hiddenCount)} 项，按 Enter 展开`}
       onClick={activate}
       onKeyDown={(event: KeyboardEvent<SVGGElement>) => activateOnKey(event, activate)}
     >
@@ -135,7 +135,7 @@ export function CryptoGroupToggle({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      aria-label={`${expanded ? '折叠' : '展开'}密码操作组${nested ? '（内层）' : ''}`}
+      aria-label={`${expanded ? '折叠' : '展开'}密码操作组${nested ? '，内层' : ''}`}
       onClick={(event) => {
         event.stopPropagation();
         toggle();

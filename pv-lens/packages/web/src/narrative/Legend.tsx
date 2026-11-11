@@ -261,7 +261,7 @@ export function Legend({
               <dt>
                 <code>functor(a, b)</code>
               </dt>
-              <dd>其它构造子（含 pk / spk / nonce_to_bitstring / messtermI 等自定义构造子）回退为函数调用写法</dd>
+              <dd>其他构造子显示为函数调用写法，包括 pk、spk、nonce_to_bitstring、messtermI 等自定义构造子</dd>
             </div>
           )}
           {present.has('tuple') && (
@@ -286,10 +286,10 @@ export function Legend({
                 <span className="legend-value-block">值</span>
               </dt>
               <dd>
-                值方块（含 <code>new</code> 与角色参数引入的绑定）：颜色由绑定身份稳定生成，一个绑定一种颜色，同色再现表示同一绑定的引用或等值复制；方块右缘数字是值身份序号，左缘图案按序号循环（空白、斜线、反斜线、点阵），作为权威标识；完整清单见下方“本图值序号”
+                值方块表示角色本地绑定，包括 <code>new</code> 与角色参数引入的绑定。颜色由绑定身份稳定生成，一个绑定一种颜色；同色再现表示同一绑定的引用或等值复制。方块右缘数字是值身份序号，左缘图案按序号循环使用空白、斜线、反斜线和点阵，作为权威标识。完整清单见下方本图值序号
                 {content.hasEqualityCopy && (
                   <>
-                    ；<span className="legend-value-block legend-value-block--dashed">虚线边框</span>表示等值复制 <code>=M</code>，与实线方块共享同一颜色，表示同一绑定的另一次出现
+                    。<span className="legend-value-block legend-value-block--dashed">虚线边框</span>表示等值复制 <code>=M</code>，与实线方块同色，表示同一绑定的另一次出现
                   </>
                 )}
               </dd>
@@ -300,7 +300,7 @@ export function Legend({
               <dt>
                 <span className="legend-method-box">方法</span>
               </dt>
-              <dd>方法盒：竖向梯形表示解构、横向表示构造、<code>?:</code> 表示产出单个值的条件选择；输入取自上方同色值方块，输出为下方值块；<code>=</code> / <code>∈</code> 检查盒无输出</dd>
+              <dd>方法盒：竖向梯形表示解构，横向表示构造，<code>?:</code> 表示产出单个值的条件选择。输入来自上方同色值方块，输出为下方值块。<code>=</code> 与 <code>∈</code> 检查盒没有输出</dd>
             </div>
           )}
           {present.has('crypto-group') && (
@@ -309,7 +309,7 @@ export function Legend({
                 <span className="legend-crypto-group">▸ 组</span>
               </dt>
               <dd>
-                密码操作组（语义折叠）：把一次密码操作的方法盒与输入/输出值收成一行摘要，摘要列出种类、方向、关键参数、密钥身份与隐藏计数；实线矩形为构造、虚线矩形为解构，暖色描边表示用户声明。它区别于密度折叠（另一条折叠条），未识别函数不建组也不折叠。
+                密码操作组表示语义折叠：把一次密码操作的方法盒与输入、输出值收成一行摘要，列出种类、方向、关键参数、密钥身份与隐藏计数。实线矩形表示构造，虚线矩形表示解构，暖色描边表示用户声明。该折叠与密度折叠相互独立；未识别函数不建组也不折叠。
               </dd>
             </div>
           )}
@@ -319,7 +319,7 @@ export function Legend({
                 <span className="legend-density-fold">▸ 算子簇</span>
               </dt>
               <dd>
-                密度折叠：角色内连续多个算子步骤收成一格，按算子数量自动判断；展开状态与密码操作组互相独立，折叠格下方同样保留虚线幽灵值块。
+                密度折叠：角色内连续多个算子步骤收成一格，按算子数量自动判断。展开状态与密码操作组相互独立；折叠格下方保留虚线幽灵值块。
               </dd>
             </div>
           )}
@@ -329,7 +329,7 @@ export function Legend({
                 <span className="legend-exchange-segment">▾ 交换段</span>
               </dt>
               <dd>
-                交换段：双线边框与边界标记圈住一段连续、因果凸的完整消息；段头列出消息区间、角色、信道与未配对/分支/冲突计数。折叠只隐藏段体，段头与跨段边保留；跨段边沿段框外侧 gutter 绕行。
+                交换段：双线边框与边界标记圈住一段连续、因果凸的完整消息。段头列出消息区间、角色、信道以及未配对、分支、冲突计数。折叠只隐藏段体，段头和跨段边保留；跨段边沿段框外侧的空隙绕行。
               </dd>
             </div>
           )}
@@ -338,7 +338,7 @@ export function Legend({
               <dt>
                 <span className="legend-wire-chip">线上词项</span>
               </dt>
-              <dd>未配对消息放上信道的完整词项（橙色描边），画在该步骤的自身角色列里并压在消息线上；有值层时置于值层下方</dd>
+              <dd>未配对消息放上信道的完整词项，橙色描边，画在该步骤的角色列内并覆盖消息线；存在值层时位于值层下方</dd>
             </div>
           )}
           {present.has('derived-chip') && (
@@ -357,7 +357,7 @@ export function Legend({
               <dd>
                 {content.singleRole
                   ? '单角色模型没有跨角色收发关系，消息步骤按未配对呈现；未配对不代表路由不存在。'
-                  : '虚线为该步骤的消息线：一端在角色生命线，另一端的橙色空心圆点标记词项抵达的信道总线。多方协议不自动连线（画对优先于画全）；自动配对仅适用于两方协议。'}
+                  : '虚线表示该步骤的消息线：一端在角色生命线，另一端以橙色空心圆点标记词项到达的信道。多方协议不自动连线，自动配对仅适用于两方协议。'}
               </dd>
             </div>
           )}
@@ -367,7 +367,7 @@ export function Legend({
                 <span className="legend-message-pillar">M1</span>
               </dt>
               <dd>
-                消息柱：设计意图上的 out → in，两端连线、词项只在信道帧里写一遍（帧内色带标注接收绑定），同色消息柱为同一身份。消息线型按 M 序号循环：实线、短虚线、点线；序号为权威标识。连线不代表消息在攻击者模型下达得到，安全性以 ProVerif 结论为准
+                消息柱表示设计意图上的 out → in。两端连线，词项只在信道帧里写一次，帧内色带标注接收绑定；同色消息柱表示同一条消息。消息线型按 M 序号循环使用实线、短虚线和点线，序号为权威标识。连线不代表消息在攻击者模型下可达，安全性以 ProVerif 结论为准
                 <LegendTokenList
                   ariaLabel="本图消息序号"
                   tokens={content.messages.map((token) => ({
@@ -390,7 +390,7 @@ export function Legend({
               <dt>
                 <code>①</code> 信道序号
               </dt>
-              <dd>信道列标题中的 ① 等序号字形按水平序列从左到右编号，用于在多信道模型中指认信道；超过五个信道时以 (n) 形式显示；信道边框线型按同一位置循环（实线、长虚线、点线），灰度下可按线型区分</dd>
+              <dd>信道列标题中的 ① 等序号按水平序列从左到右编号，用于在多信道模型中识别信道；超过五个信道时显示为 (n)。信道边框线型按同一位置循环使用实线、长虚线和点线，灰度下仍可区分</dd>
             </div>
           )}
           {present.has('scope-flags') && (
@@ -398,7 +398,7 @@ export function Legend({
               <dt>
                 <span className="legend-chip">!</span> / <span className="legend-chip">|</span>
               </dt>
-              <dd><code>!</code> 表示该角色处于复制作用域（可并发多会话），<code>|</code> 表示处于并行组合内</dd>
+              <dd><code>!</code> 表示角色处于复制作用域，可并发多会话；<code>|</code> 表示角色处于并行组合内</dd>
             </div>
           )}
           {present.has('event') && (
@@ -406,7 +406,7 @@ export function Legend({
               <dt>
                 <code>event …</code>
               </dt>
-              <dd>事件标注（对应性查询引用的协议位置）：默认中性标记；选中查询后该查询的前提画菱形、结论画旗标</dd>
+              <dd>事件标注，对应性查询引用的协议位置。默认中性标记；选中查询后，前提画菱形，结论画旗标</dd>
             </div>
           )}
           {present.has('branch-lane') && (
@@ -414,7 +414,7 @@ export function Legend({
               <dt>
                 <span className="legend-branch-tick">if …</span>
               </dt>
-              <dd>分支：守卫排成等值检查行；生命线旁的虚线竖轨是臂道（then / else），<code>▾</code> 开关折叠整个分支、折叠条显示守卫与隐藏步数</dd>
+              <dd>分支：守卫排成等值检查行；生命线旁的虚线竖轨是 then 或 else 臂道。<code>▾</code> 开关折叠整个分支，折叠条显示守卫和隐藏步数</dd>
             </div>
           )}
           {present.has('local-ops') && (
@@ -422,7 +422,7 @@ export function Legend({
               <dt>
                 <code>let / get / insert</code>
               </dt>
-              <dd><code>let</code> 显示为方法盒（输入在上、输出在下）；<code>get</code> 以表模式 <code>∈</code> 检查盒呈现；<code>insert</code> 是生命线上的本地步骤</dd>
+              <dd><code>let</code> 显示为方法盒，输入在上、输出在下；<code>get</code> 以表模式 <code>∈</code> 检查盒呈现；<code>insert</code> 是生命线上的本地步骤</dd>
             </div>
           )}
           {present.has('diagnostics') && (
@@ -431,7 +431,7 @@ export function Legend({
                 <span className="legend-chip legend-chip--degraded">降级诊断</span>{' '}
                 <span className="legend-chip legend-chip--error">错误诊断</span>
               </dt>
-              <dd>解析器的降级/错误诊断以原文标注卡片入图，按源码位置归入角色列；降级语句本身以虚线琥珀边框胶囊按原文保留，与 insert 的浅黄实线胶囊可区分</dd>
+              <dd>解析器的降级与错误诊断以原文标注卡片入图，按源码位置归入角色列。降级语句以虚线琥珀色标签保留原文，与 insert 的浅黄实线标签可区分</dd>
             </div>
           )}
         </dl>
@@ -439,7 +439,7 @@ export function Legend({
       {/* R07：值身份清单移出记法网格，作为独立折叠面板跨满全宽；超过阈值默认折叠，标题显示数量。 */}
       {content.values.length > 0 && (
         <details className="legend-value-fold" open={content.values.length <= LEGEND_VALUE_FOLD_THRESHOLD}>
-          <summary>本图值序号（{String(content.values.length)}）</summary>
+          <summary>本图值序号 · {String(content.values.length)}</summary>
           <LegendTokenList
             ariaLabel="本图值序号"
             tokens={content.values.map((token) => ({

@@ -16,12 +16,16 @@ function fixture(name: string): ParseResult {
   return parsePv(readFileSync(join(packagesDir, 'core', 'fixtures', 'pv', `${name}.pv`), 'utf8'));
 }
 function render(result: ParseResult): string {
-  return renderToString(createElement(NarrativeView, { result }));
+  return renderToString(createElement(NarrativeView, { result, initialCollapsedCryptoGroups: [] }));
 }
 
 /** 装配 App 实际传入的意图配对（ADR-0003），验证渲染端能画出连线。 */
 function renderWithPairings(result: ParseResult): string {
-  return renderToString(createElement(NarrativeView, { result, pairings: composeMessagePairings(result).pairings }));
+  return renderToString(createElement(NarrativeView, {
+    result,
+    pairings: composeMessagePairings(result).pairings,
+    initialCollapsedCryptoGroups: [],
+  }));
 }
 
 describe('NarrativeView 冒烟（react-dom/server，ticket 04）', () => {

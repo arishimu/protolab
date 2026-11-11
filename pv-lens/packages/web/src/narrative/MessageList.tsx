@@ -79,7 +79,7 @@ export function MessageList({
     <section className="message-list-panel" aria-label="交换段消息列表">
       <div className="message-list-heading">
         <h4>交换段 · 消息列表</h4>
-        <span className="message-list-hint">按因果 DAG 的确定性拓扑序排列；只勾选整条消息，选择不会写回 .pv。</span>
+        <span className="message-list-hint">按因果 DAG 的确定性拓扑序排列。只可勾选整条消息，选择不会写回 .pv。</span>
       </div>
       {multiParty && (
         <p className="message-list-notice" role="status">
@@ -89,7 +89,7 @@ export function MessageList({
       <div className="message-list-tools">
         <button type="button" className="btn" onClick={() => { setSelected([]); setCutHalf(false); }}>清空选择</button>
         <button type="button" className="btn" onClick={extendToClosure} disabled={validation.missingIds.length === 0}>
-          扩展到凸闭包（+{String(validation.missingIds.length)}）
+          扩展到凸闭包 +{String(validation.missingIds.length)}
         </button>
         <button type="button" className="btn btn--primary" onClick={create} disabled={multiParty || !validation.ok}>
           封装为交换段
@@ -119,7 +119,7 @@ export function MessageList({
                   type="checkbox"
                   checked={checked}
                   disabled={multiParty}
-                  aria-label={`选择 M${String(message.sequence)}${cut ? '（当前仅发送端）' : ''}`}
+                  aria-label={`选择 M${String(message.sequence)}${cut ? '，当前仅发送端' : ''}`}
                   onChange={() => toggleMessage(message.id)}
                 />
                 <code>M{message.sequence}</code>
@@ -154,7 +154,7 @@ export function MessageList({
       {segments.length > 0 && (
         <div className="segment-cards">
           <div className="segment-cards-heading">
-            <span>已创建交换段（{String(segments.length)}）</span>
+            <span>已创建交换段 · {String(segments.length)}</span>
             <span className="segment-cards-actions">
               <button type="button" className="btn" onClick={onCollapseAll}>全部折叠</button>
               <button type="button" className="btn" onClick={onExpandAll}>全部展开</button>

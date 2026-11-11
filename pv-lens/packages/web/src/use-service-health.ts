@@ -45,6 +45,6 @@ export function useVerifyServiceHealth(): VerifyServiceHealthState {
 /** 状态点的中文文案（供面板与首页共用；健康时不强调，未启动时给出启动指引）。 */
 export function verifyServiceHealthText(health: VerifyServiceHealth): string {
   if (health === 'up') return '验证服务已连接';
-  if (health === 'down') return '验证服务未启动（在 pv-lens 目录执行 pnpm start）';
+  if (health === 'down') return '验证服务未启动；在 pv-lens 目录执行 pnpm start';
   return '正在检查验证服务…';
 }

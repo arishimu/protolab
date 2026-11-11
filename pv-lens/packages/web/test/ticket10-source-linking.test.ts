@@ -191,7 +191,7 @@ describe('ticket #10：诊断按角色归属入泳道、未归属各一次', () 
     expect(html).toContain('structured-role-diagnostics');
     expect(html).toContain('structured-diagnostic-chip--degraded');
     expect(html).toContain('降级诊断 L4:6');
-    expect(html).not.toContain('解析诊断（未归属角色）');
+    expect(html).not.toContain('解析诊断 · 未归属角色');
     // 布局输出未归属集合（归属只算一次，供下方平铺直接消费）。
     expect(layout.unassignedDiagnostics).toHaveLength(0);
   });
@@ -202,7 +202,7 @@ describe('ticket #10：诊断按角色归属入泳道、未归属各一次', () 
     expect(result.diagnostics.length).toBe(1);
     // 该诊断落在主进程（不在任何命名角色区间）→ 泳道内无诊断条，下方平铺保留一次。
     expect(html).not.toContain('structured-role-diagnostics');
-    expect(html).toContain('解析诊断（未归属角色）');
+    expect(html).toContain('解析诊断 · 未归属角色');
     expect((html.match(/diagnostic-item--degraded/g) ?? []).length).toBe(1);
   });
 

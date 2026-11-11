@@ -140,7 +140,7 @@ describe('阶段 2：画布渲染与审计面板', () => {
   const groups = deriveCryptoGroups(result);
   const adec = groupOf(groups, (group) => group.roleName === 'clientA' && group.kind === 'asymmetric-decryption');
 
-  it('折叠组渲染为可聚焦按钮，展开态方法盒带折叠开关', () => {
+  it('默认折叠全部组；显式空折叠集合恢复展开态', () => {
     const folded = renderToString(createElement(NarrativeView, {
       result,
       initialCollapsedCryptoGroups: [adec.id],
@@ -151,7 +151,14 @@ describe('阶段 2：画布渲染与审计面板', () => {
     expect(folded).toContain('非对称解密');
     expect(folded).toContain('隐藏 ');
 
-    const expanded = renderToString(createElement(NarrativeView, { result }));
+    const defaultCollapsed = renderToString(createElement(NarrativeView, { result }));
+    expect(defaultCollapsed).toContain('structured-crypto-group');
+    expect(defaultCollapsed).not.toContain('structured-group-toggle');
+
+    const expanded = renderToString(createElement(NarrativeView, {
+      result,
+      initialCollapsedCryptoGroups: [],
+    }));
     expect(expanded).toContain('structured-group-toggle');
     expect(expanded).toContain('aria-expanded="true"');
   });
@@ -189,7 +196,7 @@ describe('阶段 2：画布渲染与审计面板', () => {
     const layout = buildStructuredNarrativeLayout(result);
     expect(layout.cryptoGroups.length).toBeGreaterThan(0);
     const html = renderToString(createElement(NarrativeView, { result }));
-    expect(html).toContain('密码操作组（语义折叠）');
+    expect(html).toContain('密码操作组表示语义折叠');
     expect(html).toContain('未识别函数不建组也不折叠');
   });
 });

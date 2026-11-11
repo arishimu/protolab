@@ -190,37 +190,36 @@ export function verifyFailureGuidance(kind: VerifyFailureKind): string {
 
 const FAILURE_GUIDANCE: Record<VerifyFailureKind, string> = {
   'invalid-request':
-    '请求未通过服务端校验：常见原因是模型文本为空，或超时不是正数（毫秒）。修正后重新运行。',
+    '请求未通过服务端校验。常见原因是模型文本为空，或超时不是正数毫秒值。修正后重新运行。',
   'not-found':
-    '验证接口路径不存在（HTTP 404）：前端请求的 /api/verify 与当前 server 的版本不一致。'
-    + '请更新代码后在 pv-lens 目录执行 pnpm start 重启 server，并确认 web 的 /api 代理指向 127.0.0.1:8787。',
+    '验证接口路径不存在，HTTP 404。前端请求的 /api/verify 与当前 server 版本不一致。'
+    + '请更新代码，在 pv-lens 目录执行 pnpm start 重启 server，并确认 web 的 /api 代理指向 127.0.0.1:8787。',
   'method-not-allowed':
-    '验证接口拒绝了该 HTTP 方法（HTTP 405）：POST /api/verify 只接受 POST。'
-    + '若持续出现，说明代理或 server 版本与前端不一致，在 pv-lens 目录执行 pnpm start 重启 server 后重试。',
+    '验证接口拒绝了该 HTTP 方法，HTTP 405。POST /api/verify 只接受 POST。'
+    + '若持续出现，说明代理或 server 版本与前端不一致；在 pv-lens 目录执行 pnpm start 重启 server 后重试。',
   'missing-executable':
     '本机找不到 ProVerif 可执行文件，需要先安装 ProVerif 2.x。'
-    + '安装：先装 OPAM（https://opam.ocaml.org/），再依次执行 opam update、opam depext proverif、opam install proverif；'
+    + '安装方法：先安装 OPAM，见 https://opam.ocaml.org/；再依次执行 opam update、opam depext proverif、opam install proverif。'
     + '若 proverif 不在当前 PATH 上，先在 shell 里执行 eval "$(opam env)"。'
-    + '也可以在启动 server 时用环境变量 PROVERIF_PATH 直接指定可执行文件路径，'
-    + '例如 PROVERIF_PATH=~/.opam/default/bin/proverif pnpm start（在 pv-lens 目录执行）。',
+    + '也可以在启动 server 时用环境变量 PROVERIF_PATH 指定可执行文件路径，'
+    + '例如在 pv-lens 目录执行 PROVERIF_PATH=~/.opam/default/bin/proverif pnpm start。',
   'proverif-error':
-    'ProVerif 报告了模型自身的问题（模型语法 / 类型 / 声明错误，不是工具故障）。'
-    + '请按下面的退出码与 stdout / stderr 定位模型源码的出错位置'
-    + '（ProVerif 会指明出错的行与语法元素），修正 .pv 后重新运行。',
+    'ProVerif 报告了模型自身的问题，属于模型语法、类型或声明错误，不是工具故障。'
+    + '请按下面的退出码与 stdout、stderr 定位模型源码的出错位置；ProVerif 会指明出错的行与语法元素。修正 .pv 后重新运行。',
   timeout:
-    'ProVerif 在时限内没有给出结论，已被终止。多数情况下是模型太复杂（状态空间爆炸）而不是卡死：'
-    + '把「超时（毫秒）」调大后重试；若仍然超时，考虑缩小模型（减少会话数 / 简化代数假设）。',
+    'ProVerif 在时限内没有给出结论，已被终止。多数情况下是模型太复杂导致状态空间爆炸，而不是卡死。'
+    + '调大超时毫秒数后重试；若仍然超时，考虑缩小模型，例如减少会话数或简化代数假设。',
   cancelled:
-    '验证已取消：本次运行没有产生结论（要重新验证就再点一次「运行验证」）。',
+    '验证已取消，本次运行没有产生结论。需要重新验证时再点一次运行验证。',
   unreachable:
-    '无法连接验证服务。请先启动 server：在 pv-lens 目录执行 pnpm start'
-    + '（等价于 pnpm --filter @pv-lens/server start），它默认监听 http://127.0.0.1:8787；'
-    + 'web 通过 Vite 的 /api 代理访问它（dev 与 preview 的代理都已在 vite.config.ts 配好）。',
+    '无法连接验证服务。请先启动 server：在 pv-lens 目录执行 pnpm start，'
+    + '等价于 pnpm --filter @pv-lens/server start。服务默认监听 http://127.0.0.1:8787；'
+    + 'web 通过 Vite 的 /api 代理访问它，dev 与 preview 的代理都已在 vite.config.ts 配好。',
   'internal-error':
-    '验证服务内部异常（server 未归类的错误）。请查看启动 server 的终端输出排查，然后重试。',
+    '验证服务内部异常，属于 server 未归类的错误。请查看启动 server 的终端输出排查，然后重试。',
   'bad-response':
-    '验证服务返回了无法识别的响应（不是约定结构的 JSON）。'
-    + '最常见的原因是 server 没在跑：Vite 代理连不上 127.0.0.1:8787 时会回一个非 JSON 的错误页。'
+    '验证服务返回了无法识别的响应，不是约定结构的 JSON。'
+    + '最常见的原因是 server 未启动：Vite 代理连不上 127.0.0.1:8787 时会返回非 JSON 错误页。'
     + '请先在 pv-lens 目录执行 pnpm start 启动 server 再重试；'
     + '若 server 已在运行，则可能是 server 版本与前端不匹配，重启 server 后再试。',
 };
@@ -255,13 +254,13 @@ function badResponseFailure(status: number, text: string, reason: string, nonJso
     return {
       ok: false,
       kind: 'unreachable',
-      message: `无法连接验证服务（代理返回 HTTP ${String(status)}，${reason}）：${snippet(text)}`,
+      message: `无法连接验证服务。代理返回 HTTP ${String(status)}，${reason}：${snippet(text)}`,
     };
   }
   return {
     ok: false,
     kind: 'bad-response',
-    message: `验证服务返回了无法识别的响应（HTTP ${String(status)}，${reason}）：${snippet(text)}`,
+    message: `验证服务返回了无法识别的响应。HTTP ${String(status)}，${reason}：${snippet(text)}`,
   };
 }
 
@@ -331,6 +330,6 @@ function isAbortError(error: unknown): boolean {
 /** 把响应体片段压成一行用于报错（bad-response 时用户需要一眼看出回的是什么）。 */
 function snippet(text: string, maxChars = 200): string {
   const flat = text.replace(/\s+/g, ' ').trim();
-  if (flat.length === 0) return '（响应体为空）';
+  if (flat.length === 0) return '响应体为空';
   return flat.length > maxChars ? `${flat.slice(0, maxChars)}…` : flat;
 }

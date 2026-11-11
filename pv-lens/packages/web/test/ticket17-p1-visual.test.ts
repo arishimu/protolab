@@ -26,7 +26,7 @@ function layoutOf(name: string): { result: ParseResult; layout: StructuredNarrat
   const result = fixture(name);
   const pairings = composeMessagePairings(result).pairings;
   const layout = buildStructuredNarrativeLayout(result, { pairings });
-  const html = renderToString(createElement(NarrativeView, { result, pairings }));
+  const html = renderToString(createElement(NarrativeView, { result, pairings, initialCollapsedCryptoGroups: [] }));
   return { result, layout, html };
 }
 

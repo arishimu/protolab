@@ -191,18 +191,29 @@ describe('阶段 3：段带、消息列表与画布组件', () => {
     expect(html).toContain('disabled');
   });
 
-  it('NarrativeView 注入交换段时渲染段带、折叠摘要与图例', () => {
+  it('NarrativeView 注入交换段时默认折叠并渲染段带、折叠摘要与图例', () => {
     const { result, pairings, segment } = setup();
     const html = renderToString(createElement(NarrativeView, {
       result,
       pairings,
       initialExchangeSegments: [segment],
-      initialCollapsedExchangeSegments: [segment.id],
     }));
     expect(html).toContain('structured-exchange-segment');
     expect(html).toContain('structured-exchange-segment--collapsed');
     expect(html).toContain('structured-exchange-fold');
     expect(html).toContain('交换段：双线边框');
+  });
+
+  it('NarrativeView 可用显式空折叠集合展开初始交换段', () => {
+    const { result, pairings, segment } = setup();
+    const html = renderToString(createElement(NarrativeView, {
+      result,
+      pairings,
+      initialExchangeSegments: [segment],
+      initialCollapsedExchangeSegments: [],
+    }));
+    expect(html).toContain('structured-exchange-segment');
+    expect(html).not.toContain('structured-exchange-segment--collapsed');
   });
 
   it('NarrativeView 面板与画布共存，无交换段时保持基线', () => {

@@ -17,8 +17,8 @@ export const LAYOUT_TWO_COLUMN_BREAKPOINT = 1280;
 /** E1/R08 装载提示文案由布局断点决定，不写死方向（纯函数供测试）；窄屏画布在前。 */
 export function layoutHintOf(wideLayout: boolean): string {
   return wideLayout
-    ? '任选其一即装载为当前协议；其源码会显示在左侧只读面板中，与右侧规范叙事视图并列。'
-    : '任选其一即装载为当前协议；规范叙事视图先显示，其源码面板随其后。';
+    ? '选择任一样例后，源码显示在左侧只读面板，规范叙事视图并列显示在右侧。'
+    : '选择任一样例后，规范叙事视图先显示，源码面板随后显示。';
 }
 
 /**
@@ -39,13 +39,13 @@ export function Home() {
     try {
       const text = await file.text();
       if (text.trim().length === 0) {
-        setImportError(`文件「${file.name}」为空，无法装载。`);
+        setImportError(`文件 ${file.name} 为空，无法装载。`);
         return;
       }
       setImportError(null);
       loadLocalText(file.name, text);
     } catch {
-      setImportError(`读取文件「${file.name}」失败，请重试或换一个 .pv 文件。`);
+      setImportError(`读取文件 ${file.name} 失败，请重试或选择其他 .pv 文件。`);
     }
   }
 
@@ -73,10 +73,10 @@ export function Home() {
       <p className="hint">{layoutHintOf(wideLayout)}</p>
       {/* R19：首次使用者的 3–5 行阅读路径。 */}
       <ol className="reading-path" aria-label="如何阅读这张图">
-        <li>装载后先看画布：竖向虚线是角色生命线，矩形是信道，横向连线是消息（设计意图，不代表攻击者可达）。</li>
-        <li>同色值方块是同一个绑定，消息按 M 序号与线型区分身份。</li>
-        <li>要回答安全性问题，用画布下方的验证面板运行 ProVerif，按查询读判定与反例 trace。</li>
-        <li>多角色模型可用人工配对声明收发关系（仅会话内有效，不回写 .pv 文件）。</li>
+        <li>装载后先看画布：竖向虚线是角色生命线，矩形是信道，横向连线表示消息的设计意图，不代表攻击者可达。</li>
+        <li>同色值方块表示同一个绑定；消息用 M 序号和线型区分。</li>
+        <li>安全性问题由画布下方的验证面板回答：运行 ProVerif，按查询读取判定和反例 trace。</li>
+        <li>多角色模型可用人工配对声明收发关系。声明仅在本次会话有效，不回写 .pv。</li>
       </ol>
       <ul className="sample-list">
         {samples.map(({ def }) => {
@@ -108,7 +108,7 @@ export function Home() {
         >
           导入 .pv 文件
         </button>
-        <span className="hint">从本地磁盘选择一个 .pv 文本文件，将其内容装载为当前协议。</span>
+        <span className="hint">从本地磁盘选择 .pv 文件，载入为当前协议。</span>
         <input
           ref={fileRef}
           type="file"

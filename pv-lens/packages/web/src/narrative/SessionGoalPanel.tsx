@@ -77,10 +77,10 @@ export function SessionGoalPanel({
 
   return (
     <details className="session-goals">
-      <summary>会话目标（保密性 / 认证 / 可达性）{goals.length > 0 ? ` · ${String(goals.length)} 个` : ''}</summary>
+      <summary>会话目标 · 保密性 / 认证 / 可达性{goals.length > 0 ? ` · ${String(goals.length)} 个` : ''}</summary>
       <p className="hint">
-        会话目标只在本会话内追加到派生验证文本，排在首个 process 之前；不覆盖源码查询，也不回写 .pv。
-        声明目标与探索性有序对的展示保持不变。
+        会话目标仅追加到本次会话的派生验证文本，位于首个 process 之前；不覆盖源码查询，也不回写 .pv。
+        声明目标和探索性有序对的展示不受影响。
       </p>
       <div className="session-goal-builders">
         <section className="session-goal-builder" aria-label="保密性目标">
@@ -102,7 +102,7 @@ export function SessionGoalPanel({
           )}
           {freshNames.length > 0 && (
             <details className="session-goal-hints">
-              <summary>角色内 new 的提示（{freshNames.length}）</summary>
+              <summary>角色内 new 提示 · {freshNames.length} 项</summary>
               <ul>
                 {freshNames.map((name) => (
                   <li key={`${name.roleName}:${name.name}:${String(name.span.start.offset)}`}>{roleLocalFreshHint(name)}</li>
@@ -168,7 +168,7 @@ export function SessionGoalPanel({
       {goals.length > 0 && (
         <div className="session-goal-list">
           <div className="session-goal-list-head">
-            <span>已添加的会话目标（{goals.length}）</span>
+            <span>已添加的会话目标 · {goals.length}</span>
             <button type="button" className="btn btn--small" onClick={onClear}>全部清除</button>
           </div>
           <ul>

@@ -35,7 +35,7 @@ describe('VerifyPanel 冒烟（ticket 08）', () => {
 
     expect(html).toContain('运行验证');
     expect(html).toContain('验证结果');
-    expect(html).toContain('超时（毫秒）');
+    expect(html).toContain('超时毫秒');
     expect(html).toContain('value="30000"');
     expect(html).not.toContain('正在运行 ProVerif');
     expect(html).not.toContain('按查询的结论');
@@ -162,7 +162,7 @@ describe('VerifyFailureNotice：按 kind 分派中文指引', () => {
       stdout: 'Starting query not attacker(s[])',
     });
     expect(html).toContain('模型太复杂');
-    expect(html).toContain('超时（毫秒）');
+    expect(html).toContain('调大超时毫秒数');
   });
 
   it('服务不可达：给出启动命令与默认地址', () => {

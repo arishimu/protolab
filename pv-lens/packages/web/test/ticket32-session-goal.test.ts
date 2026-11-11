@@ -50,7 +50,7 @@ describe('阶段 5：会话目标面板', () => {
     expect(html).toContain('保密性');
     expect(html).toContain('认证 / 对应性');
     expect(html).toContain('可达性');
-    expect(html).toContain('角色内 new 的提示');
+    expect(html).toContain('角色内 new 提示');
     expect(html).toContain('不是顶层 free 秘密名');
   });
 

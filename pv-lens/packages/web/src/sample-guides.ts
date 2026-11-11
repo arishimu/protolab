@@ -31,22 +31,22 @@ export const SAMPLE_GUIDES: Readonly<Record<string, SampleGuide>> = {
   hello: {
     sampleId: 'hello',
     title: 'hello：从明文信道开始',
-    summary: '最短样例：信道是公开的，两个自由名字分别代表会泄露和不会泄露的秘密。',
+    summary: '最短样例。信道公开；两个自由名字分别表示会泄露和不会泄露的秘密。',
     steps: [
       { id: 'hello-channel', title: '公开信道', body: 'free c: channel 表示所有角色共享的公开信道。', target: { kind: 'source', line: 3, label: '信道声明' } },
-      { id: 'hello-secret', title: '私有名字', body: 'RSA 与 Cocks 都是 free [private] 名字；private 只是建模声明，是否泄露由查询回答。', target: { kind: 'source', line: 6, label: 'RSA 声明' } },
-      { id: 'hello-rsa', title: 'RSA 保密性查询', body: '攻击者能否从 out(c,RSA) 获得 RSA？查看该查询的判定与反例 trace。', target: { kind: 'query', index: 0 } },
-      { id: 'hello-cocks', title: 'Cocks 保密性查询', body: '对比 Cocks：同为私有名字，但从未发送到公开信道上。', target: { kind: 'query', index: 1 } },
+      { id: 'hello-secret', title: '私有名字', body: 'RSA 与 Cocks 都是 free [private] 名字。private 是建模声明，是否泄露由查询回答。', target: { kind: 'source', line: 6, label: 'RSA 声明' } },
+      { id: 'hello-rsa', title: 'RSA 保密性查询', body: '查询攻击者能否从 out(c,RSA) 获得 RSA，并查看判定与反例 trace。', target: { kind: 'query', index: 0 } },
+      { id: 'hello-cocks', title: 'Cocks 保密性查询', body: '对照 Cocks：同为私有名字，但从未发送到公开信道。', target: { kind: 'query', index: 1 } },
     ],
   },
   'handshake-fixed': {
     sampleId: 'handshake-fixed',
     title: '握手修正版：对称、非对称与签名',
-    summary: '观察一次握手如何同时使用三种密码操作，并用事件查询表达认证目标。',
+    summary: '观察一次握手如何使用三种密码操作，以及如何用事件查询表达认证目标。',
     steps: [
       { id: 'hs-senc', title: '对称加密方程', body: 'reduc sdec(senc(m,k),k)=m 同时给出加密与解密方向。', target: { kind: 'source', line: 5, label: '对称方程' } },
-      { id: 'hs-sign', title: '签名验证', body: 'checksign 与 sign 组成签名操作；它本身不自动等于认证成立。', target: { kind: 'source', line: 28, label: '签名方程' } },
-      { id: 'hs-event', title: '事件旗标', body: 'acceptsServer 是服务器接受事件；对应性查询会引用它。', target: { kind: 'event', name: 'acceptsServer' } },
+      { id: 'hs-sign', title: '签名验证', body: 'checksign 与 sign 组成签名操作。签名本身不证明认证成立。', target: { kind: 'source', line: 28, label: '签名方程' } },
+      { id: 'hs-event', title: '事件旗标', body: 'acceptsServer 是服务器接受事件，对应性查询会引用它。', target: { kind: 'event', name: 'acceptsServer' } },
       { id: 'hs-secrecy', title: '保密性查询', body: 'attacker(s) 询问会话密钥 s 是否可能泄露。', target: { kind: 'query', index: 0 } },
       { id: 'hs-auth', title: '单射认证查询', body: 'inj-event(termServer) ==> inj-event(acceptsClient) 要求事件一一对应。', target: { kind: 'query', index: 2 } },
     ],
@@ -54,12 +54,12 @@ export const SAMPLE_GUIDES: Readonly<Record<string, SampleGuide>> = {
   'ns-original': {
     sampleId: 'ns-original',
     title: 'NS 原版：Lowe 攻击',
-    summary: '原版 Needham-Schroeder 的 B 侧认证被 Lowe 攻击证伪；对照保密性查询阅读反例。',
+    summary: 'Lowe 攻击证伪了原版 Needham-Schroeder 的 B 侧认证；结合保密性查询阅读反例。',
     steps: [
       { id: 'ns-aenc', title: '公钥加密方程', body: 'adec(aenc(x,pk(y)),y)=x 说明加密用公钥、解密用私钥。', target: { kind: 'source', line: 9, label: '非对称方程' } },
       { id: 'ns-event', title: 'B 侧开始事件', body: 'beginBparam 标记 Bob 开始与某个公钥通信。', target: { kind: 'event', name: 'beginBparam' } },
-      { id: 'ns-auth', title: 'B 侧认证查询', body: 'endBparam ==> beginBparam 被证伪；展开反例 trace 看攻击者如何重放。', target: { kind: 'query', index: 0 } },
-      { id: 'ns-secrecy', title: 'B 的保密性', body: 'secretBNa 的保密性同样被证伪；注意区分“这条查询失败”与其他查询的判定。', target: { kind: 'query', index: 4 } },
+      { id: 'ns-auth', title: 'B 侧认证查询', body: 'endBparam ==> beginBparam 被证伪。展开反例 trace 可查看攻击者的重放过程。', target: { kind: 'query', index: 0 } },
+      { id: 'ns-secrecy', title: 'B 的保密性', body: 'secretBNa 的保密性同样被证伪。需区分这条查询的判定与其他查询的判定。', target: { kind: 'query', index: 4 } },
     ],
   },
   'ns-mutual-auth': {
@@ -67,9 +67,9 @@ export const SAMPLE_GUIDES: Readonly<Record<string, SampleGuide>> = {
     title: 'NS 修正版：互认证与签名',
     summary: '修正版引入签名与身份检查，两条互认证查询都成立。',
     steps: [
-      { id: 'nsm-decrypt', title: '解密方程', body: 'decrypt(encrypt(x,pk(y)),y)=x 是 NS 消息加密的核心。', target: { kind: 'source', line: 22, label: '解密方程' } },
+      { id: 'nsm-decrypt', title: '解密方程', body: 'decrypt(encrypt(x,pk(y)),y)=x 是 NS 消息加密的基础。', target: { kind: 'source', line: 22, label: '解密方程' } },
       { id: 'nsm-input', title: '身份检查', body: '发起者先检查对端身份是否诚实，再继续协议。', target: { kind: 'source', line: 72, label: '身份检查' } },
-      { id: 'nsm-event', title: '发起者事件', body: 'termI 标记发起者完成的消息视图。', target: { kind: 'event', name: 'termI' } },
+      { id: 'nsm-event', title: '发起者事件', body: 'termI 标记发起者完成消息处理的位置。', target: { kind: 'event', name: 'termI' } },
       { id: 'nsm-query1', title: '发起者互认证', body: 'termI ==> acceptsR 要求响应者接受过同一组值。', target: { kind: 'query', index: 0 } },
       { id: 'nsm-query2', title: '响应者互认证', body: 'termR ==> acceptsI 是反方向的单射认证查询。', target: { kind: 'query', index: 1 } },
     ],

@@ -43,7 +43,7 @@ describe('ticket #15：对应性矩阵的声明目标与探索对', () => {
       selectedQueryId: null,
       onSelectQuery: () => {},
     })).replace(/<!-- -->/g, '');
-    expect(html).toContain('4 个事件，生成 16 条有序对；其中 2 条为源码声明的安全目标');
+    expect(html).toContain('4 个事件 · 16 条有序对 · 2 条源码声明的安全目标');
     expect(html).toContain('仅显示源码声明的安全目标');
     expect(html).toContain('自反对即');
   });

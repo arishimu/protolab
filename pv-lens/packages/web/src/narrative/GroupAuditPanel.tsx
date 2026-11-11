@@ -63,7 +63,7 @@ export function GroupAuditPanel({
 
   return (
     <details className="group-audit" aria-label="密码操作审计">
-      <summary>密码操作审计（{String(groups.length)}）</summary>
+      <summary>密码操作审计 · {String(groups.length)}</summary>
       <div className="group-audit-toolbar">
         <button type="button" className="icon-btn icon-btn--wide" onClick={onCollapseAll}>全部折叠</button>
         <button type="button" className="icon-btn icon-btn--wide" onClick={onExpandAll}>全部展开</button>
@@ -111,7 +111,7 @@ export function GroupAuditPanel({
                   {GROUP_ORIGIN_LABELS[group.origin]}
                   {group.origin === 'user' ? '' : ` · ${GROUP_CONFIDENCE_LABELS[group.confidence]}`}
                 </button>
-                <span className="group-audit-count" title="折叠时隐藏的成员总数（含嵌套组）">隐藏 {group.hiddenCount}</span>
+                <span className="group-audit-count" title="折叠时隐藏的成员总数，含嵌套组">隐藏 {group.hiddenCount}</span>
               </div>
               <div className="group-audit-meta">
                 <code>{group.functor}</code>

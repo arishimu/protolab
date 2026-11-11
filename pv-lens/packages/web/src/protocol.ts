@@ -61,7 +61,7 @@ export function loadBuiltinSample(sampleId: string): LoadedProtocol {
 export function loadImportedFile(fileName: string, source: string): LoadedProtocol {
   const base = fileName.endsWith('.pv') ? fileName.slice(0, -'.pv'.length) : fileName;
   return {
-    title: `${base}（本地导入）`,
+    title: `${base} · 本地导入`,
     description: `本地文件 ${fileName}，内容已装载为当前协议。`,
     origin: { kind: 'file', fileName },
     source,

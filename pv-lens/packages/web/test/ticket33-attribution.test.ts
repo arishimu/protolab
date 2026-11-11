@@ -31,7 +31,7 @@ describe('阶段 5：反例归因 UI', () => {
       onLocateSpan: () => undefined,
       onSelectEvent: () => undefined,
     })).replace(/<!-- -->/g, '');
-    expect(html).toContain('攻击者从哪条消息获得什么');
+    expect(html).toContain('攻击者获得的信息');
     expect(html).toContain('攻击者收到');
     expect(html).toContain('未归因原文');
     expect(html).toContain('pk(skB[])');
@@ -49,6 +49,6 @@ describe('阶段 5：反例归因 UI', () => {
       onLocateSpan: () => undefined,
       onSelectEvent: () => undefined,
     }));
-    expect(html).not.toContain('攻击者从哪条消息获得什么');
+    expect(html).not.toContain('攻击者获得的信息');
   });
 });

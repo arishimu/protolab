@@ -19,9 +19,9 @@ import './styles.css';
 
 /** 点选被拒时的用户可见文案（拒绝原因 → 提示）。 */
 const SELECTION_REASONS: Readonly<Record<string, string>> = {
-  'automatic-endpoint': '自动配对好的端点不能人工配对；请点未配对的发送端。',
-  'in-without-pending': '请先点选一个发送端（未配对或已人工配对的扇出源），再点接收端声明设计意图。',
-  'channel-mismatch': '人工配对必须使用同一信道；请点同一信道上的接收端。',
+  'automatic-endpoint': '自动配对的端点不能人工配对，请选择未配对的发送端。',
+  'in-without-pending': '先选择发送端，再选择接收端以声明设计意图。发送端可以是未配对端点或已人工配对的扇出源。',
+  'channel-mismatch': '人工配对要求收发端位于同一信道，请选择该信道上的接收端。',
 };
 
 /**
@@ -321,7 +321,7 @@ function LoadedView() {
           className="btn"
           onClick={toggleSourceHidden}
           aria-pressed={sourceHidden}
-          title={sourceHidden ? '恢复源码列（宽屏回到双栏并列）' : '暂时隐藏源码列，画布占满宽度'}
+          title={sourceHidden ? '恢复源码列，宽屏恢复双栏' : '隐藏源码列，画布占满宽度'}
         >
           {sourceHidden ? '显示源码' : '隐藏源码'}
         </button>
@@ -340,7 +340,7 @@ function LoadedView() {
       )}
       {degradedDiagnostics.length > 0 && (
         <p className="degraded-banner" role="status">
-          {`解析降级 ${String(degradedDiagnostics.length)} 处：解析器不支持的语句在画布中按原文保留（虚线琥珀胶囊）。`}
+          {`解析降级 ${String(degradedDiagnostics.length)} 处：解析器不支持的语句在画布中按原文保留，显示为虚线琥珀色标签。`}
           {firstDegradedOffset !== null && (
             <button
               type="button"
@@ -379,7 +379,7 @@ function LoadedView() {
             role="separator"
             aria-orientation="vertical"
             aria-label="拖拽调整源码列宽度"
-            title="拖拽调整源码列宽度（280–560px）"
+            title="拖拽调整源码列宽度，范围 280–560px"
             onPointerDown={(event) => {
               // 默认起点取 CSS minmax 的实际上限（420px），与未拖拽时的渲染宽度一致。
               dragStateRef.current = {
@@ -424,7 +424,7 @@ function LoadedView() {
           {manualPairingEntries.length > 0 && (
             <section className="manual-pairings" aria-label="已声明配对">
               <h3 className="manual-pairings-title">
-                已声明配对（{String(manualPairingEntries.length)} 条，仅本次会话）
+                已声明配对 · {String(manualPairingEntries.length)} 条 · 仅本次会话
                 <button type="button" className="btn" onClick={clearManualIntents}>全部清除</button>
               </h3>
               <ol className="manual-pairings-list">

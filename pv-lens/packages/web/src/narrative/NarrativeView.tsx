@@ -82,11 +82,11 @@ export interface NarrativeViewProps {
   initialCollapsedBranches?: readonly string[];
   /** 初始即展开的算子簇（07b / spec 51：簇默认折叠，此 prop 供测试与外层控制初始态）。 */
   initialExpandedClusters?: readonly string[];
-  /** 初始即折叠的密码操作组 id；缺省全部展开（展开态保持基线结构）。 */
+  /** 初始即折叠的密码操作组 id；缺省折叠全部组。传入空数组可让全部组展开。 */
   initialCollapsedCryptoGroups?: readonly string[];
   /** 初始交换段（会话内存注入，测试或外部恢复用）。 */
   initialExchangeSegments?: readonly ExchangeSegment[];
-  /** 初始即折叠的交换段 id。 */
+  /** 初始即折叠的交换段 id；缺省折叠全部初始交换段。传入空数组可让全部段展开。 */
   initialCollapsedExchangeSegments?: readonly string[];
   /** 人工配对诊断（拒绝与顺序环），渲染为画布旁的警告条。 */
   manualDiagnostics?: readonly PairingDiagnostic[];
@@ -120,9 +120,9 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   pairings = [],
   initialCollapsedBranches = [],
   initialExpandedClusters = [],
-  initialCollapsedCryptoGroups = [],
+  initialCollapsedCryptoGroups,
   initialExchangeSegments = [],
-  initialCollapsedExchangeSegments = [],
+  initialCollapsedExchangeSegments,
   manualDiagnostics = [],
   pendingOutId = null,
   selectionNotice = null,
@@ -150,25 +150,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   const [collapsedBranches, toggleBranch] = useToggleSet(initialCollapsedBranches);
   // 高密度算子簇默认折叠（spec 51，与分支相反）；集合语义 = 用户已点开的簇。
   const [expandedClusters, toggleOperatorCluster] = useToggleSet(initialExpandedClusters);
-  // 密码操作组默认展开（展开态保持基线）；集合语义 = 已折叠的组。
-  const [collapsedCryptoGroups, toggleCryptoGroup, setCryptoGroupsCollapsed] = useToggleSet(initialCollapsedCryptoGroups);
   const [cryptoGroupOverrides, setCryptoGroupOverrides] = useState<Readonly<Record<string, OperationKind>>>({});
-  const exchangeDag = useMemo(() => buildExchangeDag(result, pairings), [result, pairings]);
-  const [exchangeSegments, setExchangeSegments] = useState<readonly ExchangeSegment[]>(initialExchangeSegments);
-  const [collapsedExchangeSegments, toggleExchangeSegment, setExchangeSegmentsCollapsed] = useToggleSet(initialCollapsedExchangeSegments);
-  const [activeConceptId, setActiveConceptId] = useState<string | null>(null);
-  const activeConcept = activeConceptId === null ? null : conceptOf(activeConceptId) ?? null;
-  // 切换协议即清空会话内的折叠状态与用户覆盖（决策 01 第 5.3 条）。
-  const lastGroupResultRef = useRef(result);
-  useEffect(() => {
-    if (lastGroupResultRef.current === result) return;
-    lastGroupResultRef.current = result;
-    setCryptoGroupOverrides({});
-    setCryptoGroupsCollapsed([], false);
-    setExchangeSegments([]);
-    setExchangeSegmentsCollapsed([], false);
-  }, [result, setCryptoGroupsCollapsed, setExchangeSegmentsCollapsed]);
-
   const visibleRoleNames = useMemo(
     () => new Set(result.roles.length > 0 ? result.roles.map((role) => role.name) : result.mainProcess === null ? [] : [result.mainProcess.name]),
     [result],
@@ -181,6 +163,26 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
     () => deriveCryptoGroups(result, { overrides: cryptoGroupOverrides }).filter((group) => visibleRoleNames.has(group.roleName)),
     [result, cryptoGroupOverrides, visibleRoleNames],
   );
+  // 密码操作组默认折叠；集合语义 = 已折叠的组。传入空数组可让全部组展开。
+  const [collapsedCryptoGroups, toggleCryptoGroup, setCryptoGroupsCollapsed, replaceCollapsedCryptoGroups] =
+    useToggleSet(initialCollapsedCryptoGroups ?? autoCryptoGroups.map((group) => group.id));
+  const exchangeDag = useMemo(() => buildExchangeDag(result, pairings), [result, pairings]);
+  const [exchangeSegments, setExchangeSegments] = useState<readonly ExchangeSegment[]>(initialExchangeSegments);
+  // 交换段默认折叠；传入空数组可让全部初始段展开。
+  const [collapsedExchangeSegments, toggleExchangeSegment, setExchangeSegmentsCollapsed, replaceCollapsedExchangeSegments] =
+    useToggleSet(initialCollapsedExchangeSegments ?? initialExchangeSegments.map((segment) => segment.id));
+  const [activeConceptId, setActiveConceptId] = useState<string | null>(null);
+  const activeConcept = activeConceptId === null ? null : conceptOf(activeConceptId) ?? null;
+  // 切换协议即清空会话内的折叠状态与用户覆盖（决策 01 第 5.3 条）；折叠状态回到默认的全折叠。
+  const lastGroupResultRef = useRef(result);
+  useEffect(() => {
+    if (lastGroupResultRef.current === result) return;
+    lastGroupResultRef.current = result;
+    setCryptoGroupOverrides({});
+    replaceCollapsedCryptoGroups(autoCryptoGroups.map((group) => group.id));
+    setExchangeSegments([]);
+    replaceCollapsedExchangeSegments([]);
+  }, [result, autoCryptoGroups, replaceCollapsedCryptoGroups, replaceCollapsedExchangeSegments]);
   const setCryptoGroupKind = (groupId: string, kind: OperationKind): void => {
     const automatic = autoCryptoGroups.find((group) => group.id === groupId)?.kind;
     setCryptoGroupOverrides((current) => {
@@ -212,7 +214,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
   };
   const addExchangeSegment = (segment: ExchangeSegment): void => {
     setExchangeSegments((current) => [...current, segment]);
-    setExchangeSegmentsCollapsed([segment.id], false);
+    setExchangeSegmentsCollapsed([segment.id], true);
   };
   const renameExchangeSegment = (segmentId: string, label: string | null): void => {
     setExchangeSegments((current) => current.map((segment) =>
@@ -407,7 +409,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             onClick={() => setPairingMode((value) => !value)}
             disabled={!pairingMode && !pairingCandidateInfo.canPair}
             title={pairingCandidateInfo.canPair
-              ? '进入后按三步声明：点发送端 → 点同信道接收端 → 完成声明'
+              ? '进入后依次选择发送端、同信道接收端，完成声明'
               : '当前没有同信道的未配对发送端与接收端，无法进入人工配对'}
           >
             {pairingMode ? '退出配对' : '人工配对'}
@@ -419,7 +421,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             className="btn narrative-focus-source"
             onClick={onFocusSource}
             disabled={!canFocusSource}
-            title={canFocusSource ? '在源码面板中定位当前选中对象（只滚动源码容器）' : '先点击画布中的对象'}
+            title={canFocusSource ? '在源码面板中定位当前选中对象，只滚动源码容器' : '先点击画布中的对象'}
           >
             定位源码
           </button>
@@ -535,7 +537,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
             type="button"
             className="icon-btn icon-btn--wide"
             aria-label="全屏画布"
-            title={fullscreen ? '退出全屏（Esc）' : '在全屏视口中阅读画布'}
+            title={fullscreen ? '退出全屏，按 Esc' : '在全屏视口中阅读画布'}
             aria-pressed={fullscreen}
             onClick={toggleFullscreen}
           >{fullscreen ? '退出全屏' : '全屏'}</button>
@@ -547,21 +549,21 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
         )}
       {structured.hasLanes && (
         <p className="hint narrative-caption-hint">
-          纵轴是每个角色自己的消息序，信道是共享空间锚点；颜色只表示消息和值，不表示信道或验证结论。
+          纵轴是每个角色自己的消息序，信道是共享的空间锚点。颜色只表示消息和值，不表示信道或验证结论。
           跨角色连接表达设计意图，不代表攻击者模型下的可达性。
         </p>
       )}
       {structured.hasLanes && hasSelectableEndpoints && !pairingMode && (
         <p className="hint narrative-pairing-entry-hint">
           {pairingCandidateInfo.canPair
-            ? '可点选未配对端点声明收发关系（人工配对）；自动配对仅适用于两方协议。'
+            ? '可点选未配对端点声明收发关系，即人工配对；自动配对仅适用于两方协议。'
             : '当前没有同信道的未配对发送端与接收端，无法进入人工配对。'}
         </p>
       )}
       {pairingMode && (
         <p className="hint narrative-pairing-steps" role="status">
-          人工配对三步：1. 点一个未配对发送端；2. 点同信道的未配对接收端；3. 声明即时生效并可撤销。
-          重复选择同一发送端可继续广播扇出；声明只在本次会话内，不回写 <code>.pv</code>。
+          人工配对分三步：选择未配对发送端；选择同信道的未配对接收端；声明立即生效并可撤销。
+          重复选择同一发送端可继续声明广播扇出。声明仅在本次会话内有效，不回写 <code>.pv</code>。
         </p>
       )}
       <div className="narrative-scroll-body">
@@ -569,8 +571,8 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
           <>
             {pendingOutId !== null && (
               <p className="hint narrative-pairing-hint" role="status">
-                已选中发送端：点同信道的未配对接收端即声明设计意图（再点同一发送端取消）；
-                重复选择同一发送端可继续广播扇出。声明只在本次会话内，不回写 `.pv`。
+                已选中发送端。选择同信道的未配对接收端即可声明设计意图；再次选择同一发送端可取消。
+                重复选择同一发送端可继续声明广播扇出。声明仅在本次会话内有效，不回写 `.pv`。
               </p>
             )}
             {selectionNotice !== null && (
@@ -628,7 +630,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
           <NarrativeDiagnostics unassigned={structured.unassignedDiagnostics} />
           {structured.conflicts.length > 0 && (
             <section className="narrative-conflicts" aria-label="布局冲突列表">
-              <h4 className="narrative-conflicts-title">布局冲突（{String(structured.conflicts.length)} 处）</h4>
+              <h4 className="narrative-conflicts-title">布局冲突 · {String(structured.conflicts.length)} 处</h4>
               <ul className="narrative-conflicts-list">
                 {structured.conflicts.map((conflict, index) => {
                   const number = index + 1;
@@ -647,7 +649,7 @@ export const NarrativeView = forwardRef<NarrativeViewHandle, NarrativeViewProps>
                   );
                 })}
               </ul>
-              <p className="hint">冲突表示布局为保证可读性做了避让；不影响协议语义与验证结论。</p>
+              <p className="hint">冲突表示布局为避免遮挡做了调整，不影响协议语义与验证结论。</p>
             </section>
           )}
           <MessageList
@@ -1135,7 +1137,7 @@ function EndpointSvg({
       className={`structured-endpoint${endpoint.unpaired ? ' structured-endpoint--unpaired narrative-card--unpaired' : ' narrative-edge'}${selectable ? ' structured-endpoint--selectable' : ''}${selectable && pairingMode ? ' structured-endpoint--candidate' : ''}${pending ? ' structured-endpoint--pending' : ''}${!endpoint.unpaired && manualPaired ? ' structured-endpoint--manual' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
       data-identity={endpoint.id}
       data-channel={endpoint.channelName}
-      aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}${selectable ? ' · 可选为人工配对端（Enter 选择）' : ''}`}
+      aria-label={`${endpoint.direction === 'out' ? '发出' : '接收'} ${endpoint.termText} · 信道 ${endpoint.channelName}${selectable ? ' · 可选为人工配对端，按 Enter 选择' : ''}`}
       {...(selectable ? { role: 'button', tabIndex: 0, onKeyDown: (event: KeyboardEvent<SVGGElement>) => activateOnKey(event, selectEndpoint) } : {})}
       onClick={selectable || onSourceSelect !== undefined ? () => {
         // D1：可选端单击只更新配对选择，不触发源码高亮与滚动；双击才定位源码。
@@ -1167,7 +1169,7 @@ function EndpointSvg({
       )}
       {/* 已配对端点的命中提示（ticket 06 移交）：hover 提示 + 可点选视觉，声明扇出/合流有明确落点。 */}
       {!endpoint.unpaired && manualPaired && (
-        <title>{`已人工配对（M${String(messageIndex + 1)}）：点选可作为${endpoint.direction === 'out' ? '广播发送端' : '合流端'}追加声明`}</title>
+        <title>{`已人工配对 M${String(messageIndex + 1)}；点选可作为${endpoint.direction === 'out' ? '广播发送端' : '合流端'}追加声明`}</title>
       )}
       {tapPillars.length > 1 && (
         <g className="structured-merge-taps" aria-label={`合流端：命中 ${String(tapPillars.length)} 条消息`}>
@@ -1274,7 +1276,7 @@ function StructuredNodeSvg({
         onClick={eventClickable ? activateEvent : undefined}
         onDoubleClick={eventBinding?.onReflexive}
       >
-        <title>{`${node.label}${premise ? ' · 前提' : ''}${conclusion ? ' · 结论' : ''}（单击选中行列，再次单击查询自反对应性；双击同效）`}</title>
+        <title>{`${node.label}${premise ? ' · 前提' : ''}${conclusion ? ' · 结论' : ''}。单击选中行列，再次单击查询自反对应性，双击效果相同`}</title>
         {node.anchorX !== undefined && (
           <line className="structured-event-connector" x1={node.anchorX} x2={cx} y1={markerY} y2={markerY} />
         )}
@@ -1473,7 +1475,7 @@ function BranchFoldSvg({
       role="button"
       tabIndex={0}
       data-branch-id={fold.branchId}
-      aria-label={`展开分支 ${fold.guardText}（隐藏 ${String(fold.hiddenCount)} 步）`}
+      aria-label={`展开分支 ${fold.guardText}，隐藏 ${String(fold.hiddenCount)} 步`}
       onClick={() => {
         onToggleBranch(fold.branchId);
         onSourceSelect?.();
@@ -1520,7 +1522,7 @@ function OperatorClusterFoldSvg({
       role="button"
       tabIndex={0}
       data-cluster-id={fold.clusterId}
-      aria-label={`展开算子簇 ${fold.label}（隐藏 ${String(fold.hiddenCount)} 步；内含 ${fold.memberLabels.join('、')}）`}
+      aria-label={`展开算子簇 ${fold.label}，隐藏 ${String(fold.hiddenCount)} 步，内含 ${fold.memberLabels.join('、')}`}
       onClick={() => {
         onToggleCluster(fold.clusterId);
         onSourceSelect?.();
@@ -1636,12 +1638,12 @@ function StructuredValueBlockSvg({
   const ghost = block.ghost === true;
   // aria 带值身份序号（09）：读屏者以「值 n」与图例 token 列表（序号 + 绑定名）对齐。
   const label = ghost
-    ? `折叠簇引用值 ${block.label}（值 ${String(block.ordinal)}）`
+    ? `折叠簇引用值 ${block.label}，值 ${String(block.ordinal)}`
     : block.occurrence === 'binding'
-      ? `绑定 ${block.label}（值 ${String(block.ordinal)}）`
+      ? `绑定 ${block.label}，值 ${String(block.ordinal)}`
       : block.occurrence === 'equality'
-        ? `等值复制 ${block.label}（值 ${String(block.ordinal)}）`
-        : `引用 ${block.label}（值 ${String(block.ordinal)}）`;
+        ? `等值复制 ${block.label}，值 ${String(block.ordinal)}`
+        : `引用 ${block.label}，值 ${String(block.ordinal)}`;
   // ticket 26：字号提升到 11px 后，4–5 字符的标签会与右上角值序号相碰；
   // 长标签轻微左移，给序号让出角落（3 字符短名保持居中）。最多显示 5 字符。
   const labelShift = Math.max(0, Math.min(5, block.label.length) - 3) * 3;
@@ -1732,7 +1734,7 @@ function StructuredChipSvg({
     <g
       className={`structured-chip structured-chip--${chip.kind}${clickable ? ' structured-chip--selectable' : ''}${clickable && pairingMode ? ' structured-chip--candidate' : ''}${sourceSelected === true ? ' structured-source-selected' : ''}`}
       data-source-offset={chip.sourceSpan.start.offset}
-      aria-label={`${kindLabel} ${chip.text}${clickable ? ' · 可选为人工配对端（Enter 选择）' : ''}`}
+      aria-label={`${kindLabel} ${chip.text}${clickable ? ' · 可选为人工配对端，按 Enter 选择' : ''}`}
       {...(clickable ? { role: 'button', tabIndex: 0, onKeyDown: (event: KeyboardEvent<SVGGElement>) => activateOnKey(event, onSelectEndpoint) } : {})}
       onClick={clickable ? onSelectEndpoint : onSourceSelect}
       onDoubleClick={onSourceSelect}
@@ -1778,7 +1780,7 @@ function NarrativeDiagnostics({ unassigned }: { unassigned: readonly PvDiagnosti
   if (unassigned.length === 0) return null;
   return (
     <section className="narrative-diagnostics" aria-label="解析诊断">
-      <h4>解析诊断（未归属角色）</h4>
+      <h4>解析诊断 · 未归属角色</h4>
       <ul className="diagnostic-list">
         {unassigned.map((diagnostic, index) => (
           <li key={`${diagnostic.span.start.offset}-${index}`} className={`diagnostic-item diagnostic-item--${diagnostic.severity}`}>

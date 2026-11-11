@@ -25,13 +25,13 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     }));
     // React 数字插值会产生 <!-- --> 分隔，先剥离再比对文本。
     const plain = html.replace(/<!-- -->/g, '');
-    expect(plain).toContain('4 个事件，生成 16 条有序对；其中 2 条为源码声明的安全目标');
+    expect(plain).toContain('4 个事件 · 16 条有序对 · 2 条源码声明的安全目标');
     expect(plain).toContain('<details open');
     // 初始未运行：16 个单元全部 pending。
     expect((html.match(/correspondence-cell--pending/g) ?? []).length).toBe(16);
     expect((html.match(/：未验证/g) ?? []).length).toBe(16);
     // 4 个自反单元（对角线）带自反标记与 aria 标注。
-    expect((html.match(/（自反）/g) ?? []).length).toBe(4);
+    expect((html.match(/，自反/g) ?? []).length).toBe(4);
     expect((html.match(/correspondence-reflexive-mark/g) ?? []).length).toBe(4);
   });
 
@@ -72,7 +72,7 @@ describe('ticket #08：事件标记与批量对应性查询（web）', () => {
     expect((html.match(/structured-event--conclusion/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect((html.match(/structured-event--clickable/g) ?? []).length).toBeGreaterThanOrEqual(4);
     // D4：单击两次 = 自反查询（与双击同效），title 文案随之更新。
-    expect(html).toContain('单击选中行列，再次单击查询自反对应性；双击同效');
+    expect(html).toContain('单击选中行列，再次单击查询自反对应性，双击效果相同');
   });
 
   it('无事件样例给出提示而不是空矩阵', () => {
@@ -101,7 +101,7 @@ describe('ticket #08：R13 矩阵尺寸、声明框图例与过滤视图', () =>
       selectedQueryId: null,
       onSelectQuery: () => {},
     }));
-    expect(html).toContain('蓝框 = 源码声明目标');
+    expect(html).toContain('蓝框表示源码声明目标');
   });
 
   it('声明过滤改渲染声明目标列表，不再保留清空的 n×n 网格', () => {
