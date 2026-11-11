@@ -49,8 +49,8 @@ export interface CoreSampleDef {
 export const coreSamples: readonly CoreSampleDef[] = [
   {
     id: 'hello',
-    title: 'hello（保密性最小示例）',
-    description: '最小样例：hello 世界，仅验证公开信道上发送的 RSA 明文是否泄露。',
+    title: 'hello · 保密性最小示例',
+    description: '最小样例，只验证公开信道上发送的 RSA 明文是否泄露。',
     kind: 'secrecy-broken',
     pvFile: 'pv/hello.pv',
     stdoutFile: 'proverif/hello.stdout.txt',
@@ -61,8 +61,8 @@ export const coreSamples: readonly CoreSampleDef[] = [
   },
   {
     id: 'handshake-fixed',
-    title: '握手修正版（查询全部成立）',
-    description: '中规模握手协议修正版：对称/非对称加密与签名并用，附事件，三条查询全部成立。',
+    title: '握手修正版 · 查询全部成立',
+    description: '中等规模握手协议修正版，同时使用对称加密、非对称加密与签名，包含事件声明，三条查询全部成立。',
     kind: 'all-green',
     pvFile: 'pv/handshake-fixed.pv',
     stdoutFile: 'proverif/handshake-fixed.stdout.txt',
@@ -80,8 +80,8 @@ export const coreSamples: readonly CoreSampleDef[] = [
   },
   {
     id: 'ns-mutual-auth',
-    title: 'NS 修正版（互认证成立）',
-    description: 'Needham-Schroeder 修正版（Lowe）：四角色，两条互认证查询全部成立。',
+    title: 'NS 修正版 · 互认证成立',
+    description: 'Lowe 修正版 Needham-Schroeder，包含四个角色，两条互认证查询全部成立。',
     kind: 'all-green',
     pvFile: 'pv/ns-mutual-auth.pv',
     stdoutFile: 'proverif/ns-mutual-auth.stdout.txt',
@@ -98,8 +98,8 @@ export const coreSamples: readonly CoreSampleDef[] = [
   },
   {
     id: 'ns-original',
-    title: 'NS 原版（含 Lowe 攻击）',
-    description: 'Needham-Schroeder 原版：B 侧互认证被 Lowe 攻击证伪，演示反例与 trace。',
+    title: 'NS 原版 · 含 Lowe 攻击',
+    description: '原版 Needham-Schroeder，B 侧互认证被 Lowe 攻击证伪，用于演示反例与 trace。',
     kind: 'auth-broken',
     pvFile: 'pv/ns-original.pv',
     stdoutFile: 'proverif/ns-original.stdout.txt',

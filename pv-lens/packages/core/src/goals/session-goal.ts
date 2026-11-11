@@ -165,5 +165,5 @@ export function sessionGoalQueryBody(queryText: string): string {
 /** 角色内 new 的提示文案（不生成查询）。 */
 export function roleLocalFreshHint(name: RoleLocalFreshName): string {
   const type = name.typeName === undefined ? '' : `: ${name.typeName}`;
-  return `角色 ${name.roleName} 内的 new ${name.name}${type} 不是顶层 free 秘密名；若要查询它的保密性，请改用顶层 free ${name.name}: ${name.typeName ?? 'bitstring'} [private] 的建模技巧。`;
+  return `角色 ${name.roleName} 内的 new ${name.name}${type} 不是顶层 free 秘密名。若要查询它的保密性，可改为声明顶层 free ${name.name}: ${name.typeName ?? 'bitstring'} [private]。`;
 }

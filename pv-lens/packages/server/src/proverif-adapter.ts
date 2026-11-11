@@ -81,9 +81,9 @@ function missingExecutableFailure(executablePath: string, reason: string): Prove
     ok: false,
     kind: 'missing-executable',
     message:
-      `未找到 ProVerif 可执行文件「${executablePath}」（${reason}）。` +
-      `请先安装 ProVerif 2.x，或用环境变量 ${PROVERIF_PATH_ENV} 指向其可执行文件路径` +
-      '（例如 ~/.opam/default/bin/proverif）。',
+      `未找到 ProVerif 可执行文件 ${executablePath}：${reason}。` +
+      `请先安装 ProVerif 2.x，或用环境变量 ${PROVERIF_PATH_ENV} 指定可执行文件路径` +
+      '，例如 ~/.opam/default/bin/proverif。',
   };
 }
 
@@ -183,7 +183,7 @@ function runProverifFile(
         finish({
           ok: false,
           kind: 'proverif-error',
-          message: `ProVerif 报告模型或运行错误（退出码 ${String(exitCode)}）。`,
+          message: `ProVerif 报告模型或运行错误，退出码 ${String(exitCode)}。`,
           stdout,
           stderr,
           exitCode,
@@ -208,7 +208,7 @@ function spawnErrorFailure(
   return {
     ok: false,
     kind: 'proverif-error',
-    message: `无法运行 ProVerif（${executablePath}）：${detail}`,
+    message: `无法运行 ProVerif ${executablePath}：${detail}`,
     stdout,
     stderr,
     exitCode: null,

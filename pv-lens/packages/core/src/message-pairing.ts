@@ -181,9 +181,9 @@ function typeMismatchWarning(
   const outType = inferredTypeOf(result, out.term, intent.outEnd.roleIndex);
   const inType = inferredTypeOf(result, incoming.term, intent.inEnd.roleIndex);
   if (outType !== undefined && inType !== undefined && outType !== inType) {
-    return `类型不符：${out.term.text} 为 ${outType}，${incoming.term.text} 为 ${inType}；声明已保留`;
+    return `类型不符：${out.term.text} 为 ${outType}，${incoming.term.text} 为 ${inType}。声明已保留`;
   }
-  return '词项类型或形状不完全匹配；已保留为人工设计意图。';
+  return '词项类型或形状不完全匹配，已保留为人工设计意图。';
 }
 
 function refKey(ref: MessageEndpointRef): string {

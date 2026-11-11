@@ -279,13 +279,13 @@ export function validateExchangeSegment(
       id: 'contiguous',
       label: '连续区间',
       ok: contiguous,
-      ...(contiguous ? {} : { reason: unknown.length > 0 ? '包含不存在的消息。' : '选择在拓扑序上不连续；交换段必须是一段连续消息集合。' }),
+      ...(contiguous ? {} : { reason: unknown.length > 0 ? '包含不存在的消息。' : '选择在拓扑序上不连续。交换段必须是连续消息集合。' }),
     },
     {
       id: 'whole',
       label: '整条消息',
       ok: cutSelected.length === 0,
-      ...(cutSelected.length === 0 ? {} : { reason: `切断消息：${cutSelected.map((id) => displayIdOf(dag, id)).join('、')} 只有发送端在段内；一条消息的全部端点必须同属一段。` }),
+      ...(cutSelected.length === 0 ? {} : { reason: `切断消息：${cutSelected.map((id) => displayIdOf(dag, id)).join('、')} 只有发送端在段内。一条消息的全部端点必须同属一段。` }),
     },
     {
       id: 'convex',
@@ -301,25 +301,25 @@ export function validateExchangeSegment(
       id: 'parties',
       label: '两方以内',
       ok: roles.size <= 2,
-      ...(roles.size <= 2 ? {} : { reason: `段内涉及 ${String(roles.size)} 个角色；V1 仅允许两方交换段。` }),
+      ...(roles.size <= 2 ? {} : { reason: `段内涉及 ${String(roles.size)} 个角色。V1 仅允许两方交换段。` }),
     },
     {
       id: 'channel',
       label: '单信道',
       ok: channels.size <= 1,
-      ...(channels.size <= 1 ? {} : { reason: `跨信道：段内消息涉及 ${[...channels].join(' 与 ')}；V1 仅允许单信道段。` }),
+      ...(channels.size <= 1 ? {} : { reason: `跨信道：段内消息涉及 ${[...channels].join(' 与 ')}。V1 仅允许单信道段。` }),
     },
     {
       id: 'overlap',
       label: '不与已有段重叠',
       ok: overlaps.length === 0,
-      ...(overlaps.length === 0 ? {} : { reason: `与已有段「${overlaps[0]?.label ?? '未命名段'}」重叠；V1 不支持段中段。` }),
+      ...(overlaps.length === 0 ? {} : { reason: `与已有段 ${overlaps[0]?.label ?? '未命名段'} 重叠。V1 不支持段中段。` }),
     },
     {
       id: 'scc',
       label: '冲突整体包含',
       ok: splitCycles.length === 0,
-      ...(splitCycles.length === 0 ? {} : { reason: '顺序冲突环跨段边界；冲突必须整体包含或整体排除。' }),
+      ...(splitCycles.length === 0 ? {} : { reason: '顺序冲突环跨段边界。冲突必须整体包含或整体排除。' }),
     },
   ];
 

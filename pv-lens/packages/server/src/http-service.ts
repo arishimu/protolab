@@ -125,7 +125,7 @@ async function handleRequest(
     return;
   }
 
-  sendJson(res, 404, invalidRequest(`未知路径 ${path}（可用：GET /api/health、POST /api/verify）。`));
+  sendJson(res, 404, invalidRequest(`未知路径 ${path}。可用接口：GET /api/health、POST /api/verify。`));
 }
 
 async function handleVerify(
@@ -150,7 +150,7 @@ async function handleVerify(
 
   const body = (typeof raw === 'object' && raw !== null ? raw : {}) as VerifyRequestBody;
   if (typeof body.source !== 'string') {
-    sendJson(res, 400, invalidRequest('请求体 JSON 必须含字符串字段 source（.pv 文本）。'));
+    sendJson(res, 400, invalidRequest('请求体 JSON 必须包含字符串字段 source，内容为 .pv 文本。'));
     return;
   }
 
@@ -159,7 +159,7 @@ async function handleVerify(
     timeoutMs !== undefined &&
     (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
   ) {
-    sendJson(res, 400, invalidRequest('可选字段 timeoutMs 必须是正数（毫秒）。'));
+    sendJson(res, 400, invalidRequest('可选字段 timeoutMs 必须是正数，单位为毫秒。'));
     return;
   }
 
