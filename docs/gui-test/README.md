@@ -29,21 +29,21 @@
 - `p1-*`、`p2-*`、`p3-*`：第一轮 P1、P2、P3 批次截图，分别存于 `17-screenshots/`、`18-screenshots/`、`19-screenshots/`。
 - `uNN-*`：第二轮评审证据，存于 `20-screenshots/`。整改文档表格中的 `uNN` 简写指此目录。
 - `pN-rNN-*` 与 `rNN-*`：第二轮实施验收截图，存于 `21-screenshots/`。
-- `merge-*`：结项后补丁与合并前复核截图，存于 `22-screenshots/`；`merge-conflict-marker-overlap.png` 为修复前证据，其余为修复后或主链路复核。
+- `merge-*`：结项后补丁与合并前复核截图，存于 `22-screenshots/`；`merge-conflict-marker-overlap.png` 为修复前证据，其余为修复后或主要流程复核。
 - `sg0-protoN-<state>-<宽度>.png`：语义分组阶段 0 原型截图，存于 `23-screenshots/`。`proto1` 为密码操作组，`proto2` 为交换段；`<state>` 取 `collapsed`、`expanded`、`nested`、`override`、`gray`、`conflict`、`reject-*`、`collapsed-full`、`expanded-full`；`<宽度>` 为 1920、1440、1280、1024。`sg0-protoN-print.pdf` 为打印预览。
-- `sg2-*.png`：语义分组阶段 2 真浏览器验收，存于 `23-screenshots/`。`sg2-groups-collapsed-<宽度>.png` 为全部折叠的组摘要与幽灵值块（1920、1440、1280、1024 四视口），`sg2-groups-expanded-1440.png` 为展开态组开关，`sg2-groups-nested-1440.png` 为嵌套子组折叠，`sg2-audit-1440.png` 为审计面板；`sg2-groups-collapsed-1024-gray.png` 与 `sg2-groups-collapsed-1024-print.png` 为灰度与打印复核。
-- `sg3-*.png`：语义分组阶段 3 真浏览器验收，存于 `23-screenshots/`。`sg3-message-list-1440.png` 为消息列表与校验，`sg3-segment-expanded-1440.png` 与 `sg3-segment-card-1440.png` 为展开态段带与段卡片，`sg3-segment-collapsed-<宽度>.png` 为折叠态段带与跨段边（1920、1440、1280、1024），`sg3-segment-collapsed-1024-gray.png` 与 `-print.png` 为灰度与打印复核。
-- `sg4-*.png`：语义分组阶段 4 真浏览器验收，存于 `23-screenshots/`。`sg4-guide-1440.png` 为样例导读，`sg4-concept-1440.png` 与 `sg4-legend-concept-1440.png` 为组摘要与图例概念抽屉，`sg4-verify-<宽度>.png` 为查询三行与覆盖摘要（1920、1440、1280、1024），`sg4-verify-1024-gray.png` 与 `-print.png` 为灰度与打印复核。
-- `sg5-*.png`：语义分组阶段 5 真浏览器验收，存于 `23-screenshots/`。`sg5-goals-<宽度>.png` 为三类会话目标构建器与目标清单（1920、1440、1280、1024），`sg5-verify-1440.png` 为声明/会话目标来源区分与覆盖摘要，`sg5-attribution-1440.png` 为列表级反例归因。
-- `20-screenshots/`、`21-screenshots/`、`22-screenshots/` 与 `23-screenshots/` 分别记录整改前、整改后、结项后补丁与语义分组阶段 0/2/3/4/5，不混用。
+- `sg2-*.png`：语义分组阶段 2 真浏览器验收，存于 `23-screenshots/`。`sg2-groups-collapsed-<宽度>.png` 为全部折叠的组摘要与幽灵值块，覆盖 1920、1440、1280、1024 四视口；`sg2-groups-expanded-1440.png` 为展开态组开关；`sg2-groups-nested-1440.png` 为嵌套子组折叠；`sg2-audit-1440.png` 为审计面板；`sg2-groups-collapsed-1024-gray.png` 与 `sg2-groups-collapsed-1024-print.png` 为灰度与打印复核。
+- `sg3-*.png`：语义分组阶段 3 真浏览器验收，存于 `23-screenshots/`。`sg3-message-list-1440.png` 为消息列表与校验；`sg3-segment-expanded-1440.png` 与 `sg3-segment-card-1440.png` 为展开态段带与段卡片；`sg3-segment-collapsed-<宽度>.png` 为折叠态段带与跨段边，覆盖 1920、1440、1280、1024；`sg3-segment-collapsed-1024-gray.png` 与 `-print.png` 为灰度与打印复核。
+- `sg4-*.png`：语义分组阶段 4 真浏览器验收，存于 `23-screenshots/`。`sg4-guide-1440.png` 为样例导读；`sg4-concept-1440.png` 与 `sg4-legend-concept-1440.png` 为组摘要与图例概念抽屉；`sg4-verify-<宽度>.png` 为查询三行与覆盖摘要，覆盖 1920、1440、1280、1024；`sg4-verify-1024-gray.png` 与 `-print.png` 为灰度与打印复核。
+- `sg5-*.png`：语义分组阶段 5 真浏览器验收，存于 `23-screenshots/`。`sg5-goals-<宽度>.png` 为三类会话目标构建器与目标清单，覆盖 1920、1440、1280、1024；`sg5-verify-1440.png` 为声明/会话目标来源区分与覆盖摘要；`sg5-attribution-1440.png` 为列表级反例归因。
+- `20-screenshots/`、`21-screenshots/`、`22-screenshots/` 与 `23-screenshots/` 分别记录整改前、整改后、结项后补丁与语义分组阶段 0/2/3/4/5 的截图，不混用。
 
 ## 阅读顺序
 
-1. `gui-test-report.md`，了解首轮测试发现的问题与证据。
-2. `gui-test-remediation.md`，核对第一轮整改的判定与实施记录。
-3. `gui-test-remediation-2.md`，核对第二轮整改的判定与实施记录，第 10 节为全量回归，第 13 节为结项后补丁。
-4. `22-screenshots/`，核对结项后补丁与合并前复核的浏览器证据。
-5. `23-screenshots/`，核对语义分组阶段 0 原型的折叠、展开、嵌套、段边界与拒绝路径，阶段 2 的组摘要/幽灵值块/审计面板，阶段 3 的消息列表/段带/跨段边，阶段 4 的样例导读/概念抽屉/查询三行/覆盖摘要，以及阶段 5 的会话目标/来源区分/反例归因；`sg0-*` 至 `sg5-*` 分别对应各阶段验收。
+1. `gui-test-report.md`：首轮测试发现的问题与证据。
+2. `gui-test-remediation.md`：第一轮整改的判定与实施记录。
+3. `gui-test-remediation-2.md`：第二轮整改的判定与实施记录，第 10 节为全量回归，第 13 节为结项后补丁。
+4. `22-screenshots/`：结项后补丁与合并前复核的浏览器证据。
+5. `23-screenshots/`：语义分组阶段 0 原型的折叠、展开、嵌套、段边界与拒绝路径，阶段 2 的组摘要、幽灵值块与审计面板，阶段 3 的消息列表、段带与跨段边，阶段 4 的样例导读、概念抽屉、查询三行与覆盖摘要，阶段 5 的会话目标、来源区分与反例归因。`sg0-*` 至 `sg5-*` 分别对应各阶段验收。
 
 ## 验收基线
 
